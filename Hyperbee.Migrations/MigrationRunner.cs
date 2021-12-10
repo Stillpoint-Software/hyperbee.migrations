@@ -15,6 +15,8 @@ public class MigrationRunner
     private readonly MigrationOptions _options;
     private readonly ILogger<MigrationRunner> _logger;
 
+    private record MigrationDescriptor( Type Type, MigrationAttribute Attribute );
+
     public MigrationRunner( IMigrationRecordStore recordStore, MigrationOptions options, ILogger<MigrationRunner> logger )
     {
         _recordStore = recordStore ?? throw new ArgumentNullException( nameof(recordStore) );
@@ -52,12 +54,11 @@ public class MigrationRunner
         var executionStopwatch = Stopwatch.StartNew();
 
         var runCount = 0;
-        foreach ( var pair in migrations )
+        foreach ( var (type, attribute) in migrations )
         {
-            // instantiate the migration
+            // activate the migration with DI
 
-            var migration = pair.Migration();
-            migration.Setup( _options, _logger );
+            var migration = _options.MigrationActivator.CreateInstance( type );
 
             // make sure we want to run the migration
 
@@ -75,7 +76,7 @@ public class MigrationRunner
 
             // run the migration
 
-            var version = pair.Attribute!.Version;
+            var version = attribute!.Version;
             var name = migration.GetType().Name;
 
             _logger.LogInformation( "[{version}] {name}: {direction} migration started", version, name, direction );
@@ -110,10 +111,10 @@ public class MigrationRunner
         var migrations = options.Assemblies
             .SelectMany( assembly => assembly.GetTypes() )
             .Where( type => typeof(Migration).IsAssignableFrom( type ) && !type.IsAbstract )
-            .Select( type => new MigrationDescriptor
+            .Select( type =>
             {
-                Migration = () => options.MigrationActivator.CreateInstance( type ),
-                Attribute = type.GetCustomAttribute( typeof(MigrationAttribute) ) as MigrationAttribute
+                var attribute = type.GetCustomAttribute( typeof(MigrationAttribute) ) as MigrationAttribute;
+                return new MigrationDescriptor( type, attribute );
             } )
             .Where( descriptor => IsInScope( descriptor, options ) );
         
@@ -124,20 +125,22 @@ public class MigrationRunner
 
     private static bool IsInScope( MigrationDescriptor descriptor, MigrationOptions options )
     {
-        if ( descriptor.Attribute == null )
+        var (_, attribute) = descriptor;
+
+        if ( attribute == null )
             // Subclasses of Migration that can be instantiated must have the MigrationAttribute.
             // If this class was intended as a base class for other migrations, make it an abstract class.
             return false;
 
         // if no profile has been declared the migration is in-scope
 
-        if ( !descriptor.Attribute.Profiles.Any() )
+        if ( !attribute.Profiles.Any() )
             return true;
 
         // the migration must belong to at least one of the currently specified profiles
 
         return options.Profiles
-            .Intersect( descriptor.Attribute.Profiles, StringComparer.OrdinalIgnoreCase )
+            .Intersect( attribute.Profiles, StringComparer.OrdinalIgnoreCase )
             .Any();
     }
 }
