@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
+  <metadata>
+    <id>RavenMigrations</id>
+    <version>5.0.0</version>
+    <authors>Darrel Portzline, Khalid Abuhakmeh, Judah Gabriel Himango</authors>
+    <license type="expression">MIT</license>
+    <licenseUrl>https://licenses.nuget.org/MIT</licenseUrl>
+    <icon>logo-for-nuget.png</icon>
+    <projectUrl>https://github.com/migrating-ravens/RavenMigrations</projectUrl>
+    <description>Raven Migrations is a migration framework for RavenDB to help with updates to your database objects.</description>
+    <releaseNotes>Migrated to Raven 5, latest .NET Standard. Fixed a test.</releaseNotes>
+    <copyright>BitShuva 2020</copyright>
+    <tags>ravendb, nosql, migration, schema</tags>
+    <repository type="git" url="https://github.com/migrating-ravens/RavenMigrations/" />
+    <dependencies>
+      <group targetFramework=".NETStandard2.1">
+        <dependency id="Microsoft.Extensions.DependencyInjection.Abstractions" version="3.1.6" exclude="Build,Analyzers" />
+        <dependency id="Microsoft.Extensions.Logging.Abstractions" version="3.1.6" exclude="Build,Analyzers" />
+        <dependency id="RavenDB.Client" version="5.0.0" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+  </metadata>
+  <files>
+    <file src="C:\Development\Hyperbee.Migrations\Raven.Migrations\bin\Debug\netstandard2.1\Raven.Migrations.pdb" target="lib\netstandard2.1\Raven.Migrations.pdb" />
+  </files>
+</package>

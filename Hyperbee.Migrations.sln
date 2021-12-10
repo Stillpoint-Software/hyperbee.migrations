@@ -1,0 +1,44 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31919.166
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{5A09B7FE-D694-45B5-BCBC-256A8E06CFC5}"
+	ProjectSection(SolutionItems) = preProject
+		LICENSE.md = LICENSE.md
+		NOTES.md = NOTES.md
+		readme.md = readme.md
+	EndProjectSection
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations", "Hyperbee.Migrations\Hyperbee.Migrations.csproj", "{5981F6C2-AF4F-4EE7-A2E7-CD5EAF70E0FF}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations.Tests", "Hyperbee.Migrations.Tests\Hyperbee.Migrations.Tests.csproj", "{409340D8-874C-41AC-B760-77B43F82D894}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.MigrationRunner", "Hyperbee.MigrationRunner\Hyperbee.MigrationRunner.csproj", "{E540E902-9D2F-4139-A8D6-98E55E25B9EE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5981F6C2-AF4F-4EE7-A2E7-CD5EAF70E0FF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5981F6C2-AF4F-4EE7-A2E7-CD5EAF70E0FF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5981F6C2-AF4F-4EE7-A2E7-CD5EAF70E0FF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5981F6C2-AF4F-4EE7-A2E7-CD5EAF70E0FF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{409340D8-874C-41AC-B760-77B43F82D894}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{409340D8-874C-41AC-B760-77B43F82D894}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{409340D8-874C-41AC-B760-77B43F82D894}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{409340D8-874C-41AC-B760-77B43F82D894}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E540E902-9D2F-4139-A8D6-98E55E25B9EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E540E902-9D2F-4139-A8D6-98E55E25B9EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E540E902-9D2F-4139-A8D6-98E55E25B9EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E540E902-9D2F-4139-A8D6-98E55E25B9EE}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {97071D77-035B-4126-AD4E-DE150E318714}
+	EndGlobalSection
+EndGlobal
