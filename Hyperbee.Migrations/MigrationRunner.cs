@@ -125,16 +125,17 @@ public class MigrationRunner
             : descriptors.OrderByDescending( x => x.Attribute!.Version ) )
             .ToList();
 
-        // check for duplicates
+        // throw if any duplicates
         var set = new HashSet<long>();
 
-        foreach ( var (_, attribute) in ordered )
-        {
-            var version = attribute!.Version;
+        var duplicate = ordered
+            .Select( x => x.Attribute!.Version )
+            .Where( x => !set.Add( x ) )
+            .Select( x => new long?(x) )
+            .FirstOrDefault();
 
-            if ( !set.Add( version ) ) 
-                throw new DuplicateMigrationException( $"Multiple migrations found with the version number `{version}`.", version );
-        }
+        if ( duplicate.HasValue )
+            throw new DuplicateMigrationException( $"Multiple migrations found with the version number `{duplicate.Value}`.", duplicate.Value );
 
         return ordered;
     }

@@ -13,11 +13,13 @@ public class CouchbaseMigrationOptions : MigrationOptions
     public TimeSpan MutexMaxLifetime { get; set; }
     public TimeSpan MutexRenewInterval { get; set; }
 
-    public CouchbaseMigrationOptions() : this( null )
+    public CouchbaseMigrationOptions() 
+        : this( null )
     {
     }
 
-    public CouchbaseMigrationOptions( IMigrationActivator migrationActivator ) : base( migrationActivator )
+    public CouchbaseMigrationOptions( IMigrationActivator migrationActivator ) 
+        : base( migrationActivator )
     {
         ScopeName = "_default";
         CollectionName = "ledger";

@@ -6,7 +6,8 @@ namespace Hyperbee.Migrations;
 
 public class MigrationOptions
 {
-    public MigrationOptions() : this(null)
+    public MigrationOptions() 
+        : this(null)
     {
     }
 
@@ -27,7 +28,6 @@ public class MigrationOptions
     public IList<string> Profiles { get; set; }
     public long ToVersion { get; set; }
 
-    public char IdSeparatorChar { get; set; } = '-';
     public bool MutexEnabled { get; set; }
     public IMigrationActivator MigrationActivator { get; set; }
     public IMigrationConventions Conventions { get; set; }
