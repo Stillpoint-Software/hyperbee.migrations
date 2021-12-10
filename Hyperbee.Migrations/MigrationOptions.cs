@@ -43,7 +43,6 @@ public class MigrationOptions
     public TimeSpan MutexExpireInterval { get; set; }
     public TimeSpan MutexMaxLifetime { get; set; }
     public TimeSpan MutexRenewInterval { get; set; }
-    public char IdSeparatorChar { get; set; } = '-';
 
     public IMigrationActivator MigrationActivator { get; set; }
     public IMigrationConventions Conventions { get; set; }
