@@ -108,7 +108,8 @@ public class MigrationRunner
 
     private static IEnumerable<MigrationDescriptor> FindMigrations( MigrationOptions options )
     {
-        var migrations = options.Assemblies
+        // discover descriptors
+        var descriptors = options.Assemblies
             .SelectMany( assembly => assembly.GetTypes() )
             .Where( type => typeof(Migration).IsAssignableFrom( type ) && !type.IsAbstract )
             .Select( type =>
@@ -118,9 +119,24 @@ public class MigrationRunner
             } )
             .Where( descriptor => IsInScope( descriptor, options ) );
         
-        return options.Direction == Direction.Up
-            ? migrations.OrderBy( x => x.Attribute!.Version )
-            : migrations.OrderByDescending( x => x.Attribute!.Version );
+        // order by id
+        var ordered = ( options.Direction == Direction.Up
+            ? descriptors.OrderBy( x => x.Attribute!.Version )
+            : descriptors.OrderByDescending( x => x.Attribute!.Version ) )
+            .ToList();
+
+        // check for duplicates
+        var set = new HashSet<long>();
+
+        foreach ( var (_, attribute) in ordered )
+        {
+            var version = attribute!.Version;
+
+            if ( !set.Add( version ) ) 
+                throw new DuplicateMigrationException( $"Multiple migrations found with the version number `{version}`.", version );
+        }
+
+        return ordered;
     }
 
     private static bool IsInScope( MigrationDescriptor descriptor, MigrationOptions options )
