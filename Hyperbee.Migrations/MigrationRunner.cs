@@ -54,62 +54,55 @@ public class MigrationRunner
         var runCount = 0;
         foreach ( var pair in migrations )
         {
+            // instantiate the migration
+
             var migration = pair.Migration();
             migration.Setup( _options, _logger );
+
+            // make sure we want to run the migration
+
             var migrationId = _options.Conventions.MigrationDocumentId( migration, _options.IdSeparatorChar );
 
-            var migrationRecord = await _recordStore.LoadAsync( migrationId );
+            var exists = await _recordStore.ExistsAsync( migrationId );
+            var direction = _options.Direction;
 
-            switch ( _options.Direction )
+            switch ( direction )
+            {
+                case Directions.Up when exists:
+                case Directions.Down when !exists:
+                    continue;
+            }
+
+            // run the migration
+
+            var version = pair.Attribute!.Version;
+            var name = migration.GetType().Name;
+
+            _logger.LogInformation( "[{version}] {name}: {direction} migration started", version, name, direction );
+
+            switch ( direction )
             {
                 case Directions.Down:
-                    if ( migrationRecord == null )
-                        continue;
-
-                    await ExecuteMigrationAsync( _options.Direction, pair.Attribute!.Version, migration, async () =>
-                    {
-                        migration.Down();
-                        await _recordStore.DeleteAsync( migrationRecord );
-                    } );
-                    runCount++;
+                    migration.Down();
+                    await _recordStore.DeleteAsync( migrationId );
                     break;
 
                 case Directions.Up:
-                    if ( migrationRecord != null )
-                        continue;
-
-                    await ExecuteMigrationAsync( _options.Direction, pair.Attribute!.Version, migration, async () =>
-                    {
-                        migration.Up();
-                        await _recordStore.StoreAsync( migrationId );
-                    } );
-                    runCount++;
+                    migration.Up();
+                    await _recordStore.StoreAsync( migrationId );
                     break;
-
-                default:
-                    throw new ArgumentOutOfRangeException( nameof(_options.Direction) );
             }
 
-            if ( pair.Attribute.Version == _options.ToVersion )
+            runCount++;
+
+            _logger.LogInformation( "[{version}] {name}: {direction} migration completed", version, name, direction );
+
+            if ( version == _options.ToVersion )
                 break;
         }
 
         executionStopwatch.Stop();
-        _logger.LogInformation( "{migrationCount} migrations executed in {elapsed}", runCount, executionStopwatch.Elapsed );
-    }
-
-    private async Task ExecuteMigrationAsync( Directions direction, long version, Migration migration, Func<Task> migrationAsync )
-    {
-        var migrationDirection = direction == Directions.Down ? "Down" : "Up";
-        _logger.LogInformation( "[{version}] {name}: {direction} migration started", version, migration.GetType().Name, migrationDirection );
-
-        var migrationStopwatch = Stopwatch.StartNew();
-
-        await migrationAsync();
-
-        migrationStopwatch.Stop();
-
-        _logger.LogInformation( "[{version}] {name}: {direction} migration completed in {elapsed}", version, migration.GetType().Name, migrationDirection, migrationStopwatch.Elapsed );
+        _logger.LogInformation( "Executed {migrationCount} migrations in {elapsed}", runCount, executionStopwatch.Elapsed );
     }
 
     private static IEnumerable<MigrationDescriptor> FindMigrations( MigrationOptions options )

@@ -43,13 +43,13 @@ internal static class Program
                 }
                 catch (Exception ex)
                 {
-                    Log.Logger.Fatal(ex, "Application Failure.");
+                    logger.Fatal(ex, "Application Failure.");
                 }
             }
         }
         catch (Exception ex)
         {
-            Log.Logger?.Fatal(ex, "Initialization Failure.");
+            logger.Fatal(ex, "Initialization Failure.");
         }
         finally
         {
@@ -70,13 +70,15 @@ internal static class Program
         var jsonFormatter = new CompactJsonFormatter();
         var pathFormat = $".{Path.DirectorySeparatorChar}logs{Path.DirectorySeparatorChar}hyperbee-migrations.json";
 
-        return new LoggerConfiguration()
+        Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .ReadFrom.Configuration( config )
             .Enrich.FromLogContext()
             .WriteTo.File( jsonFormatter, pathFormat )
-            .WriteTo.Console( restrictedToMinimumLevel: LogEventLevel.Error )
+            .WriteTo.Console( restrictedToMinimumLevel: LogEventLevel.Information )
             .CreateLogger();
+
+        return Log.ForContext<Startup>();
     }
 }
 

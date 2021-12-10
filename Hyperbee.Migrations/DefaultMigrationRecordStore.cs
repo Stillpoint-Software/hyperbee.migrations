@@ -105,22 +105,18 @@ public class DefaultMigrationRecordStore : IMigrationRecordStore
         }
     }
 
-    public async Task<IMigrationRecord> LoadAsync( string migrationId )
+    public async Task<bool> ExistsAsync( string migrationId )
     {
         var collection = await GetCollectionAsync();
         var check = await collection.ExistsAsync( migrationId ).ConfigureAwait( false );
 
-        if ( !check.Exists )
-            return default;
-
-        var result = await collection.GetAsync( migrationId ).ConfigureAwait( false );
-        return result.ContentAs<MigrationRecord>();
+        return check.Exists;
     }
 
-    public async Task DeleteAsync( IMigrationRecord record )
+    public async Task DeleteAsync(string migrationId )
     {
         var collection = await GetCollectionAsync();
-        await collection.RemoveAsync( record.Id ).ConfigureAwait( false );
+        await collection.RemoveAsync( migrationId ).ConfigureAwait( false );
     }
 
     public async Task StoreAsync( string migrationId )
