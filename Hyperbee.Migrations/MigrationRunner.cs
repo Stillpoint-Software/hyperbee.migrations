@@ -28,6 +28,8 @@ public class MigrationRunner
 
         try
         {
+            await _recordStore.InitializeAsync();
+
             if ( _options.MutexEnabled )
                 mutex = await _recordStore.CreateMutexAsync();
 
@@ -45,8 +47,6 @@ public class MigrationRunner
 
     private async Task RunMigrationsAsync()
     {
-        await _recordStore.InitializeAsync();
-
         var migrations = FindMigrations( _options );
 
         var executionStopwatch = Stopwatch.StartNew();
