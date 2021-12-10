@@ -11,13 +11,13 @@ namespace Hyperbee.Migrations.Couchbase;
 public class CouchbaseRecordStore : IMigrationRecordStore
 {
     private readonly IClusterProvider _clusterProvider;
-    private readonly MigrationOptions _options;
+    private readonly CouchbaseMigrationOptions _options;
     private readonly ILogger<CouchbaseRecordStore> _logger;
 
     public CouchbaseRecordStore( IClusterProvider clusterProvider, MigrationOptions options, ILogger<CouchbaseRecordStore> logger )
     {
         _clusterProvider = clusterProvider;
-        _options = options;
+        _options = (CouchbaseMigrationOptions)options;
         _logger = logger;
     }
 

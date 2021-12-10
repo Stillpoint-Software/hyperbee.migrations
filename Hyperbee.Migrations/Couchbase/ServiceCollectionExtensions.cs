@@ -11,12 +11,12 @@ public static class ServiceCollectionExtensions
         return AddCouchbaseMigrationRunner( services, null, Assembly.GetCallingAssembly() );
     }
 
-    public static IServiceCollection AddCouchbaseMigrations( this IServiceCollection services, Action<MigrationOptions> configuration )
+    public static IServiceCollection AddCouchbaseMigrations( this IServiceCollection services, Action<CouchbaseMigrationOptions> configuration )
     {
         return AddCouchbaseMigrationRunner( services, configuration, Assembly.GetCallingAssembly() );
     }
 
-    private static IServiceCollection AddCouchbaseMigrationRunner( IServiceCollection services, Action<MigrationOptions> configuration, Assembly callingAssembly )
+    private static IServiceCollection AddCouchbaseMigrationRunner( IServiceCollection services, Action<CouchbaseMigrationOptions> configuration, Assembly callingAssembly )
     {
         if ( callingAssembly == null )
             callingAssembly = Assembly.GetEntryAssembly();
@@ -28,10 +28,10 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    private static MigrationOptions MigrationOptionsFactory( IServiceProvider provider, Assembly callingAssembly, Action<MigrationOptions> configuration = null )
+    private static MigrationOptions MigrationOptionsFactory( IServiceProvider provider, Assembly callingAssembly, Action<CouchbaseMigrationOptions> configuration = null )
     {
         var migrationResolver = new DefaultMigrationActivator( provider );
-        var options = new MigrationOptions( migrationResolver );
+        var options = new CouchbaseMigrationOptions( migrationResolver );
 
         configuration?.Invoke( options );
 

@@ -1,9 +1,11 @@
-﻿using System.Linq;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using NSubstitute;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
-using FluentAssertions;
-using Hyperbee.Migrations.Tests.TestSupport;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Hyperbee.Migrations.Tests;
 
@@ -11,281 +13,208 @@ namespace Hyperbee.Migrations.Tests;
 public class RunnerTests
 {
     [TestMethod]
-    public void Document_id_prefix_is_ravenmigrations()
+    public async Task Migrations_run_with_up_direction_in_order()
     {
-        MigrationHelper.DefaultMigrationIdPrefix.Should().Be("MigrationRecord");
-    }
-
-    [TestMethod]
-    public void Can_change_migration_document_seperator_to_dash()
-    {
-        var options = new MigrationOptions();
-        options.Conventions.MigrationDocumentId(new First_Migration(), '-')
-            .Should().Be("migrationrecord-first-migration-1");
-    }
-
-    [TestMethod]
-    public void Can_get_migration_id_from_migration()
-    {
-        var options = new MigrationOptions();
-        var id = options.Conventions.MigrationDocumentId(new First_Migration(), '/');
-        id.Should().Be("migrationrecord/first/migration/1");
-    }
-
-    [TestMethod]
-    public void Can_get_migration_id_from_migration_and_correct_leading_or_multiple_underscores()
-    {
-        var options = new MigrationOptions();
-        var id = options.Conventions.MigrationDocumentId(new _has_problems__with_underscores___(), '/');
-        id.Should().Be("migrationrecord/has/problems/with/underscores/5");
-    }
-
-    [TestMethod]
-    public void Can_get_migration_attribute_from_migration_type()
-    {
-        var attribute = typeof(First_Migration).GetMigrationAttribute();
-        attribute.Should().NotBeNull();
-        attribute.Version.Should().Be(1);
-    }
-
-    [TestMethod]
-    public void Default_migration_direction_is_up()
-    {
-        var options = new MigrationOptions();
-        options.Direction.Should().Be(Direction.Up);
-    }
-
-    [TestMethod]
-    public void Default_resolver_should_be_DefaultMigrationResolver()
-    {
-        var options = new MigrationOptions();
-        options.MigrationActivator.Should().NotBeNull();
-        options.MigrationActivator.Should().BeOfType<FuncMigrationActivator>();
-    }
-
-    [TestMethod]
-    public void Default_migration_resolver_can_instantiate_a_migration()
-    {
-        var migration = new FuncMigrationActivator().CreateInstance(typeof(First_Migration));
-        migration.Should().NotBeNull();
-    }
-
-    [TestMethod]
-    public async Task Can_run_an_up_migration_against_a_document_store()
-    {
-        using var store = GetDocumentStore();
-        new TestDocumentIndex().Execute(store);
-
-        var runner = new MigrationRunner(store, GetMigrationOptions(), new ConsoleLogger());
-        await runner.RunAsync();
-        //WaitForIndexing(store);
-
-        using var session = store.OpenSession();
-        session.Query<TestDocument, TestDocumentIndex>()
-            .Count()
-            .Should().Be(1);
-    }
-
-    [TestMethod]
-    public async Task Calling_run_twice_runs_migrations_only_once()
-    {
-        using var store = GetDocumentStore();
-        new TestDocumentIndex().Execute(store);
-
-        var runner = new MigrationRunner(store, GetMigrationOptions(), new ConsoleLogger());
-        await runner.RunAsync();
-
-        // oooops, twice!
-        await runner.RunAsync();
-
-        //WaitForIndexing(store);
-
-        using var session = store.OpenSession();
-        session.Query<TestDocument, TestDocumentIndex>()
-            .Count()
-            .Should().Be(1);
-    }
-
-    [TestMethod]
-    public async Task Can_call_up_then_down_on_migrations()
-    {
-        using var store = GetDocumentStore();
-        new TestDocumentIndex().Execute(store);
-
-        var runner = new MigrationRunner(store, GetMigrationOptions(), new ConsoleLogger());
-        await runner.RunAsync();
-
-        //WaitForIndexing(store);
-
-        // flip it and reverse it :P
+        // arrange
+        var store = new List<(string Id, MigrationRecord Record)>();
+        var recordStore = InitializeStore( store );
         var options = GetMigrationOptions();
-        options.Direction = Direction.Down;
-        var reverseRunner = new MigrationRunner(store, options, new ConsoleLogger());
-        await reverseRunner.RunAsync();
+        var logger = Substitute.For<ILogger<MigrationRunner>>();
+        var migrationRunner = new MigrationRunner( recordStore, options, logger );
 
-        //WaitForIndexing(store);
-        using var session = store.OpenSession();
-        session.Query<TestDocument, TestDocumentIndex>()
-            .Count()
-            .Should().Be(0);
+        // act
+        await migrationRunner.RunAsync();
+
+        // assert
+        Assert.AreEqual( 2, store.Count );
+        Assert.AreEqual( "migrationrecord.first.migration.1", store.First().Id );
+        Assert.AreEqual( "migrationrecord.second.migration.2", store.Skip( 1 ).First().Id );
     }
 
     [TestMethod]
-    public async Task Can_call_migrations_up_to_a_certain_version()
+    public async Task Migrations_run_with_up_direction_to_version()
     {
-        using var store = GetDocumentStore();
-        new TestDocumentIndex().Execute(store);
-
+        // arrange
+        var store = new List<(string Id, MigrationRecord Record)>();
+        var recordStore = InitializeStore( store );
         var options = GetMigrationOptions();
         options.ToVersion = 1;
-        var runner = new MigrationRunner(store, options, new ConsoleLogger());
-        await runner.RunAsync();
-        //WaitForIndexing(store);
+        var logger = Substitute.For<ILogger<MigrationRunner>>();
+        var migrationRunner = new MigrationRunner( recordStore, options, logger );
 
-        using var session = store.OpenSession();
-        session.Query<TestDocument, TestDocumentIndex>()
-            .Count()
-            .Should().Be(1);
+        // act
+        await migrationRunner.RunAsync();
 
-        var shouldNotExist = session.Load<object>("second-document");
-        shouldNotExist.Should().BeNull();
+        // assert
+        Assert.AreEqual( 1, store.Count );
+        Assert.AreEqual( "migrationrecord.first.migration.1", store.First().Id );
     }
 
     [TestMethod]
-    public async Task Can_call_migrations_down_to_a_certain_version()
+    public async Task Migrations_run_with_down_direction()
     {
-        using var store = GetDocumentStore();
-        new TestDocumentIndex().Execute(store);
+        // arrange
+        var store = new List<(string Id, MigrationRecord Record)>
+        {
+            new("migrationrecord.first.migration.1", new MigrationRecord()),
+            new("migrationrecord.second.migration.2", new MigrationRecord()),
+        };
+        var recordStore = InitializeStore( store );
+        var options = GetMigrationOptions();
+        options.Direction = Direction.Down;
+        var logger = Substitute.For<ILogger<MigrationRunner>>();
+        var migrationRunner = new MigrationRunner( recordStore, options, logger );
 
-        var runner = new MigrationRunner(store, GetMigrationOptions(), new ConsoleLogger());
-        await runner.RunAsync();
-        //WaitForIndexing(store);
+        // act
+        await migrationRunner.RunAsync();
 
-        // migrate down to 
+        // assert
+        Assert.AreEqual( 0, store.Count );
+    }
+
+    [TestMethod]
+    public async Task Migrations_run_with_down_direction_to_version()
+    {
+        // arrange
+        var store = new List<(string Id, MigrationRecord Record)>
+        {
+            new("migrationrecord.first.migration.1", new MigrationRecord()),
+            new("migrationrecord.second.migration.2", new MigrationRecord()),
+        };
+        var recordStore = InitializeStore( store );
         var options = GetMigrationOptions();
         options.Direction = Direction.Down;
         options.ToVersion = 2;
-        var downRunner = new MigrationRunner(store, options, new ConsoleLogger());
-        await downRunner.RunAsync();
+        var logger = Substitute.For<ILogger<MigrationRunner>>();
+        var migrationRunner = new MigrationRunner( recordStore, options, logger );
 
-        using var session = store.OpenSession();
-        session.Query<TestDocument, TestDocumentIndex>()
-            .Count()
-            .Should().Be(1);
+        // act
+        await migrationRunner.RunAsync();
 
-        var secondId = options.Conventions.MigrationDocumentId(new Second_Migration(), '/');
-        var secondMigrationDocument = session.Load<MigrationRecord>(secondId);
-        secondMigrationDocument.Should().BeNull();
-
-        var id = options.Conventions.MigrationDocumentId(new First_Migration(), '/');
-        var firstMigrationDocument = session.Load<MigrationRecord>(id);
-        firstMigrationDocument.Should().NotBeNull();
+        // assert
+        Assert.AreEqual( 1, store.Count );
+        Assert.AreEqual( "migrationrecord.first.migration.1", store.First().Id );
     }
 
     [TestMethod]
-    public async Task Can_call_migrations_with_development_profile()
+    public async Task Migrations_run_with_up_direction_in_development()
     {
-        using var store = GetDocumentStore();
-        new TestDocumentIndex().Execute(store);
-
+        // arrange
+        var store = new List<(string Id, MigrationRecord Record)>();
+        var recordStore = InitializeStore( store );
         var options = GetMigrationOptions();
-        options.Profiles = new[] { "development" };
-        var runner = new MigrationRunner(store, options, new ConsoleLogger());
-        await runner.RunAsync();
-        //WaitForIndexing(store);
+        options.Profiles.Add( "development" );
+        var logger = Substitute.For<ILogger<MigrationRunner>>();
+        var migrationRunner = new MigrationRunner( recordStore, options, logger );
 
-        using var session = store.OpenSession();
-        var development = session.Load<object>("development-1");
-        development.Should().NotBeNull();
+        // act
+        await migrationRunner.RunAsync();
+
+        // assert
+        Assert.AreEqual( 3, store.Count );
+        Assert.AreEqual( "migrationrecord.first.migration.1", store.First().Id );
+        Assert.AreEqual( "migrationrecord.second.migration.2", store.Skip( 1 ).First().Id );
+        Assert.AreEqual( "migrationrecord.development.migration.3", store.Skip( 2 ).First().Id );
     }
 
     [TestMethod]
-    public async Task Can_call_migrations_with_demo_profile()
+    public async Task Migrations_run_with_up_direction_with_inheritance()
     {
-        using var store = GetDocumentStore();
-        new TestDocumentIndex().Execute(store);
-
+        // arrange
+        var store = new List<(string Id, MigrationRecord Record)>();
+        var recordStore = InitializeStore( store );
         var options = GetMigrationOptions();
-        options.Profiles = new[] { "demo" };
-        var runner = new MigrationRunner(store, options, new ConsoleLogger());
-        await runner.RunAsync();
-        //WaitForIndexing(store);
+        options.Profiles.Add( "uses-BaseMigration" );
+        var logger = Substitute.For<ILogger<MigrationRunner>>();
+        var migrationRunner = new MigrationRunner( recordStore, options, logger );
 
-        using var session = store.OpenSession();
-        var development = session.Load<object>("development-1");
-        development.Should().NotBeNull();
+        // act
+        await migrationRunner.RunAsync();
+
+        // assert
+        Assert.AreEqual( 3, store.Count );
+        Assert.AreEqual( "migrationrecord.first.migration.1", store.First().Id );
+        Assert.AreEqual( "migrationrecord.second.migration.2", store.Skip( 1 ).First().Id );
+        Assert.AreEqual( "migrationrecord.subclass.of.basemigration.4", store.Skip( 2 ).First().Id );
     }
 
     [TestMethod]
-    public async Task Can_call_migrations_ignore_migrations_with_profile()
+    public async Task Migrations_run_with_up_direction_with_complex_convention_names()
     {
-        using var store = GetDocumentStore();
-        new TestDocumentIndex().Execute(store);
-
-        var runner = new MigrationRunner(store, GetMigrationOptions(), new ConsoleLogger());
-        await runner.RunAsync();
-        //WaitForIndexing(store);
-
-        using var session = store.OpenSession();
-        var development = session.Load<object>("development-1");
-        development.Should().BeNull();
-    }
-
-    [TestMethod]
-    public async Task Can_call_migrations_that_are_not_direct_subclasses_of_Migration()
-    {
-        using var store = GetDocumentStore();
-        new TestDocumentIndex().Execute(store);
-
+        // arrange
+        var store = new List<(string Id, MigrationRecord Record)>();
+        var recordStore = InitializeStore( store );
         var options = GetMigrationOptions();
-        options.Profiles = new[] { "uses-BaseMigration" };
-        var runner = new MigrationRunner(store, options, new ConsoleLogger());
-        await runner.RunAsync();
-        //WaitForIndexing(store);
+        options.Profiles.Add("exclude-me");
+        var logger = Substitute.For<ILogger<MigrationRunner>>();
+        var migrationRunner = new MigrationRunner( recordStore, options, logger );
 
-        using var session = store.OpenSession();
-        var development = session.Load<object>("migrated-using-BaseMigration");
-        development.Should().NotBeNull();
+        // act
+        await migrationRunner.RunAsync();
+
+        // assert
+        Assert.AreEqual( 3, store.Count );
+        Assert.AreEqual( "migrationrecord.first.migration.1", store.First().Id );
+        Assert.AreEqual( "migrationrecord.second.migration.2", store.Skip( 1 ).First().Id );
+        Assert.AreEqual( "migrationrecord.has.problems.with.underscores.5", store.Skip( 2 ).First().Id );
     }
-        
-    private MigrationOptions GetMigrationOptions()
+
+    private static MigrationOptions GetMigrationOptions()
     {
-        var options = new MigrationOptions();
-        options.Assemblies.Add(Assembly.GetExecutingAssembly());
+        var activator = Substitute.For<IMigrationActivator>();
+        activator.CreateInstance( Arg.Any<Type>() ).Returns( args => Activator.CreateInstance( args.Arg<Type>() ) );
+
+        var options = new MigrationOptions( activator );
+        options.Assemblies.Add( Assembly.GetExecutingAssembly() );
+
         return options;
     }
-}
 
-public class TestDocument
-{
-    public string Id { get; set; }
-    public string Name { get; set; }
-}
-
-public class TestDocumentIndex : AbstractIndexCreationTask<TestDocument>
-{
-    public TestDocumentIndex()
+    private static IMigrationRecordStore InitializeStore( ICollection<(string Id, MigrationRecord Record)> store )
     {
-        Map = tests => from t in tests
-            select new { t.Id, t.Name };
+        var recordStore = Substitute.For<IMigrationRecordStore>();
+
+        recordStore.InitializeAsync().Returns( Task.CompletedTask );
+        recordStore.CreateMutexAsync().Returns( Task.FromResult( new FakeMutex() ) );
+
+        recordStore.ExistsAsync( Arg.Any<string>() ).Returns( args => Task.FromResult( store.Any( x => x.Id == args.Arg<string>() ) ) );
+        recordStore.DeleteAsync( Arg.Any<string>() ).Returns( args =>
+        {
+            var record = store.FirstOrDefault( x => x.Id == args.Arg<string>() );
+            store.Remove( record );
+            return Task.CompletedTask;
+        } );
+        recordStore.StoreAsync( Arg.Any<string>() ).Returns( args =>
+        {
+            var id = args.Arg<string>();
+            store.Add( (args.Arg<string>(), new MigrationRecord { Id = id }) );
+            return Task.CompletedTask;
+        } );
+
+        return recordStore;
+    }
+
+}
+
+public class FakeMutex : IDisposable
+{
+    public void Dispose()
+    {
     }
 }
+
 
 [Migration(1)]
 public class First_Migration : Migration
 {
     public override void Up()
     {
-        using var session = DocumentStore.OpenSession();
-        session.Store(new TestDocument { Id = "TestDocuments/1", Name = "Yehuda Gavriel" });
-        session.SaveChanges();
+
     }
 
     public override void Down()
     {
-        using var session = DocumentStore.OpenSession();
-        session.Delete("TestDocuments/1");
-        session.SaveChanges();
+
     }
 }
 
@@ -294,17 +223,12 @@ public class Second_Migration : Migration
 {
     public override void Up()
     {
-        using var session = DocumentStore.OpenSession();
-        session.Store(new { Id = "second-document", Name = "woot!" });
-        session.SaveChanges();
+
     }
 
     public override void Down()
     {
-        using var session = DocumentStore.OpenSession();
-        var doc = session.Load<object>("second-document");
-        session.Delete(doc);
-        session.SaveChanges();
+
     }
 }
 
@@ -313,20 +237,22 @@ public class Development_Migration : Migration
 {
     public override void Up()
     {
-        using var session = DocumentStore.OpenSession();
-        session.Store(new { Id = "development-1" });
-        session.SaveChanges();
+
     }
 }
 
 [Migration(4, "uses-BaseMigration")]
 public class Subclass_of_BaseMigration : BaseMigration
 {
+    public Subclass_of_BaseMigration( )
+    {
+    }
+
     public override void Up()
     {
-        using var session = DocumentStore.OpenSession();
-        session.Store(new { Id = "migrated-using-BaseMigration" });
-        session.SaveChanges();
+        // using var session = DocumentStore.OpenSession();
+        // session.Store(new { Id = "migrated-using-BaseMigration" });
+        // session.SaveChanges();
     }
 }    
 
