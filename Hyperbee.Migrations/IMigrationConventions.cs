@@ -2,5 +2,5 @@
 
 public interface IMigrationConventions
 {
-    string GetRecordId( Migration migration, char separator );
+    string GetRecordId( Migration migration );
 }

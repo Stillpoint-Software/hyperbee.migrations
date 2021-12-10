@@ -6,15 +6,15 @@ using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
 using Microsoft.Extensions.Logging;
 
-namespace Hyperbee.Migrations;
+namespace Hyperbee.Migrations.Couchbase;
 
-public class DefaultMigrationRecordStore : IMigrationRecordStore
+public class CouchbaseRecordStore : IMigrationRecordStore
 {
     private readonly IClusterProvider _clusterProvider;
     private readonly MigrationOptions _options;
-    private readonly ILogger<DefaultMigrationRecordStore> _logger;
+    private readonly ILogger<CouchbaseRecordStore> _logger;
 
-    public DefaultMigrationRecordStore( IClusterProvider clusterProvider, MigrationOptions options, ILogger<DefaultMigrationRecordStore> logger )
+    public CouchbaseRecordStore( IClusterProvider clusterProvider, MigrationOptions options, ILogger<CouchbaseRecordStore> logger )
     {
         _clusterProvider = clusterProvider;
         _options = options;

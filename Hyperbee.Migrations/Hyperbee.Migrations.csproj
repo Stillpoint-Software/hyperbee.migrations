@@ -24,8 +24,4 @@
     <PackageReference Include="Microsoft.SourceLink.Bitbucket.Git" Version="1.1.1" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Couchbase\" />
-  </ItemGroup>
-
 </Project>

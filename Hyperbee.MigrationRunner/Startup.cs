@@ -1,5 +1,6 @@
 ﻿using Couchbase.Extensions.DependencyInjection;
 using Hyperbee.Migrations;
+using Hyperbee.Migrations.Couchbase;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -17,7 +18,7 @@ internal class Startup
     public void ConfigureContainer( IServiceCollection services )
     {
         services.AddCouchbase( Configuration );
-        services.AddMigrations( _ =>
+        services.AddCouchbaseMigrations( _ =>
         {
             _.BucketName = Configuration["Migrations:BucketName"];
             _.ScopeName = Configuration["Migrations:ScopeName"];

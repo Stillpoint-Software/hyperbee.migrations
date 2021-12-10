@@ -61,15 +61,15 @@ public class MigrationRunner
 
             // make sure we want to run the migration
 
-            var recordId = _options.Conventions.GetRecordId( migration, _options.IdSeparatorChar );
+            var recordId = _options.Conventions.GetRecordId( migration );
 
             var exists = await _recordStore.ExistsAsync( recordId );
             var direction = _options.Direction;
 
             switch ( direction )
             {
-                case Directions.Up when exists:
-                case Directions.Down when !exists:
+                case Direction.Up when exists:
+                case Direction.Down when !exists:
                     continue;
             }
 
@@ -82,12 +82,12 @@ public class MigrationRunner
 
             switch ( direction )
             {
-                case Directions.Down:
+                case Direction.Down:
                     migration.Down();
                     await _recordStore.DeleteAsync( recordId );
                     break;
 
-                case Directions.Up:
+                case Direction.Up:
                     migration.Up();
                     await _recordStore.StoreAsync( recordId );
                     break;
@@ -117,7 +117,7 @@ public class MigrationRunner
             } )
             .Where( descriptor => IsInScope( descriptor, options ) );
         
-        return options.Direction == Directions.Up
+        return options.Direction == Direction.Up
             ? migrations.OrderBy( x => x.Attribute!.Version )
             : migrations.OrderByDescending( x => x.Attribute!.Version );
     }

@@ -2,7 +2,6 @@
 using System.Reflection;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Hyperbee.Migrations.Activators;
 using Hyperbee.Migrations.Tests.TestSupport;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -53,7 +52,7 @@ public class RunnerTests
     public void Default_migration_direction_is_up()
     {
         var options = new MigrationOptions();
-        options.Direction.Should().Be(Directions.Up);
+        options.Direction.Should().Be(Direction.Up);
     }
 
     [TestMethod]
@@ -120,7 +119,7 @@ public class RunnerTests
 
         // flip it and reverse it :P
         var options = GetMigrationOptions();
-        options.Direction = Directions.Down;
+        options.Direction = Direction.Down;
         var reverseRunner = new MigrationRunner(store, options, new ConsoleLogger());
         await reverseRunner.RunAsync();
 
@@ -164,7 +163,7 @@ public class RunnerTests
 
         // migrate down to 
         var options = GetMigrationOptions();
-        options.Direction = Directions.Down;
+        options.Direction = Direction.Down;
         options.ToVersion = 2;
         var downRunner = new MigrationRunner(store, options, new ConsoleLogger());
         await downRunner.RunAsync();

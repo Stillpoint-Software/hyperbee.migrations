@@ -1,29 +1,28 @@
 ﻿using System;
 using System.Reflection;
-using Hyperbee.Migrations.Activators;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Hyperbee.Migrations;
+namespace Hyperbee.Migrations.Couchbase;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddMigrations( this IServiceCollection services )
+    public static IServiceCollection AddCouchbaseMigrations( this IServiceCollection services )
     {
-        return AddMigrationRunner( services, null, Assembly.GetCallingAssembly() );
+        return AddCouchbaseMigrationRunner( services, null, Assembly.GetCallingAssembly() );
     }
 
-    public static IServiceCollection AddMigrations( this IServiceCollection services, Action<MigrationOptions> configuration )
+    public static IServiceCollection AddCouchbaseMigrations( this IServiceCollection services, Action<MigrationOptions> configuration )
     {
-        return AddMigrationRunner( services, configuration, Assembly.GetCallingAssembly() );
+        return AddCouchbaseMigrationRunner( services, configuration, Assembly.GetCallingAssembly() );
     }
 
-    private static IServiceCollection AddMigrationRunner( IServiceCollection services, Action<MigrationOptions> configuration, Assembly callingAssembly )
+    private static IServiceCollection AddCouchbaseMigrationRunner( IServiceCollection services, Action<MigrationOptions> configuration, Assembly callingAssembly )
     {
         if ( callingAssembly == null )
             callingAssembly = Assembly.GetEntryAssembly();
 
         services.AddSingleton( provider => MigrationOptionsFactory( provider, callingAssembly, configuration ) );
-        services.AddSingleton<IMigrationRecordStore, DefaultMigrationRecordStore>();
+        services.AddSingleton<IMigrationRecordStore, CouchbaseRecordStore>();
         services.AddSingleton<MigrationRunner>();
 
         return services;
