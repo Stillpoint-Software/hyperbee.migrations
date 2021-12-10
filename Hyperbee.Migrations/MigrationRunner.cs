@@ -61,9 +61,9 @@ public class MigrationRunner
 
             // make sure we want to run the migration
 
-            var migrationId = _options.Conventions.MigrationDocumentId( migration, _options.IdSeparatorChar );
+            var recordId = _options.Conventions.GetRecordId( migration, _options.IdSeparatorChar );
 
-            var exists = await _recordStore.ExistsAsync( migrationId );
+            var exists = await _recordStore.ExistsAsync( recordId );
             var direction = _options.Direction;
 
             switch ( direction )
@@ -84,12 +84,12 @@ public class MigrationRunner
             {
                 case Directions.Down:
                     migration.Down();
-                    await _recordStore.DeleteAsync( migrationId );
+                    await _recordStore.DeleteAsync( recordId );
                     break;
 
                 case Directions.Up:
                     migration.Up();
-                    await _recordStore.StoreAsync( migrationId );
+                    await _recordStore.StoreAsync( recordId );
                     break;
             }
 
@@ -108,33 +108,18 @@ public class MigrationRunner
     private static IEnumerable<MigrationDescriptor> FindMigrations( MigrationOptions options )
     {
         var migrations = options.Assemblies
-            .SelectMany( AssemblyTypes, ( assembly, type ) => new { assembly, type } )
-            .Where( x => options.Conventions.TypeIsMigration( x.type ) )
-            .Select( x => new MigrationDescriptor
+            .SelectMany( assembly => assembly.GetTypes() )
+            .Where( type => typeof(Migration).IsAssignableFrom( type ) && !type.IsAbstract )
+            .Select( type => new MigrationDescriptor
             {
-                Migration = () => options.MigrationActivator.CreateInstance( x.type ),
-                Attribute = x.type.GetMigrationAttribute()
+                Migration = () => options.MigrationActivator.CreateInstance( type ),
+                Attribute = type.GetCustomAttribute( typeof(MigrationAttribute) ) as MigrationAttribute
             } )
             .Where( descriptor => IsInScope( descriptor, options ) );
         
         return options.Direction == Directions.Up
             ? migrations.OrderBy( x => x.Attribute!.Version )
             : migrations.OrderByDescending( x => x.Attribute!.Version );
-    }
-
-    private static IEnumerable<Type> AssemblyTypes( Assembly assembly )
-    {
-        if ( assembly == null )
-            throw new ArgumentNullException( nameof(assembly) );
-
-        try
-        {
-            return assembly.GetTypes();
-        }
-        catch ( ReflectionTypeLoadException ex )
-        {
-            return ex.Types.Where( type => type != null );
-        }
     }
 
     private static bool IsInScope( MigrationDescriptor descriptor, MigrationOptions options )

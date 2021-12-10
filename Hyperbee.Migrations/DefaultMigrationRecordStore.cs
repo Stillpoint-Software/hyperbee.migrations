@@ -27,7 +27,7 @@ public class DefaultMigrationRecordStore : IMigrationRecordStore
         var bucket = await cluster.BucketAsync( _options.BucketName );
         var scope = await bucket.ScopeAsync( _options.ScopeName );
         var collection = await scope.CollectionAsync( _options.CollectionName );
-        
+
         return collection;
     }
 
@@ -105,29 +105,29 @@ public class DefaultMigrationRecordStore : IMigrationRecordStore
         }
     }
 
-    public async Task<bool> ExistsAsync( string migrationId )
+    public async Task<bool> ExistsAsync( string recordId )
     {
         var collection = await GetCollectionAsync();
-        var check = await collection.ExistsAsync( migrationId ).ConfigureAwait( false );
+        var check = await collection.ExistsAsync( recordId ).ConfigureAwait( false );
 
         return check.Exists;
     }
 
-    public async Task DeleteAsync(string migrationId )
+    public async Task DeleteAsync( string recordId )
     {
         var collection = await GetCollectionAsync();
-        await collection.RemoveAsync( migrationId ).ConfigureAwait( false );
+        await collection.RemoveAsync( recordId ).ConfigureAwait( false );
     }
 
-    public async Task StoreAsync( string migrationId )
+    public async Task StoreAsync( string recordId )
     {
         var collection = await GetCollectionAsync();
 
         var record = new MigrationRecord
         {
-            Id = migrationId
+            Id = recordId
         };
 
-        await collection.InsertAsync( migrationId, record ).ConfigureAwait( false );
+        await collection.InsertAsync( recordId, record ).ConfigureAwait( false );
     }
 }

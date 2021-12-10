@@ -21,7 +21,7 @@ public class MigrationOptions
         ToVersion = 0;
 
         MigrationActivator = migrationActivator; 
-        Conventions = new MigrationConventions(); 
+        Conventions = new DefaultMigrationConventions(); 
 
         ScopeName = "_default";
         CollectionName = "ledger";
@@ -48,5 +48,5 @@ public class MigrationOptions
     public char IdSeparatorChar { get; set; } = '-';
 
     public IMigrationActivator MigrationActivator { get; set; }
-    public MigrationConventions Conventions { get; set; }
+    public IMigrationConventions Conventions { get; set; }
 }
