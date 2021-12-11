@@ -16,7 +16,7 @@ public class WeTheBest : Migration
 
     public override Task Up()
     {
-        _logger.LogDebug( $"In Up `{nameof(WeTheBest)}`" );
+        _logger.LogInformation( "Inside {name} `{direction}`", nameof(WeTheBest), nameof(Up) );
         return Task.CompletedTask;
     }
 }

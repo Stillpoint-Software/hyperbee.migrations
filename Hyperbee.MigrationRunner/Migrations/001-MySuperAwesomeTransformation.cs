@@ -18,13 +18,13 @@ public class MySuperAwesomeTransformation : Migration
 
     public override Task Up()
     {
-        _logger.LogDebug( $"In Up `{nameof(MySuperAwesomeTransformation)}`" );
+        _logger.LogInformation( "Inside {name} `{direction}`", nameof(MySuperAwesomeTransformation), nameof(Up) );
         return Task.CompletedTask;
     }
 
     public override Task Down()
     {
-        _logger.LogDebug( $"In Down `{nameof(MySuperAwesomeTransformation)}`" );
+        _logger.LogInformation( "Inside {name} `{direction}`", nameof(MySuperAwesomeTransformation), nameof(Down) );
         return Task.CompletedTask;
     }
 }

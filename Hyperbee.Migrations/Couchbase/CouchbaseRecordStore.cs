@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Couchbase;
+using Couchbase.Diagnostics;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
@@ -71,41 +73,61 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
         // check for scope
 
-        var hasScopeResult = await cluster.QueryAsync<int>( $"SELECT RAW count(*) FROM system:scopes WHERE `bucket` = '{bucketName}' AND name = '{scopeName}'" )
-            .ConfigureAwait( false );
-
-        if ( await hasScopeResult.Rows.FirstOrDefaultAsync() == 0 )
-        {
-            _logger.LogInformation( "Creating scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName );
-
-            await cluster.QueryAsync<dynamic>( $"CREATE SCOPE `{bucketName}`.`{scopeName}`" )
-                .ConfigureAwait( false );
-        }
+        await CreateAsync(
+            cluster,
+            () => _logger.LogInformation( "Creating scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName ),
+            testStatement: $"SELECT RAW count(*) FROM system:scopes WHERE `bucket` = '{bucketName}' AND name = '{scopeName}'",
+            createStatement: $"CREATE SCOPE `{bucketName}`.`{scopeName}`"
+        );
 
         // check for collection
 
-        var hasCollectionResult = await cluster.QueryAsync<int>( $"SELECT RAW count(*) FROM system:keyspaces WHERE `bucket` = '{bucketName}' AND `scope` = '{scopeName}' AND name = '{collectionName}'" )
-            .ConfigureAwait( false );
-
-        if ( await hasCollectionResult.Rows.FirstOrDefaultAsync() == 0 )
-        {
-            _logger.LogInformation( "Creating collection `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
-
-            await cluster.QueryAsync<dynamic>( $"CREATE COLLECTION `{bucketName}`.`{scopeName}`.`{collectionName}`" )
-                .ConfigureAwait( false );
-        }
+        await CreateAsync(
+            cluster,
+            () => _logger.LogInformation( "Creating collection `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName ),
+            testStatement: $"SELECT RAW count(*) FROM system:keyspaces WHERE `bucket` = '{bucketName}' AND `scope` = '{scopeName}' AND name = '{collectionName}'",
+            createStatement: $"CREATE COLLECTION `{bucketName}`.`{scopeName}`.`{collectionName}`",
+            maxAttempts: 10,
+            retryInterval: TimeSpan.FromMilliseconds( 2500 )
+        );
 
         // check for primary index
 
-        var hasPrimaryIndexResult = await cluster.QueryAsync<int>( $"SELECT RAW count(*) FROM system:indexes WHERE bucket_id = '{bucketName}' AND scope_id = '{scopeName}' AND keyspace_id = '{collectionName}' AND is_primary" )
+        await CreateAsync(
+            cluster,
+            () => _logger.LogInformation( "Creating primary index `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName ),
+            testStatement: $"SELECT RAW count(*) FROM system:indexes WHERE bucket_id = '{bucketName}' AND scope_id = '{scopeName}' AND keyspace_id = '{collectionName}' AND is_primary",
+            createStatement: $"CREATE PRIMARY INDEX ON `default`:`{bucketName}`.`{scopeName}`.`{collectionName}`",
+            maxAttempts: 10,
+            retryInterval: TimeSpan.FromMilliseconds( 2500 )
+        );
+    }
+
+    private async Task CreateAsync( ICluster cluster, Action logger, string testStatement, string createStatement, int maxAttempts = 0, TimeSpan retryInterval = default )
+    {
+        var hasPrimaryIndexResult = await cluster.QueryAsync<int>( testStatement )
             .ConfigureAwait( false );
 
         if ( await hasPrimaryIndexResult.Rows.FirstOrDefaultAsync() == 0 )
         {
-            _logger.LogInformation( "Creating primary index `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
+            logger();
 
-            await cluster.QueryAsync<dynamic>( $"CREATE PRIMARY INDEX ON `default`:`{bucketName}`.`{scopeName}`.`{collectionName}`" )
+            await cluster.QueryAsync<dynamic>( createStatement )
                 .ConfigureAwait( false );
+
+            // wait for creation
+            //
+            while ( maxAttempts-- > 0 )
+            {
+                hasPrimaryIndexResult = await cluster.QueryAsync<int>( testStatement )
+                    .ConfigureAwait( false );
+
+                if ( await hasPrimaryIndexResult.Rows.FirstOrDefaultAsync() > 0 )
+                    break;
+
+                _logger.LogInformation( "WAITING..." );
+                await Task.Delay( retryInterval );
+            }
         }
     }
 
