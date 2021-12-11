@@ -1,21 +1,20 @@
 ﻿using Microsoft.Extensions.Logging;
 
-namespace Hyperbee.Migrations.Samples.Migrations
+namespace Hyperbee.Migrations.Samples.Migrations;
+
+[Migration(3)]
+public class WeReallyAreTheBest : Migration
 {
-    [Migration(3)]
-    public class WeReallyAreTheBest : Migration
+    private readonly ILogger _logger;
+
+    public WeReallyAreTheBest( ILogger<WeReallyAreTheBest> logger )
     {
-        private readonly ILogger _logger;
+        _logger = logger;
+    }
 
-        public WeReallyAreTheBest( ILogger<WeReallyAreTheBest> logger )
-        {
-            _logger = logger;
-        }
-
-        public override Task UpAsync( CancellationToken cancellationToken = default )
-        {
-            _logger.LogInformation( "Inside {name} `{direction}`", nameof(WeReallyAreTheBest), nameof(UpAsync) );
-            return Task.CompletedTask;
-        }
+    public override Task UpAsync( CancellationToken cancellationToken = default )
+    {
+        _logger.LogInformation( "Inside {name} `{direction}`", nameof(WeReallyAreTheBest), nameof(UpAsync) );
+        return Task.CompletedTask;
     }
 }

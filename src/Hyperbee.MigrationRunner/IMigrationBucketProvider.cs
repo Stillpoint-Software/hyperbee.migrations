@@ -1,8 +1,7 @@
 ﻿using Couchbase.Extensions.DependencyInjection;
 
-namespace Hyperbee.MigrationRunner
+namespace Hyperbee.MigrationRunner;
+
+public interface IMigrationBucketProvider : INamedBucketProvider
 {
-    public interface IMigrationBucketProvider : INamedBucketProvider
-    {
-    }
 }
