@@ -236,9 +236,6 @@ public class Subclass_of_BaseMigration : BaseMigration
 
     public override Task Up()
     {
-        // using var session = DocumentStore.OpenSession();
-        // session.Store(new { Id = "migrated-using-BaseMigration" });
-        // session.SaveChanges();
         return Task.CompletedTask;
     }
 }    
