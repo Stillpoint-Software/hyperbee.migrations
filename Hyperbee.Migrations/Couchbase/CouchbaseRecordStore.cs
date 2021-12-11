@@ -33,26 +33,6 @@ public class CouchbaseRecordStore : IMigrationRecordStore
         return collection;
     }
 
-    public async Task<IDisposable> CreateMutexAsync()
-    {
-        // https://github.com/couchbaselabs/Couchbase.Extensions/blob/master/docs/locks.md
-
-        var collection = await GetCollectionAsync();
-
-        try
-        {
-            var mutex = await collection.RequestMutexAsync( _options.MutexName, _options.MutexExpireInterval )
-                .ConfigureAwait( false );
-
-            mutex.AutoRenew( _options.MutexRenewInterval, _options.MutexMaxLifetime );
-            return mutex;
-        }
-        catch ( CouchbaseLockUnavailableException ex )
-        {
-            throw new MigrationMutexUnavailableException( $"The mutex `{_options.MutexName}` is unavailable.", ex );
-        }
-    }
-
     public async Task InitializeAsync()
     {
         var cluster = await _clusterProvider.GetClusterAsync();
@@ -77,7 +57,9 @@ public class CouchbaseRecordStore : IMigrationRecordStore
             cluster,
             () => _logger.LogInformation( "Creating scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName ),
             testStatement: $"SELECT RAW count(*) FROM system:scopes WHERE `bucket` = '{bucketName}' AND name = '{scopeName}'",
-            createStatement: $"CREATE SCOPE `{bucketName}`.`{scopeName}`"
+            createStatement: $"CREATE SCOPE `{bucketName}`.`{scopeName}`",
+            maxAttempts: 10,
+            retryInterval: TimeSpan.FromSeconds( 3 )
         );
 
         // check for collection
@@ -88,7 +70,7 @@ public class CouchbaseRecordStore : IMigrationRecordStore
             testStatement: $"SELECT RAW count(*) FROM system:keyspaces WHERE `bucket` = '{bucketName}' AND `scope` = '{scopeName}' AND name = '{collectionName}'",
             createStatement: $"CREATE COLLECTION `{bucketName}`.`{scopeName}`.`{collectionName}`",
             maxAttempts: 10,
-            retryInterval: TimeSpan.FromMilliseconds( 2500 )
+            retryInterval: TimeSpan.FromSeconds( 3 )
         );
 
         // check for primary index
@@ -99,7 +81,7 @@ public class CouchbaseRecordStore : IMigrationRecordStore
             testStatement: $"SELECT RAW count(*) FROM system:indexes WHERE bucket_id = '{bucketName}' AND scope_id = '{scopeName}' AND keyspace_id = '{collectionName}' AND is_primary",
             createStatement: $"CREATE PRIMARY INDEX ON `default`:`{bucketName}`.`{scopeName}`.`{collectionName}`",
             maxAttempts: 10,
-            retryInterval: TimeSpan.FromMilliseconds( 2500 )
+            retryInterval: TimeSpan.FromSeconds( 3 )
         );
     }
 
@@ -128,6 +110,26 @@ public class CouchbaseRecordStore : IMigrationRecordStore
                 _logger.LogInformation( "WAITING..." );
                 await Task.Delay( retryInterval );
             }
+        }
+    }
+
+    public async Task<IDisposable> CreateMutexAsync()
+    {
+        // https://github.com/couchbaselabs/Couchbase.Extensions/blob/master/docs/locks.md
+
+        var collection = await GetCollectionAsync();
+
+        try
+        {
+            var mutex = await collection.RequestMutexAsync( _options.MutexName, _options.MutexExpireInterval )
+                .ConfigureAwait( false );
+
+            mutex.AutoRenew( _options.MutexRenewInterval, _options.MutexMaxLifetime );
+            return mutex;
+        }
+        catch ( CouchbaseLockUnavailableException ex )
+        {
+            throw new MigrationMutexUnavailableException( $"The mutex `{_options.MutexName}` is unavailable.", ex );
         }
     }
 
