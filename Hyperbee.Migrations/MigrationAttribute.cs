@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace Hyperbee.Migrations;
 
-[AttributeUsage( AttributeTargets.Class, Inherited = false )]
+[AttributeUsage( AttributeTargets.Class, Inherited = false, AllowMultiple = false )]
 public class MigrationAttribute : Attribute
 {
     public long Version { get; set; }

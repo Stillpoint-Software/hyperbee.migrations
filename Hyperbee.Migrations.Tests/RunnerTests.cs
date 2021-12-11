@@ -7,6 +7,9 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 
+// ReSharper disable UnusedMember.Global
+// ReSharper disable InconsistentNaming
+
 namespace Hyperbee.Migrations.Tests;
 
 [TestClass]
@@ -207,38 +210,21 @@ public class FakeMutex : IDisposable
 [Migration(1)]
 public class First_Migration : Migration
 {
-    public override void Up()
-    {
-
-    }
-
-    public override void Down()
-    {
-
-    }
+    public override Task Up() => Task.CompletedTask;
+    public override Task Down() => Task.CompletedTask;
 }
 
 [Migration(2)]
 public class Second_Migration : Migration
 {
-    public override void Up()
-    {
-
-    }
-
-    public override void Down()
-    {
-
-    }
+    public override Task Up() => Task.CompletedTask;
+    public override Task Down() => Task.CompletedTask;
 }
 
 [Migration(3, "development", "demo")]
 public class Development_Migration : Migration
 {
-    public override void Up()
-    {
-
-    }
+    public override Task Up() => Task.CompletedTask;
 }
 
 [Migration(4, "uses-BaseMigration")]
@@ -248,25 +234,22 @@ public class Subclass_of_BaseMigration : BaseMigration
     {
     }
 
-    public override void Up()
+    public override Task Up()
     {
         // using var session = DocumentStore.OpenSession();
         // session.Store(new { Id = "migrated-using-BaseMigration" });
         // session.SaveChanges();
+        return Task.CompletedTask;
     }
 }    
 
 [Migration(5, "exclude-me")]
 public class _has_problems__with_underscores___ : Migration
 {
-    public override void Up()
-    {
-    }
+    public override Task Up() => Task.CompletedTask;
 }    
     
 public abstract class BaseMigration : Migration
 {
-    public override void Up()
-    {
-    }
+    public override Task Up() => Task.CompletedTask;
 }

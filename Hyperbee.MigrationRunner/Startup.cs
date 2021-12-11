@@ -17,21 +17,7 @@ internal class Startup
     public void ConfigureContainer( IServiceCollection services )
     {
         services.AddCouchbase( Configuration );
-        services.AddCouchbaseMigrations( _ =>
-        {
-            _.BucketName = Configuration["Migrations:BucketName"];
-            _.ScopeName = Configuration["Migrations:ScopeName"];
-            _.CollectionName = Configuration["Migrations:CollectionName"];
-
-            if ( Configuration.GetValue<bool>( "Migrations:Mutex:Enabled" ) )
-            {
-                _.MutexEnabled = true;
-                _.MutexName = Configuration["Migrations:Mutex:Name"];
-                _.MutexMaxLifetime = TimeSpan.FromSeconds( Configuration.GetValue( "Migrations:Mutex:MaxLifetime", 3600 ) );
-                _.MutexExpireInterval = TimeSpan.FromSeconds( Configuration.GetValue( "Migrations:Mutex:ExpireInterval", 30 ) );
-                _.MutexRenewInterval = TimeSpan.FromSeconds( Configuration.GetValue( "Migrations:Mutex:RenewInterval", 15 ) );
-            }
-        } );
+        services.AddCouchbaseMigrations( Configuration );
     }
 }
 
@@ -50,14 +36,45 @@ internal static class StartupExtensions
             maxHttpConnections = 10;
 
         services.AddCouchbase( c =>
-            {
-                c.EnableTls = false;
-                c.WithBuckets( bucket );
-                c.WithConnectionString( connectionString );
-                c.WithCredentials( userName, password );
-                c.MaxHttpConnections = maxHttpConnections;
-            } )
-            .AddCouchbaseBucket<IMigrationBucketProvider>( bucket );
+        {
+            c.EnableTls = false;
+            c.WithBuckets( bucket );
+            c.WithConnectionString( connectionString );
+            c.WithCredentials( userName, password );
+            c.MaxHttpConnections = maxHttpConnections;
+        } )
+        .AddCouchbaseBucket<IMigrationBucketProvider>( bucket );
+
+        return services;
+    }
+
+    public static IServiceCollection AddCouchbaseMigrations( this IServiceCollection services, IConfiguration config )
+    {
+        var bucketName = config["Migrations:BucketName"];
+        var scopeName = config["Migrations:ScopeName"];
+        var collectionName = config["Migrations:CollectionName"];
+
+        var mutexEnabled = config.GetValue<bool>( "Migrations:Mutex:Enabled" );
+        var mutexName = config["Migrations:Mutex:Name"];
+        var mutexMaxLifetime = TimeSpan.FromSeconds( config.GetValue( "Migrations:Mutex:MaxLifetime", 3600 ) );
+        var mutexExpireInterval = TimeSpan.FromSeconds( config.GetValue( "Migrations:Mutex:ExpireInterval", 30 ) );
+        var mutexRenewInterval = TimeSpan.FromSeconds( config.GetValue( "Migrations:Mutex:RenewInterval", 15 ) );
+
+        services.AddCouchbaseMigrations( c =>
+        {
+            c.BucketName = bucketName;
+            c.ScopeName = scopeName;
+            c.CollectionName = collectionName;
+
+            if ( !mutexEnabled )
+                return;
+
+            c.MutexEnabled = true;
+            c.MutexName = mutexName;
+            c.MutexMaxLifetime = mutexMaxLifetime;
+            c.MutexExpireInterval = mutexExpireInterval;
+            c.MutexRenewInterval = mutexRenewInterval;
+        } );
 
         return services;
     }

@@ -35,7 +35,7 @@ public class MigrationRunner
             if ( _options.MutexEnabled )
                 mutex = await _recordStore.CreateMutexAsync();
 
-            await RunMigrationsAsync(); 
+            await RunMigrationsAsync();
         }
         catch ( MigrationMutexUnavailableException )
         {
@@ -84,12 +84,12 @@ public class MigrationRunner
             switch ( direction )
             {
                 case Direction.Down:
-                    migration.Down();
+                    await migration.Down();
                     await _recordStore.DeleteAsync( recordId );
                     break;
 
                 case Direction.Up:
-                    migration.Up();
+                    await migration.Up();
                     await _recordStore.StoreAsync( recordId );
                     break;
             }
@@ -118,11 +118,11 @@ public class MigrationRunner
                 return new MigrationDescriptor( type, attribute );
             } )
             .Where( descriptor => IsInScope( descriptor, options ) );
-        
+
         // order by id
-        var ordered = ( options.Direction == Direction.Up
-            ? descriptors.OrderBy( x => x.Attribute!.Version )
-            : descriptors.OrderByDescending( x => x.Attribute!.Version ) )
+        var ordered = (options.Direction == Direction.Up
+                ? descriptors.OrderBy( x => x.Attribute!.Version )
+                : descriptors.OrderByDescending( x => x.Attribute!.Version ))
             .ToList();
 
         // throw if any duplicates
@@ -131,12 +131,13 @@ public class MigrationRunner
         var duplicate = ordered
             .Select( x => x.Attribute!.Version )
             .Where( x => !set.Add( x ) )
-            .Select( x => new long?(x) )
+            .Select( x => new long?( x ) )
             .FirstOrDefault();
 
         if ( duplicate.HasValue )
             throw new DuplicateMigrationException( $"Multiple migrations found with the version number `{duplicate.Value}`.", duplicate.Value );
 
+        // success
         return ordered;
     }
 

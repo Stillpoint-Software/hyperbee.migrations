@@ -30,11 +30,11 @@ A migration looks like the following:
 public class PeopleHaveFullNames : Migration // #2 inherit from Migration
 {
     // #3 Do the migration using RQL.
-    public override void Up()
+    public async override Task Up()
     {
     }
     // #4 optional: undo the migration
-    public override void Down()
+    public async override Task Down()
     {
     }
 }
@@ -47,15 +47,15 @@ To run the migrations, here's how it'd look in an ASP.NET Core app.
 public void ConfigureServices(IServiceCollection services)
 {
     // Configure couchbase
-    services...
+    services.AddCouchbase();
 
-    // Add the MigrationRunner into the dependency injection container.
+    // Add the MigrationRunner into the container.
     services.AddCouchbaseMigrations();
 }
 
 public void Configure(IApplicationBuilder app, ...)
 {
-    // Run pending Hyperbee migrations.
+    // Run pending migrations.
     var migrationService = app.ApplicationServices.GetRequiredService<MigrationRunner>();
     migrationService.Run();
 }
@@ -66,9 +66,9 @@ public void Configure(IApplicationBuilder app, ...)
 The migration runner scans all provided assemblies for any classes implementing the 
 **Migration** base class and then orders them according to their migration value.
 
-After each migration is executed, a document of type **MigrationDocument** is inserted into your database, to 
-ensure the next time the runner is executed that migration is not executed again. When a migration is rolled 
-back the document is removed.
+After each migration is executed, a **MigrationRecord** is inserted into your database, to ensure the 
+next time the runner is executed that migration is not executed again. When a migration is rolled back 
+the document is removed.
 
 You can modify the runner options by passing an action to the **.AddCouchbaseMigrations** call:
 
@@ -85,16 +85,15 @@ public void ConfigureServices(IServiceCollection services)
 ```
 #### Preventing simultaneous migrations
 
-By default, Hyperbee Migrations uses a mutex to prevent simultaneous migrations runs. 
-An example: if you have 2 instances of your app running, and both try to run migrations. When Hyperbee Migrations
-detects this, it will prevent the other instances from running migrations and log a warning.
+By default, Hyperbee Migrations uses a mutex to prevent parallel migration runs. 
+If you have 2 instances of your app running, and both try to run migrations, Hyperbee Migrations
+will prevent the second instance from running migrations and will log a warning.
 
-Hyperbee Migrations accomplishes this using a distributed mutex at the database layer to prevent more than one 
-migration runner from running. The default implementation uses a timeout value and an auto-renewal interval to
-prevent orphaned locks.
+Hyperbee Migrations accomplishes this by using a distributed mutex implemented at the database layer. 
+The default implementation uses a timeout value and an auto-renewal interval to prevent orphaned locks.
 
-If you wish to allow multiple simultaneous migrations or change the migration timeout lock, you can do so using 
-override:
+If you wish to allow multiple simultaneous migrations, or change the migration timeout lock, you can do 
+so by overriding the default migration options:
 
 ``` c#
 services.AddCouchbaseMigrations(options =>
@@ -111,15 +110,16 @@ services.AddCouchbaseMigrations(options =>
 
 ### Profiles
 
-We understand there are times when you want to run specific migrations in certain environments, so Hyperbee Migrations 
-supports profiles. For instance, some migrations might only run during development, by decorating your migration with 
-the profile of *"development"* and setting the options to include the profile will execute that migration.
+We understand there are times when you want to run specific migrations in certain environments. To allow this
+Hyperbee Migrations supports profiles. For instance, some migrations might only run during development, by 
+decorating your migration with the profile of *"development"* and setting the options to include only that 
+profile, you can control which migrations run in which environments.
 
 ``` c#
 [Migration(3, "development")]
 public class Development_Migration : Migration
 {
-    public override void Up()
+    public async override Task Up()
     {
         // do something nice for developers
     }
@@ -140,7 +140,7 @@ the attribute.
 
 This migration would run if either (or both) the development and demo profiles were specified in the MigrationOptions.
 
-#### Migrations using dependency injection services
+#### Migrations and dependency injection
 ``` c#
 [Migration(1)]
 public class MyMigrationUsingServices : Migration
@@ -155,7 +155,7 @@ public class MyMigrationUsingServices : Migration
 		_logger = logger;
 	}
 
-	public override void Up()
+	public async override Task Up()
 	{
 		// do something with clusterProvider
 	}
@@ -182,29 +182,44 @@ public class Person
 }
 ```
 You now need to migrate your documents or you will lose data when you load your new ```Person```.  The following 
-migration uses RQL to split out the first and last names:
+migration uses N1QL to split out the first and last names:
 
 ``` c#
 [Migration(1)]
 public class PersonNameMigration : Migration
 {
-    public override void Up()
+	private IClusterProvider _clusterProvider;
+    private ILogger<PersonNameMigration> _logger;
+
+	// Inject an IFoo for use in our patch.
+	public MyMigrationUsingServices(IClusterProvider clusterProvider,ILogger<PersonNameMigration> logger)
+	{
+        _clusterProvider = clusterProvider;
+		_logger = logger;
+	}
+
+    public async override Task Up()
     {
-        this.PatchCollection(@"
-            from People as p
-            update {
-                var names = p.Name.split(' ');
-                p.FirstName = names[0];
-                p.LastName = names[1];
-                delete p.Name;
-            }
-        ");
+        var cluster = await _clusterProvider.GetClusterAsync();
+
+        await cluster.QueryAsync( @"
+            UPDATE `travel-sample`.inventory.airport
+            SET FirstName = SPLIT(Name, ' ')[0],
+                LastName = SPLIT(Names,' ')[1]
+            UNSET Name" 
+        ).ConfigureAwait( false );
     }
 
     // Undo the patch
-    public override void Down()
+    public async override Task Down()
     {
-        this.PatchCollection("this.Name = this.FirstName + ' ' + this.LastName;");
+        var cluster = await _clusterProvider.GetClusterAsync();
+
+        await cluster.QueryAsync( @"
+            UPDATE `travel-sample`.inventory.airport
+            SET Name = FirstName + ' ' + LastName
+            UNSET FirstName, LastName" 
+        ).ConfigureAwait( false );
     }
 }
 ```
