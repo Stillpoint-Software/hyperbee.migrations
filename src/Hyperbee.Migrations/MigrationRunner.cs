@@ -1,13 +1,11 @@
-﻿using System;
+﻿using Microsoft.Extensions.Logging;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Primitives;
 
 namespace Hyperbee.Migrations;
 
@@ -61,7 +59,7 @@ public class MigrationRunner
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // activate the migration with DI
+            // instantiate the migration
 
             var migration = _options.MigrationActivator.CreateInstance( type );
 
@@ -150,9 +148,7 @@ public class MigrationRunner
     {
         var (_, attribute) = descriptor;
 
-        if ( attribute == null )
-            // Subclasses of Migration that can be instantiated must have the MigrationAttribute.
-            // If this class was intended as a base class for other migrations, make it an abstract class.
+        if ( attribute == null ) // require the MigrationAttribute
             return false;
 
         // if no profile has been declared the migration is in-scope
@@ -160,7 +156,7 @@ public class MigrationRunner
         if ( !attribute.Profiles.Any() )
             return true;
 
-        // the migration must belong to at least one of the currently specified profiles
+        // the migration must belong to one of the specified profiles
 
         return options.Profiles
             .Intersect( attribute.Profiles, StringComparer.OrdinalIgnoreCase )
