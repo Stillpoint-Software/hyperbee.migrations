@@ -18,11 +18,11 @@ public class MySuperAwesomeTransformation : Migration
 
     public override void Up()
     {
-        _logger.LogDebug( $"Up `{nameof(MySuperAwesomeTransformation)}`" );
+        _logger.LogDebug( $"In Up `{nameof(MySuperAwesomeTransformation)}`" );
     }
 
     public override void Down()
     {
-        _logger.LogDebug( $"Down `{nameof(MySuperAwesomeTransformation)}`" );
+        _logger.LogDebug( $"In Down `{nameof(MySuperAwesomeTransformation)}`" );
     }
 }

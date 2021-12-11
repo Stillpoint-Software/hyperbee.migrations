@@ -39,7 +39,9 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
         try
         {
-            var mutex = await collection.RequestMutexAsync( _options.MutexName, _options.MutexExpireInterval );
+            var mutex = await collection.RequestMutexAsync( _options.MutexName, _options.MutexExpireInterval )
+                .ConfigureAwait( false );
+
             mutex.AutoRenew( _options.MutexRenewInterval, _options.MutexMaxLifetime );
             return mutex;
         }
@@ -89,7 +91,8 @@ public class CouchbaseRecordStore : IMigrationRecordStore
         {
             _logger.LogInformation( "Creating collection `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
 
-            await cluster.QueryAsync<dynamic>( $"CREATE COLLECTION `{bucketName}`.`{scopeName}`.`{collectionName}`" );
+            await cluster.QueryAsync<dynamic>( $"CREATE COLLECTION `{bucketName}`.`{scopeName}`.`{collectionName}`" )
+                .ConfigureAwait( false );
         }
 
         // check for primary index
@@ -101,14 +104,17 @@ public class CouchbaseRecordStore : IMigrationRecordStore
         {
             _logger.LogInformation( "Creating primary index `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
 
-            await cluster.QueryAsync<dynamic>( $"CREATE PRIMARY INDEX ON `default`:`{bucketName}`.`{scopeName}`.`{collectionName}`" );
+            await cluster.QueryAsync<dynamic>( $"CREATE PRIMARY INDEX ON `default`:`{bucketName}`.`{scopeName}`.`{collectionName}`" )
+                .ConfigureAwait( false );
         }
     }
 
     public async Task<bool> ExistsAsync( string recordId )
     {
         var collection = await GetCollectionAsync();
-        var check = await collection.ExistsAsync( recordId ).ConfigureAwait( false );
+        
+        var check = await collection.ExistsAsync( recordId )
+            .ConfigureAwait( false );
 
         return check.Exists;
     }
@@ -116,7 +122,9 @@ public class CouchbaseRecordStore : IMigrationRecordStore
     public async Task DeleteAsync( string recordId )
     {
         var collection = await GetCollectionAsync();
-        await collection.RemoveAsync( recordId ).ConfigureAwait( false );
+        
+        await collection.RemoveAsync( recordId )
+            .ConfigureAwait( false );
     }
 
     public async Task StoreAsync( string recordId )
@@ -128,6 +136,7 @@ public class CouchbaseRecordStore : IMigrationRecordStore
             Id = recordId
         };
 
-        await collection.InsertAsync( recordId, record ).ConfigureAwait( false );
+        await collection.InsertAsync( recordId, record )
+            .ConfigureAwait( false );
     }
 }

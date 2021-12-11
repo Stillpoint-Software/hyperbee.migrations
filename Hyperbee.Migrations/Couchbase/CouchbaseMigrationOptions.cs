@@ -25,7 +25,7 @@ public class CouchbaseMigrationOptions : MigrationOptions
         CollectionName = "ledger";
 
         MutexMaxLifetime = TimeSpan.FromHours( 1 );
-        MutexExpireInterval = TimeSpan.FromHours( 30 );
-        MutexRenewInterval = TimeSpan.FromSeconds( 15 );
+        MutexExpireInterval = TimeSpan.FromMinutes( 5 );
+        MutexRenewInterval = TimeSpan.FromMinutes( 2 );
     }
 }

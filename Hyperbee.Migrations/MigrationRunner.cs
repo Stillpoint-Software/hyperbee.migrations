@@ -49,7 +49,7 @@ public class MigrationRunner
 
     private async Task RunMigrationsAsync()
     {
-        var migrations = FindMigrations( _options );
+        var migrations = DiscoverMigrations( _options );
 
         var executionStopwatch = Stopwatch.StartNew();
 
@@ -106,7 +106,7 @@ public class MigrationRunner
         _logger.LogInformation( "Executed {migrationCount} migrations in {elapsed}", runCount, executionStopwatch.Elapsed );
     }
 
-    private static IEnumerable<MigrationDescriptor> FindMigrations( MigrationOptions options )
+    private static IEnumerable<MigrationDescriptor> DiscoverMigrations( MigrationOptions options )
     {
         // discover descriptors
         var descriptors = options.Assemblies
