@@ -28,14 +28,14 @@ namespace Hyperbee.MigrationRunner
                 maxHttpConnections = 10;
 
             services.AddCouchbase( c =>
-                {
-                    c.EnableTls = false;
-                    c.WithBuckets( bucket );
-                    c.WithConnectionString( connectionString );
-                    c.WithCredentials( userName, password );
-                    c.MaxHttpConnections = maxHttpConnections;
-                } )
-                .AddCouchbaseBucket<IMigrationBucketProvider>( bucket );
+            {
+                c.EnableTls = false;
+                c.WithBuckets( bucket );
+                c.WithConnectionString( connectionString );
+                c.WithCredentials( userName, password );
+                c.MaxHttpConnections = maxHttpConnections;
+            } )
+            .AddCouchbaseBucket<IMigrationBucketProvider>( bucket );
 
             return services;
         }
@@ -46,11 +46,11 @@ namespace Hyperbee.MigrationRunner
             var scopeName = config["Migrations:ScopeName"];
             var collectionName = config["Migrations:CollectionName"];
 
-            var mutexEnabled = config.GetValue<bool>( "Migrations:Mutex:Enabled" );
-            var mutexName = config["Migrations:Mutex:Name"];
-            var mutexMaxLifetime = TimeSpan.FromSeconds( config.GetValue( "Migrations:Mutex:MaxLifetime", 3600 ) );
-            var mutexExpireInterval = TimeSpan.FromSeconds( config.GetValue( "Migrations:Mutex:ExpireInterval", 30 ) );
-            var mutexRenewInterval = TimeSpan.FromSeconds( config.GetValue( "Migrations:Mutex:RenewInterval", 15 ) );
+            var lockingEnabled = config.GetValue<bool>( "Migrations:Lock:Enabled" );
+            var lockName = config["Migrations:Lock:Name"];
+            var lockMaxLifetime = TimeSpan.FromSeconds( config.GetValue( "Migrations:Lock:MaxLifetime", 3600 ) );
+            var lockExpireInterval = TimeSpan.FromSeconds( config.GetValue( "Migrations:Lock:ExpireInterval", 30 ) );
+            var lockRenewInterval = TimeSpan.FromSeconds( config.GetValue( "Migrations:Lock:RenewInterval", 15 ) );
 
             services.AddCouchbaseMigrations( c =>
             {
@@ -58,14 +58,14 @@ namespace Hyperbee.MigrationRunner
                 c.ScopeName = scopeName;
                 c.CollectionName = collectionName;
 
-                if ( !mutexEnabled )
+                if ( !lockingEnabled )
                     return;
 
-                c.MutexEnabled = true;
-                c.MutexName = mutexName;
-                c.MutexMaxLifetime = mutexMaxLifetime;
-                c.MutexExpireInterval = mutexExpireInterval;
-                c.MutexRenewInterval = mutexRenewInterval;
+                c.LockingEnabled = true;
+                c.LockName = lockName;
+                c.LockMaxLifetime = lockMaxLifetime;
+                c.LockExpireInterval = lockExpireInterval;
+                c.LockRenewInterval = lockRenewInterval;
             } );
 
             return services;

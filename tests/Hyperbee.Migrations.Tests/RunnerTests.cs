@@ -179,7 +179,7 @@ namespace Hyperbee.Migrations.Tests
             var recordStore = Substitute.For<IMigrationRecordStore>();
 
             recordStore.InitializeAsync().Returns( Task.CompletedTask );
-            recordStore.CreateMutexAsync().Returns( Task.FromResult( new FakeMutex() ) );
+            recordStore.CreateLockAsync().Returns( Task.FromResult( new FakeLock() ) );
 
             recordStore.ExistsAsync( Arg.Any<string>() ).Returns( args => Task.FromResult( store.Any( x => x.Id == args.Arg<string>() ) ) );
             recordStore.DeleteAsync( Arg.Any<string>() ).Returns( args =>
@@ -200,9 +200,9 @@ namespace Hyperbee.Migrations.Tests
 
     }
 
-// test support
+    // test support
 
-    public class FakeMutex : IDisposable
+    public class FakeLock : IDisposable
     {
         public void Dispose()
         {

@@ -112,7 +112,7 @@ namespace Hyperbee.Migrations.Couchbase
             }
         }
 
-        public async Task<IDisposable> CreateMutexAsync()
+        public async Task<IDisposable> CreateLockAsync()
         {
             // https://github.com/couchbaselabs/Couchbase.Extensions/blob/master/docs/locks.md
 
@@ -120,15 +120,15 @@ namespace Hyperbee.Migrations.Couchbase
 
             try
             {
-                var mutex = await collection.RequestMutexAsync( _options.MutexName, _options.MutexExpireInterval )
+                var mutex = await collection.RequestMutexAsync( _options.LockName, _options.LockExpireInterval )
                     .ConfigureAwait( false );
 
-                mutex.AutoRenew( _options.MutexRenewInterval, _options.MutexMaxLifetime );
+                mutex.AutoRenew( _options.LockRenewInterval, _options.LockMaxLifetime );
                 return mutex;
             }
             catch ( CouchbaseLockUnavailableException ex )
             {
-                throw new MigrationMutexUnavailableException( $"The mutex `{_options.MutexName}` is unavailable.", ex );
+                throw new MigrationLockUnavailableException( $"The lock `{_options.LockName}` is unavailable.", ex );
             }
         }
 

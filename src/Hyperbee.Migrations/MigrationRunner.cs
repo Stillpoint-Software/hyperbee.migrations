@@ -27,24 +27,24 @@ namespace Hyperbee.Migrations
 
         public virtual async Task RunAsync( CancellationToken cancellationToken = default )
         {
-            IDisposable mutex = null;
+            IDisposable syncLock = null;
 
             try
             {
                 await _recordStore.InitializeAsync();
 
-                if ( _options.MutexEnabled )
-                    mutex = await _recordStore.CreateMutexAsync();
+                if ( _options.LockingEnabled )
+                    syncLock = await _recordStore.CreateLockAsync();
 
                 await RunMigrationsAsync( cancellationToken );
             }
-            catch ( MigrationMutexUnavailableException )
+            catch ( MigrationLockUnavailableException )
             {
-                _logger.LogWarning( "The migration mutex is unavailable. Skipping migrations." );
+                _logger.LogWarning( "The migration lock is unavailable. Skipping migrations." );
             }
             finally
             {
-                mutex?.Dispose();
+                syncLock?.Dispose();
             }
         }
 
