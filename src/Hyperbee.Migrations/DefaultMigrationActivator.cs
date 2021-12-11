@@ -1,19 +1,20 @@
 ﻿using System;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Hyperbee.Migrations;
-
-public class DefaultMigrationActivator : IMigrationActivator
+namespace Hyperbee.Migrations
 {
-    private readonly IServiceProvider _serviceProvider;
-
-    public DefaultMigrationActivator( IServiceProvider serviceProvider )
+    public class DefaultMigrationActivator : IMigrationActivator
     {
-        _serviceProvider = serviceProvider ?? throw new ArgumentNullException( nameof(serviceProvider) );
-    }
+        private readonly IServiceProvider _serviceProvider;
 
-    public Migration CreateInstance( Type migrationType )
-    {
-        return (Migration) ActivatorUtilities.CreateInstance( _serviceProvider, migrationType );
+        public DefaultMigrationActivator( IServiceProvider serviceProvider )
+        {
+            _serviceProvider = serviceProvider ?? throw new ArgumentNullException( nameof(serviceProvider) );
+        }
+
+        public Migration CreateInstance( Type migrationType )
+        {
+            return (Migration) ActivatorUtilities.CreateInstance( _serviceProvider, migrationType );
+        }
     }
 }

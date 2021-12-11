@@ -2,26 +2,27 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
 
-namespace Hyperbee.Migrations;
-
-public class DefaultMigrationConventions : IMigrationConventions
+namespace Hyperbee.Migrations
 {
-    public static readonly string DefaultMigrationIdPrefix = "MigrationRecord";
-    private const string Separator = ".";
-
-    public string GetRecordId( Migration migration )
+    public class DefaultMigrationConventions : IMigrationConventions
     {
-        var type = migration.GetType();
+        public static readonly string DefaultMigrationIdPrefix = "MigrationRecord";
+        private const string Separator = ".";
 
-        if ( type.GetCustomAttribute( typeof(MigrationAttribute) ) is not MigrationAttribute attribute )
-            throw new MigrationException( $"Migration `{type.Name}` is missing `{nameof(MigrationAttribute)}`." );
+        public string GetRecordId( Migration migration )
+        {
+            var type = migration.GetType();
 
-        // convert underscores to separator char, eliminate repetition, trim from front and back.
-        // '__ONE_Two___Three_' => 'one.two.three'
+            if ( type.GetCustomAttribute( typeof(MigrationAttribute) ) is not MigrationAttribute attribute )
+                throw new MigrationException( $"Migration `{type.Name}` is missing `{nameof(MigrationAttribute)}`." );
 
-        var name = Regex.Replace( type.Name, "_{1,}", Separator ).Trim( Separator[0] );
-        var version = attribute.Version.ToString();
+            // convert underscores to separator char, eliminate repetition, trim from front and back.
+            // '__ONE_Two___Three_' => 'one.two.three'
 
-        return string.Join( Separator, DefaultMigrationIdPrefix, name, version ).ToLowerInvariant();
+            var name = Regex.Replace( type.Name, "_{1,}", Separator ).Trim( Separator[0] );
+            var version = attribute.Version.ToString();
+
+            return string.Join( Separator, DefaultMigrationIdPrefix, name, version ).ToLowerInvariant();
+        }
     }
 }

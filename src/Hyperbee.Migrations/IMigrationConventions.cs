@@ -1,6 +1,7 @@
-﻿namespace Hyperbee.Migrations;
-
-public interface IMigrationConventions
+﻿namespace Hyperbee.Migrations
 {
-    string GetRecordId( Migration migration );
+    public interface IMigrationConventions
+    {
+        string GetRecordId( Migration migration );
+    }
 }

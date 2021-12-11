@@ -1,7 +1,6 @@
-﻿using Hyperbee.Migrations;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 
-namespace Hyperbee.MigrationRunner.Migrations
+namespace Hyperbee.Migrations.Samples.Migrations
 {
     [Migration(3)]
     public class WeReallyAreTheBest : Migration

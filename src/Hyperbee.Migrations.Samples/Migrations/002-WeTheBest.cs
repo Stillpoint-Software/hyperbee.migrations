@@ -1,7 +1,6 @@
-﻿using Hyperbee.Migrations;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 
-namespace Hyperbee.MigrationRunner.Migrations
+namespace Hyperbee.Migrations.Samples.Migrations
 {
     [Migration(2)]
     public class WeTheBest : Migration

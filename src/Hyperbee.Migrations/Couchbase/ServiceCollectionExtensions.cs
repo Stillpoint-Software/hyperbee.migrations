@@ -1,6 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Loader;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -28,13 +31,21 @@ public static class ServiceCollectionExtensions
 
             configuration?.Invoke( options );
 
-            // concat any options.Assemblies with IConfiguration `FromAssemblies`
+            // concat any options.Assemblies with IConfiguration `FromAssemblies` and
 
-            options.Assemblies = provider.GetRequiredService<IConfiguration>()
-                .GetSection( "Migrations:FromAssemblies" )
-                .Get<string[]>()
-                .Select( name => Assembly.Load( new AssemblyName( name ) ) )
-                .Concat( options.Assemblies ) // add existing items
+            var config = provider.GetRequiredService<IConfiguration>();
+
+            var nameAssemblies = config
+                .GetEnumerable<string>( "Migrations:FromAssemblies" )
+                .Select( name => Assembly.Load( new AssemblyName( name ) ) );
+
+            var pathAssemblies = config
+                .GetEnumerable<string>( "Migrations:FromPaths" )
+                .Select( name => AssemblyLoadContext.Default.LoadFromAssemblyPath( Path.GetFullPath( name ) ) );
+
+            options.Assemblies = options.Assemblies
+                .Concat( nameAssemblies )
+                .Concat( pathAssemblies )
                 .Distinct()
                 .DefaultIfEmpty( defaultAssembly )
                 .ToList();
@@ -49,4 +60,7 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
+
+    private static IEnumerable<T> GetEnumerable<T>( this IConfiguration config, string key ) 
+        => config.GetSection( key ).Get<IEnumerable<T>>() ?? Enumerable.Empty<T>();
 }
