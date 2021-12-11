@@ -1,52 +1,68 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Loader;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Hyperbee.Migrations.Couchbase;
-
-public static class ServiceCollectionExtensions
+namespace Hyperbee.Migrations.Couchbase
 {
-    public static IServiceCollection AddCouchbaseMigrations( this IServiceCollection services )
+    public static class ServiceCollectionExtensions
     {
-        return AddCouchbaseMigrations( services, null, Assembly.GetCallingAssembly() );
-    }
-
-    public static IServiceCollection AddCouchbaseMigrations( this IServiceCollection services, Action<CouchbaseMigrationOptions> configuration )
-    {
-        return AddCouchbaseMigrations( services, configuration, Assembly.GetCallingAssembly() );
-    }
-
-    private static IServiceCollection AddCouchbaseMigrations( IServiceCollection services, Action<CouchbaseMigrationOptions> configuration, Assembly defaultAssembly )
-    {
-        CouchbaseMigrationOptions CouchbaseMigrationOptionsFactory( IServiceProvider provider )
+        public static IServiceCollection AddCouchbaseMigrations( this IServiceCollection services )
         {
-            var options = new CouchbaseMigrationOptions( new DefaultMigrationActivator( provider ) );
-
-            // invoke the configuration
-
-            configuration?.Invoke( options );
-
-            // concat any options.Assemblies with IConfiguration `FromAssemblies`
-
-            options.Assemblies = provider.GetRequiredService<IConfiguration>()
-                .GetSection( "Migrations:FromAssemblies" )
-                .Get<string[]>()
-                .Select( name => Assembly.Load( new AssemblyName( name ) ) )
-                .Concat( options.Assemblies ) // add existing items
-                .Distinct()
-                .DefaultIfEmpty( defaultAssembly )
-                .ToList();
-
-            return options;
+            return AddCouchbaseMigrations( services, null, Assembly.GetCallingAssembly() );
         }
 
-        services.AddSingleton( CouchbaseMigrationOptionsFactory );
-        services.AddSingleton<MigrationOptions>( provider => provider.GetRequiredService<CouchbaseMigrationOptions>() );
-        services.AddSingleton<IMigrationRecordStore, CouchbaseRecordStore>();
-        services.AddSingleton<MigrationRunner>();
+        public static IServiceCollection AddCouchbaseMigrations( this IServiceCollection services, Action<CouchbaseMigrationOptions> configuration )
+        {
+            return AddCouchbaseMigrations( services, configuration, Assembly.GetCallingAssembly() );
+        }
 
-        return services;
+        private static IServiceCollection AddCouchbaseMigrations( IServiceCollection services, Action<CouchbaseMigrationOptions> configuration, Assembly defaultAssembly )
+        {
+            CouchbaseMigrationOptions CouchbaseMigrationOptionsFactory( IServiceProvider provider )
+            {
+                var options = new CouchbaseMigrationOptions( new DefaultMigrationActivator( provider ) );
+
+                // invoke the configuration
+
+                configuration?.Invoke( options );
+
+                // concat any options.Assemblies with IConfiguration `FromAssemblies` and
+
+                var config = provider.GetRequiredService<IConfiguration>();
+
+                var nameAssemblies = config
+                    .GetSection( "Migrations:FromAssemblies" )
+                    .GetArray<string>()
+                    .Select( name => Assembly.Load( new AssemblyName( name ) ) );
+
+                var pathAssemblies = config
+                    .GetSection( "Migrations:FromPaths" )
+                    .GetArray<string>()
+                    .Select( name => AssemblyLoadContext.Default.LoadFromAssemblyPath( Path.GetFullPath( name ) ) );
+
+                options.Assemblies = options.Assemblies
+                    .Concat( nameAssemblies )
+                    .Concat( pathAssemblies )
+                    .Distinct()
+                    .DefaultIfEmpty( defaultAssembly )
+                    .ToList();
+
+                return options;
+            }
+
+            services.AddSingleton( CouchbaseMigrationOptionsFactory );
+            services.AddSingleton<MigrationOptions>( provider => provider.GetRequiredService<CouchbaseMigrationOptions>() );
+            services.AddSingleton<IMigrationRecordStore, CouchbaseRecordStore>();
+            services.AddSingleton<MigrationRunner>();
+
+            return services;
+        }
+
+        private static T[] GetArray<T>( this IConfiguration section ) => section.Get<T[]>() ?? Array.Empty<T>();
     }
 }

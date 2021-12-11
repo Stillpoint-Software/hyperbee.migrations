@@ -23,6 +23,13 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="Migrations\**" />
+    <Content Remove="Migrations\**" />
+    <EmbeddedResource Remove="Migrations\**" />
+    <None Remove="Migrations\**" />
+  </ItemGroup>
+
 	<ItemGroup>
 		<PackageReference Include="Couchbase.Extensions.DependencyInjection" Version="3.2.0" />
 		<PackageReference Include="CouchbaseNetClient" Version="3.2.4" />

@@ -1,8 +1,9 @@
 ﻿using System;
 
-namespace Hyperbee.Migrations;
-
-public interface IMigrationActivator
+namespace Hyperbee.Migrations
 {
-    Migration CreateInstance( Type migrationType );
+    public interface IMigrationActivator
+    {
+        Migration CreateInstance( Type migrationType );
+    }
 }

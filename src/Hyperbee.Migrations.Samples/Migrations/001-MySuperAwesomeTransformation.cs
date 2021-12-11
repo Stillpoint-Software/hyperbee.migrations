@@ -1,8 +1,7 @@
 ﻿using Couchbase.Extensions.DependencyInjection;
-using Hyperbee.Migrations;
 using Microsoft.Extensions.Logging;
 
-namespace Hyperbee.MigrationRunner.Migrations
+namespace Hyperbee.Migrations.Samples.Migrations
 {
     [Migration(1)] 
     public class MySuperAwesomeTransformation : Migration

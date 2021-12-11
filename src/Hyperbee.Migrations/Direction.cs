@@ -1,7 +1,8 @@
-﻿namespace Hyperbee.Migrations;
-
-public enum Direction
+﻿namespace Hyperbee.Migrations
 {
-    Up,
-    Down
+    public enum Direction
+    {
+        Up,
+        Down
+    }
 }
