@@ -18,7 +18,7 @@ namespace Hyperbee.Migrations
             Profiles = new List<string>();
             Assemblies = new List<Assembly>();
             ToVersion = 0;
-            MutexEnabled = false;
+            LockingEnabled = false;
             MigrationActivator = migrationActivator;
             Conventions = new DefaultMigrationConventions();
         }
@@ -28,7 +28,7 @@ namespace Hyperbee.Migrations
         public IList<string> Profiles { get; set; }
         public long ToVersion { get; set; }
 
-        public bool MutexEnabled { get; set; }
+        public bool LockingEnabled { get; set; }
         public IMigrationActivator MigrationActivator { get; set; }
         public IMigrationConventions Conventions { get; set; }
     }

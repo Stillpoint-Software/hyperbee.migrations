@@ -8,10 +8,10 @@ namespace Hyperbee.Migrations.Couchbase
         public string ScopeName { get; set; }
         public string CollectionName { get; set; }
 
-        public string MutexName { get; set; }
-        public TimeSpan MutexExpireInterval { get; set; }
-        public TimeSpan MutexMaxLifetime { get; set; }
-        public TimeSpan MutexRenewInterval { get; set; }
+        public string LockName { get; set; }
+        public TimeSpan LockExpireInterval { get; set; }
+        public TimeSpan LockMaxLifetime { get; set; }
+        public TimeSpan LockRenewInterval { get; set; }
 
         public CouchbaseMigrationOptions() 
             : this( null )
@@ -24,9 +24,9 @@ namespace Hyperbee.Migrations.Couchbase
             ScopeName = "_default";
             CollectionName = "ledger";
 
-            MutexMaxLifetime = TimeSpan.FromHours( 1 );
-            MutexExpireInterval = TimeSpan.FromMinutes( 5 );
-            MutexRenewInterval = TimeSpan.FromMinutes( 2 );
+            LockMaxLifetime = TimeSpan.FromHours( 1 );
+            LockExpireInterval = TimeSpan.FromMinutes( 5 );
+            LockRenewInterval = TimeSpan.FromMinutes( 2 );
         }
     }
 }
