@@ -23,15 +23,15 @@ internal static class Program
             logger.Information( "Starting ..." );
 
             var host = Host.CreateDefaultBuilder()
-                .ConfigureAppConfiguration( x =>
+                .ConfigureAppConfiguration( builder =>
                 {
-                    x.AddJsonSettingsAndEnvironment()
+                    builder.AddJsonSettingsAndEnvironment()
                         .AddUserSecrets( typeof(Program).Assembly );
                 } )
                 .ConfigureServices( ( context, services ) =>
                 {
-                    var startup = new Startup( context.Configuration );
-                    startup.ConfigureContainer( services );
+                    services.AddCouchbase( context.Configuration );
+                    services.AddCouchbaseMigrations( context.Configuration );
                 } )
                 .UseSerilog()
                 .Build();
@@ -89,17 +89,6 @@ internal static class Program
             .WriteTo.Console( restrictedToMinimumLevel: LogEventLevel.Information )
             .CreateLogger();
 
-        return Log.ForContext<Startup>();
-    }
-}
-
-internal static class ConfigureExtensions
-{
-    internal static IConfigurationBuilder AddJsonSettingsAndEnvironment( this IConfigurationBuilder builder )
-    {
-        return builder
-            .AddJsonFile( "appsettings.json", optional: false, reloadOnChange: true )
-            .AddJsonFile( $"appsettings.{Environment.GetEnvironmentVariable( "ASPNETCORE_ENVIRONMENT" ) ?? "Development"}.json", optional: true )
-            .AddEnvironmentVariables();
+        return Log.ForContext( typeof(Program) );
     }
 }

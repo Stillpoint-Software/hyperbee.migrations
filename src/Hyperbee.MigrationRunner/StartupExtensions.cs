@@ -5,24 +5,16 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Hyperbee.MigrationRunner;
 
-internal class Startup
-{
-    public IConfiguration Configuration { get; set; }
-
-    public Startup( IConfiguration configuration )
-    {
-        Configuration = configuration;
-    }
-
-    public void ConfigureContainer( IServiceCollection services )
-    {
-        services.AddCouchbase( Configuration );
-        services.AddCouchbaseMigrations( Configuration );
-    }
-}
-
 internal static class StartupExtensions
 {
+    internal static IConfigurationBuilder AddJsonSettingsAndEnvironment( this IConfigurationBuilder builder )
+    {
+        return builder
+            .AddJsonFile( "appsettings.json", optional: false, reloadOnChange: true )
+            .AddJsonFile( $"appsettings.{Environment.GetEnvironmentVariable( "ASPNETCORE_ENVIRONMENT" ) ?? "Development"}.json", optional: true )
+            .AddEnvironmentVariables();
+    }
+
     public static IServiceCollection AddCouchbase( this IServiceCollection services, IConfiguration config )
     {
         var connectionString = config["Couchbase:ConnectionString"]; // from appsettings.<ENV>.json couchbase://localhost
