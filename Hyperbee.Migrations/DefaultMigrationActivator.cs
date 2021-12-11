@@ -1,7 +1,7 @@
 ﻿using System;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Hyperbee.Migrations.Activators;
+namespace Hyperbee.Migrations;
 
 public class DefaultMigrationActivator : IMigrationActivator
 {

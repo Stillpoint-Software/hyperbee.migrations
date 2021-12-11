@@ -15,6 +15,8 @@ public class MigrationRunner
     private readonly MigrationOptions _options;
     private readonly ILogger<MigrationRunner> _logger;
 
+    private record MigrationDescriptor( Type Type, MigrationAttribute Attribute );
+
     public MigrationRunner( IMigrationRecordStore recordStore, MigrationOptions options, ILogger<MigrationRunner> logger )
     {
         _recordStore = recordStore ?? throw new ArgumentNullException( nameof(recordStore) );
@@ -47,119 +49,115 @@ public class MigrationRunner
 
     private async Task RunMigrationsAsync()
     {
-        var migrations = FindMigrations( _options );
+        var migrations = DiscoverMigrations( _options );
 
         var executionStopwatch = Stopwatch.StartNew();
 
         var runCount = 0;
-        foreach ( var pair in migrations )
+        foreach ( var (type, attribute) in migrations )
         {
-            var migration = pair.Migration();
-            migration.Setup( _options, _logger );
-            var migrationId = _options.Conventions.MigrationDocumentId( migration, _options.IdSeparatorChar );
+            // activate the migration with DI
 
-            var migrationRecord = await _recordStore.LoadAsync( migrationId );
+            var migration = _options.MigrationActivator.CreateInstance( type );
 
-            switch ( _options.Direction )
+            // make sure we want to run the migration
+
+            var recordId = _options.Conventions.GetRecordId( migration );
+
+            var exists = await _recordStore.ExistsAsync( recordId );
+            var direction = _options.Direction;
+
+            switch ( direction )
             {
-                case Directions.Down:
-                    if ( migrationRecord == null )
-                        continue;
-
-                    await ExecuteMigrationAsync( _options.Direction, pair.Attribute!.Version, migration, async () =>
-                    {
-                        migration.Down();
-                        await _recordStore.DeleteAsync( migrationRecord );
-                    } );
-                    runCount++;
-                    break;
-
-                case Directions.Up:
-                    if ( migrationRecord != null )
-                        continue;
-
-                    await ExecuteMigrationAsync( _options.Direction, pair.Attribute!.Version, migration, async () =>
-                    {
-                        migration.Up();
-                        await _recordStore.StoreAsync( migrationId );
-                    } );
-                    runCount++;
-                    break;
-
-                default:
-                    throw new ArgumentOutOfRangeException( nameof(_options.Direction) );
+                case Direction.Up when exists:
+                case Direction.Down when !exists:
+                    continue;
             }
 
-            if ( pair.Attribute.Version == _options.ToVersion )
+            // run the migration
+
+            var version = attribute!.Version;
+            var name = migration.GetType().Name;
+
+            _logger.LogInformation( "[{version}] {name}: {direction} migration started", version, name, direction );
+
+            switch ( direction )
+            {
+                case Direction.Down:
+                    migration.Down();
+                    await _recordStore.DeleteAsync( recordId );
+                    break;
+
+                case Direction.Up:
+                    migration.Up();
+                    await _recordStore.StoreAsync( recordId );
+                    break;
+            }
+
+            runCount++;
+
+            _logger.LogInformation( "[{version}] {name}: {direction} migration completed", version, name, direction );
+
+            if ( version == _options.ToVersion )
                 break;
         }
 
         executionStopwatch.Stop();
-        _logger.LogInformation( "{migrationCount} migrations executed in {elapsed}", runCount, executionStopwatch.Elapsed );
+        _logger.LogInformation( "Executed {migrationCount} migrations in {elapsed}", runCount, executionStopwatch.Elapsed );
     }
 
-    private async Task ExecuteMigrationAsync( Directions direction, long version, Migration migration, Func<Task> migrationAsync )
+    private static IEnumerable<MigrationDescriptor> DiscoverMigrations( MigrationOptions options )
     {
-        var migrationDirection = direction == Directions.Down ? "Down" : "Up";
-        _logger.LogInformation( "[{version}] {name}: {direction} migration started", version, migration.GetType().Name, migrationDirection );
-
-        var migrationStopwatch = Stopwatch.StartNew();
-
-        await migrationAsync();
-
-        migrationStopwatch.Stop();
-
-        _logger.LogInformation( "[{version}] {name}: {direction} migration completed in {elapsed}", version, migration.GetType().Name, migrationDirection, migrationStopwatch.Elapsed );
-    }
-
-    private static IEnumerable<MigrationDescriptor> FindMigrations( MigrationOptions options )
-    {
-        var migrations = options.Assemblies
-            .SelectMany( AssemblyTypes, ( assembly, type ) => new { assembly, type } )
-            .Where( x => options.Conventions.TypeIsMigration( x.type ) )
-            .Select( x => new MigrationDescriptor
+        // discover descriptors
+        var descriptors = options.Assemblies
+            .SelectMany( assembly => assembly.GetTypes() )
+            .Where( type => typeof(Migration).IsAssignableFrom( type ) && !type.IsAbstract )
+            .Select( type =>
             {
-                Migration = () => options.MigrationActivator.CreateInstance( x.type ),
-                Attribute = x.type.GetMigrationAttribute()
+                var attribute = type.GetCustomAttribute( typeof(MigrationAttribute) ) as MigrationAttribute;
+                return new MigrationDescriptor( type, attribute );
             } )
             .Where( descriptor => IsInScope( descriptor, options ) );
         
-        return options.Direction == Directions.Up
-            ? migrations.OrderBy( x => x.Attribute!.Version )
-            : migrations.OrderByDescending( x => x.Attribute!.Version );
-    }
+        // order by id
+        var ordered = ( options.Direction == Direction.Up
+            ? descriptors.OrderBy( x => x.Attribute!.Version )
+            : descriptors.OrderByDescending( x => x.Attribute!.Version ) )
+            .ToList();
 
-    private static IEnumerable<Type> AssemblyTypes( Assembly assembly )
-    {
-        if ( assembly == null )
-            throw new ArgumentNullException( nameof(assembly) );
+        // throw if any duplicates
+        var set = new HashSet<long>();
 
-        try
-        {
-            return assembly.GetTypes();
-        }
-        catch ( ReflectionTypeLoadException ex )
-        {
-            return ex.Types.Where( type => type != null );
-        }
+        var duplicate = ordered
+            .Select( x => x.Attribute!.Version )
+            .Where( x => !set.Add( x ) )
+            .Select( x => new long?(x) )
+            .FirstOrDefault();
+
+        if ( duplicate.HasValue )
+            throw new DuplicateMigrationException( $"Multiple migrations found with the version number `{duplicate.Value}`.", duplicate.Value );
+
+        return ordered;
     }
 
     private static bool IsInScope( MigrationDescriptor descriptor, MigrationOptions options )
     {
-        if ( descriptor.Attribute == null )
+        var (_, attribute) = descriptor;
+
+        if ( attribute == null )
             // Subclasses of Migration that can be instantiated must have the MigrationAttribute.
             // If this class was intended as a base class for other migrations, make it an abstract class.
             return false;
 
         // if no profile has been declared the migration is in-scope
 
-        if ( !descriptor.Attribute.Profiles.Any() )
+        if ( !attribute.Profiles.Any() )
             return true;
 
         // the migration must belong to at least one of the currently specified profiles
 
         return options.Profiles
-            .Intersect( descriptor.Attribute.Profiles, StringComparer.OrdinalIgnoreCase )
+            .Intersect( attribute.Profiles, StringComparer.OrdinalIgnoreCase )
             .Any();
     }
 }

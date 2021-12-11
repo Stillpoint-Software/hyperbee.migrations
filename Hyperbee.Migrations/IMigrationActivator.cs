@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Hyperbee.Migrations.Activators;
+namespace Hyperbee.Migrations;
 
 public interface IMigrationActivator
 {

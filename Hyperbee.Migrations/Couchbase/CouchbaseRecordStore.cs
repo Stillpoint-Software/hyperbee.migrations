@@ -6,18 +6,18 @@ using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
 using Microsoft.Extensions.Logging;
 
-namespace Hyperbee.Migrations;
+namespace Hyperbee.Migrations.Couchbase;
 
-public class DefaultMigrationRecordStore : IMigrationRecordStore
+public class CouchbaseRecordStore : IMigrationRecordStore
 {
     private readonly IClusterProvider _clusterProvider;
-    private readonly MigrationOptions _options;
-    private readonly ILogger<DefaultMigrationRecordStore> _logger;
+    private readonly CouchbaseMigrationOptions _options;
+    private readonly ILogger<CouchbaseRecordStore> _logger;
 
-    public DefaultMigrationRecordStore( IClusterProvider clusterProvider, MigrationOptions options, ILogger<DefaultMigrationRecordStore> logger )
+    public CouchbaseRecordStore( IClusterProvider clusterProvider, MigrationOptions options, ILogger<CouchbaseRecordStore> logger )
     {
         _clusterProvider = clusterProvider;
-        _options = options;
+        _options = (CouchbaseMigrationOptions)options;
         _logger = logger;
     }
 
@@ -27,7 +27,7 @@ public class DefaultMigrationRecordStore : IMigrationRecordStore
         var bucket = await cluster.BucketAsync( _options.BucketName );
         var scope = await bucket.ScopeAsync( _options.ScopeName );
         var collection = await scope.CollectionAsync( _options.CollectionName );
-        
+
         return collection;
     }
 
@@ -39,7 +39,9 @@ public class DefaultMigrationRecordStore : IMigrationRecordStore
 
         try
         {
-            var mutex = await collection.RequestMutexAsync( _options.MutexName, _options.MutexExpireInterval );
+            var mutex = await collection.RequestMutexAsync( _options.MutexName, _options.MutexExpireInterval )
+                .ConfigureAwait( false );
+
             mutex.AutoRenew( _options.MutexRenewInterval, _options.MutexMaxLifetime );
             return mutex;
         }
@@ -89,7 +91,8 @@ public class DefaultMigrationRecordStore : IMigrationRecordStore
         {
             _logger.LogInformation( "Creating collection `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
 
-            await cluster.QueryAsync<dynamic>( $"CREATE COLLECTION `{bucketName}`.`{scopeName}`.`{collectionName}`" );
+            await cluster.QueryAsync<dynamic>( $"CREATE COLLECTION `{bucketName}`.`{scopeName}`.`{collectionName}`" )
+                .ConfigureAwait( false );
         }
 
         // check for primary index
@@ -101,37 +104,39 @@ public class DefaultMigrationRecordStore : IMigrationRecordStore
         {
             _logger.LogInformation( "Creating primary index `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
 
-            await cluster.QueryAsync<dynamic>( $"CREATE PRIMARY INDEX ON `default`:`{bucketName}`.`{scopeName}`.`{collectionName}`" );
+            await cluster.QueryAsync<dynamic>( $"CREATE PRIMARY INDEX ON `default`:`{bucketName}`.`{scopeName}`.`{collectionName}`" )
+                .ConfigureAwait( false );
         }
     }
 
-    public async Task<IMigrationRecord> LoadAsync( string migrationId )
+    public async Task<bool> ExistsAsync( string recordId )
     {
         var collection = await GetCollectionAsync();
-        var check = await collection.ExistsAsync( migrationId ).ConfigureAwait( false );
+        
+        var check = await collection.ExistsAsync( recordId )
+            .ConfigureAwait( false );
 
-        if ( !check.Exists )
-            return default;
-
-        var result = await collection.GetAsync( migrationId ).ConfigureAwait( false );
-        return result.ContentAs<MigrationRecord>();
+        return check.Exists;
     }
 
-    public async Task DeleteAsync( IMigrationRecord record )
+    public async Task DeleteAsync( string recordId )
     {
         var collection = await GetCollectionAsync();
-        await collection.RemoveAsync( record.Id ).ConfigureAwait( false );
+        
+        await collection.RemoveAsync( recordId )
+            .ConfigureAwait( false );
     }
 
-    public async Task StoreAsync( string migrationId )
+    public async Task StoreAsync( string recordId )
     {
         var collection = await GetCollectionAsync();
 
         var record = new MigrationRecord
         {
-            Id = migrationId
+            Id = recordId
         };
 
-        await collection.InsertAsync( migrationId, record ).ConfigureAwait( false );
+        await collection.InsertAsync( recordId, record )
+            .ConfigureAwait( false );
     }
 }

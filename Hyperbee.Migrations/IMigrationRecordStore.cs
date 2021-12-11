@@ -6,8 +6,9 @@ namespace Hyperbee.Migrations;
 public interface IMigrationRecordStore
 {
     Task InitializeAsync();
-    Task<IMigrationRecord> LoadAsync( string migrationId );
-    Task StoreAsync( string migrationId );
-    Task DeleteAsync( IMigrationRecord record );
     Task<IDisposable> CreateMutexAsync();
+
+    Task<bool> ExistsAsync( string recordId );
+    Task DeleteAsync( string recordId );
+    Task StoreAsync( string recordId );
 }

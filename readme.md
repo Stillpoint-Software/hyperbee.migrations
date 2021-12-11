@@ -46,8 +46,11 @@ To run the migrations, here's how it'd look in an ASP.NET Core app.
 // In Startup.cs
 public void ConfigureServices(IServiceCollection services)
 {
+    // Configure couchbase
+    services...
+
     // Add the MigrationRunner into the dependency injection container.
-    services.AddMigrations();
+    services.AddCouchbaseMigrations();
 }
 
 public void Configure(IApplicationBuilder app, ...)
@@ -58,65 +61,53 @@ public void Configure(IApplicationBuilder app, ...)
 }
 ```
 
-### Runner
+### The Runner
 
-Hyperbeen Migrations comes with a migration runner. It scans all provided assemblies for any classes implementing
-the **Migration** base class and then orders them according to their migration value.
+The migration runner scans all provided assemblies for any classes implementing the 
+**Migration** base class and then orders them according to their migration value.
 
 After each migration is executed, a document of type **MigrationDocument** is inserted into your database, to 
 ensure the next time the runner is executed that migration is not executed again. When a migration is rolled 
 back the document is removed.
 
-You can modify the runner options by passing an action to the .AddHyperbeeDbMigrations call:
+You can modify the runner options by passing an action to the **.AddCouchbaseMigrations** call:
 
 ``` c#
-services.AddHyperbeeDbMigrations(options =>
+// In Startup.cs
+public void ConfigureServices(IServiceCollection services)
 {
-   // Configure the migration options here
-});
+    services.AddCouchbaseMigrations( options => 
+    {
+        // Configure the migration options here
+        options.Direction = Direction.Down;
+    });
+}
 ```
-
 #### Preventing simultaneous migrations
 
-By default, Hyperbee Migrations sets a Hyperbee compare/exchange value to prevent simultaneous migrations runs. 
+By default, Hyperbee Migrations uses a mutex to prevent simultaneous migrations runs. 
 An example: if you have 2 instances of your app running, and both try to run migrations. When Hyperbee Migrations
 detects this, it will prevent the other instances from running migrations and log a warning.
 
-Hyperbee Migrations accomplishes this using a Hyperbee compare/exchange value to ensure no more than a single 
-migration is running. It will set a `hyperbee-migrations-lock` compare/exchange value in your database during
-migration run; its value set to a timeout date.
-
-Be aware that if you abnormally terminate migrations -- for example, if you kill or your web host kills your app
-during migration -- migrations will not be run until either you delete the `hyperbee-migrations-lock` 
-compare/exchange value, or until its timeout passes. By default, the timeout is 1 hour.
+Hyperbee Migrations accomplishes this using a distributed mutex at the database layer to prevent more than one 
+migration runner from running. The default implementation uses a timeout value and an auto-renewal interval to
+prevent orphaned locks.
 
 If you wish to allow multiple simultaneous migrations or change the migration timeout lock, you can do so using 
 override:
 
 ``` c#
-services.AddHyperbeeDbMigrations(options =>
+services.AddCouchbaseMigrations(options =>
 {
-    // Allow simultaneous migrations - beware, here be dragons. Defautls to true.
-    options.PreventSimultaneousMigrations = false;
+    // To allow simultaneous migrations - beware, here be dragons. Defaults to true.
+    options.MutexEnabled = false;
 
-    // Change how long the migrations lock can be held for. Defautls to 1 hour.
-   options.SimultaneousMigrationTimeout = TimeSpan.FromMinutes(5);
+    // To change how long the migrations lock can be held for. Defaults shown.
+    options.MutexMaxLifetime = TimeSpan.FromHours( 1 );         // max time-to-live
+    options.MutexExpireInterval = TimeSpan.FromMinutes( 5 );    // expire heartbeat
+    options.MutexRenewInterval = TimeSpan.FromMinutes( 2 );     // renewal heartbeat
 });
 ```
-
-``` c#
-
-// In Startup.cs
-public void ConfigureServices(IServiceCollection services)
-{
-    // pass the option single instance, the rest stays as is.
-    services.AddHyperbeeDbMigrations(singleInstance: true);
-}
-
-... 
-
-```
-
 
 ### Profiles
 
@@ -130,17 +121,13 @@ public class Development_Migration : Migration
 {
     public override void Up()
     {
-        using (var session = Db.OpenSession())
-        {
-            session.Store(new { Id = "development-1" });
-            session.SaveChanges();
-        }
+        // do something nice for developers
     }
 }
 
 ...
 // Add the MigrationRunner and configure it to run development migrations only.
-services.AddHyperbeeDbMigrations(options => options.Profiles = new[] { "development" } });
+services.AddCouchbaseMigrations(options => options.Profiles = new[] { "development" } });
 
 ```
 
@@ -153,35 +140,24 @@ the attribute.
 
 This migration would run if either (or both) the development and demo profiles were specified in the MigrationOptions.
 
-### Advanced Migrations
-Inside each of your Migration instances, you should use HyperbeeDB's <a href="https://Hyperbeedb.net/docs/article-page/4.0/csharp/client-api/operations/patching/set-based">patching APIs</a> to perform updates to collections and documents. We also provide helper methods on the Migration class for easy access, see below for examples.
-
-#### Migration.PatchCollection
-```Migration.PatchCollection``` is a helper method that <a href="https://Hyperbeedb.net/docs/article-page/4.0/csharp/client-api/operations/patching/set-based">patches a collection via RQL</a>.
-
-``` c#
-public override void Up()
-{
-   this.PatchCollection("from People update { p.Foo = 'Hello world!' }");
-}
-```
-
 #### Migrations using dependency injection services
 ``` c#
 [Migration(1)]
 public class MyMigrationUsingServices : Migration
 {
-	private IFoo foo;
+	private IClusterProvider _clusterProvider;
+    private ILogger<MyMigrationUsingServices> _logger;
 
 	// Inject an IFoo for use in our patch.
-	public MyMigrationUsingServices(IFoo foo)
+	public MyMigrationUsingServices(IClusterProvider clusterProvider,ILogger<MyMigrationUsingServices> logger)
 	{
-		this.foo = foo;
+        _clusterProvider = clusterProvider;
+		_logger = logger;
 	}
 
 	public override void Up()
 	{
-		// Do something with foo
+		// do something with clusterProvider
 	}
 }
 ```
@@ -242,8 +218,8 @@ out of band using a seperate application. If you're using ASP.NET Core, you can 
 ``` c#
 public void ConfigureServices(IServiceCollection services)
 {
-    // Add the MigrationRunner singleton into the dependency injection container.
-    services.AddHyperbeeDbMigrations();
+    // Add the MigrationRunner into the dependency injection container.
+    services.AddCouchbaseMigrations();
 
     // ...
 
