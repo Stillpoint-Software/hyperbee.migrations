@@ -2,7 +2,6 @@
 using System.Linq;
 using System.Threading.Tasks;
 using Couchbase;
-using Couchbase.Diagnostics;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
@@ -85,14 +84,14 @@ public class CouchbaseRecordStore : IMigrationRecordStore
         );
     }
 
-    private async Task CreateAsync( ICluster cluster, Action logger, string testStatement, string createStatement, int maxAttempts = 0, TimeSpan retryInterval = default )
+    private async Task CreateAsync( ICluster cluster, Action logAction, string testStatement, string createStatement, int maxAttempts = 0, TimeSpan retryInterval = default )
     {
         var hasPrimaryIndexResult = await cluster.QueryAsync<int>( testStatement )
             .ConfigureAwait( false );
 
         if ( await hasPrimaryIndexResult.Rows.FirstOrDefaultAsync() == 0 )
         {
-            logger();
+            logAction();
 
             await cluster.QueryAsync<dynamic>( createStatement )
                 .ConfigureAwait( false );
