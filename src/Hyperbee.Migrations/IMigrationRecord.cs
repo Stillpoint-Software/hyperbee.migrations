@@ -1,7 +1,6 @@
-﻿namespace Hyperbee.Migrations
+﻿namespace Hyperbee.Migrations;
+
+public interface IMigrationRecord
 {
-    public interface IMigrationRecord
-    {
-        string Id { get; }
-    }
+    string Id { get; }
 }
