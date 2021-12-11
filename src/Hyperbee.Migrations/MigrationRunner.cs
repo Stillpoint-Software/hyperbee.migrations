@@ -84,12 +84,12 @@ public class MigrationRunner
             switch ( direction )
             {
                 case Direction.Down:
-                    await migration.Down();
+                    await migration.DownAsync();
                     await _recordStore.DeleteAsync( recordId );
                     break;
 
                 case Direction.Up:
-                    await migration.Up();
+                    await migration.UpAsync();
                     await _recordStore.StoreAsync( recordId );
                     break;
             }

@@ -5,6 +5,6 @@ namespace Hyperbee.Migrations;
 
 public abstract class Migration
 {
-    public abstract Task Up();
-    public virtual Task Down() => Task.CompletedTask;
+    public abstract Task UpAsync();
+    public virtual Task DownAsync() => Task.CompletedTask;
 }

@@ -199,6 +199,8 @@ public class RunnerTests
 
 }
 
+// test support
+
 public class FakeMutex : IDisposable
 {
     public void Dispose()
@@ -206,47 +208,39 @@ public class FakeMutex : IDisposable
     }
 }
 
-
 [Migration(1)]
 public class First_Migration : Migration
 {
-    public override Task Up() => Task.CompletedTask;
-    public override Task Down() => Task.CompletedTask;
+    public override Task UpAsync() => Task.CompletedTask;
+    public override Task DownAsync() => Task.CompletedTask;
 }
 
 [Migration(2)]
 public class Second_Migration : Migration
 {
-    public override Task Up() => Task.CompletedTask;
-    public override Task Down() => Task.CompletedTask;
+    public override Task UpAsync() => Task.CompletedTask;
+    public override Task DownAsync() => Task.CompletedTask;
 }
 
 [Migration(3, "development", "demo")]
 public class Development_Migration : Migration
 {
-    public override Task Up() => Task.CompletedTask;
+    public override Task UpAsync() => Task.CompletedTask;
 }
 
 [Migration(4, "uses-BaseMigration")]
 public class Subclass_of_BaseMigration : BaseMigration
 {
-    public Subclass_of_BaseMigration( )
-    {
-    }
-
-    public override Task Up()
-    {
-        return Task.CompletedTask;
-    }
+    public override Task UpAsync() => Task.CompletedTask;
 }    
 
 [Migration(5, "exclude-me")]
 public class _has_problems__with_underscores___ : Migration
 {
-    public override Task Up() => Task.CompletedTask;
+    public override Task UpAsync() => Task.CompletedTask;
 }    
     
 public abstract class BaseMigration : Migration
 {
-    public override Task Up() => Task.CompletedTask;
+    public override Task UpAsync() => Task.CompletedTask;
 }

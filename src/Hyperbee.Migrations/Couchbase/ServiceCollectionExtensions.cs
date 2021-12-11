@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Couchbase;
 
@@ -30,12 +32,14 @@ public static class ServiceCollectionExtensions
 
     private static MigrationOptions MigrationOptionsFactory( IServiceProvider provider, Assembly callingAssembly, Action<CouchbaseMigrationOptions> configuration = null )
     {
-        var migrationResolver = new DefaultMigrationActivator( provider );
-        var options = new CouchbaseMigrationOptions( migrationResolver );
+        var options = new CouchbaseMigrationOptions
+        {
+            MigrationActivator = new DefaultMigrationActivator( provider )
+        };
 
         configuration?.Invoke( options );
 
-        // if no assemblies explicitly configured
+        // if no assemblies were explicitly configured
         if ( options.Assemblies.Count == 0 )
             options.Assemblies.Add( callingAssembly );
 

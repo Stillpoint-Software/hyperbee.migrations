@@ -6,16 +6,16 @@ namespace Hyperbee.MigrationRunner.Migrations;
 [Migration(3)]
 public class WeReallyAreTheBest : Migration
 {
-    private readonly ILogger<WeReallyAreTheBest> _logger;
+    private readonly ILogger _logger;
 
     public WeReallyAreTheBest( ILogger<WeReallyAreTheBest> logger )
     {
         _logger = logger;
     }
 
-    public override Task Up()
+    public override Task UpAsync()
     {
-        _logger.LogInformation( "Inside {name} `{direction}`", nameof(WeReallyAreTheBest), nameof(Up) );
+        _logger.LogInformation( "Inside {name} `{direction}`", nameof(WeReallyAreTheBest), nameof(UpAsync) );
         return Task.CompletedTask;
     }
 }
