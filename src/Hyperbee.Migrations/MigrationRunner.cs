@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Primitives;
 
 namespace Hyperbee.Migrations;
 
@@ -24,7 +27,7 @@ public class MigrationRunner
         _logger = logger ?? throw new ArgumentNullException( nameof(logger) );
     }
 
-    public virtual async Task RunAsync()
+    public virtual async Task RunAsync( CancellationToken cancellationToken = default )
     {
         IDisposable mutex = null;
 
@@ -35,7 +38,7 @@ public class MigrationRunner
             if ( _options.MutexEnabled )
                 mutex = await _recordStore.CreateMutexAsync();
 
-            await RunMigrationsAsync();
+            await RunMigrationsAsync( cancellationToken );
         }
         catch ( MigrationMutexUnavailableException )
         {
@@ -47,7 +50,7 @@ public class MigrationRunner
         }
     }
 
-    private async Task RunMigrationsAsync()
+    private async Task RunMigrationsAsync( CancellationToken cancellationToken )
     {
         var migrations = DiscoverMigrations( _options );
 
@@ -56,11 +59,13 @@ public class MigrationRunner
         var runCount = 0;
         foreach ( var (type, attribute) in migrations )
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             // activate the migration with DI
 
             var migration = _options.MigrationActivator.CreateInstance( type );
 
-            // make sure we want to run the migration
+            // determine if the migration should be run
 
             var recordId = _options.Conventions.GetRecordId( migration );
 
@@ -84,12 +89,12 @@ public class MigrationRunner
             switch ( direction )
             {
                 case Direction.Down:
-                    await migration.DownAsync();
+                    await migration.DownAsync( cancellationToken );
                     await _recordStore.DeleteAsync( recordId );
                     break;
 
                 case Direction.Up:
-                    await migration.UpAsync();
+                    await migration.UpAsync( cancellationToken );
                     await _recordStore.StoreAsync( recordId );
                     break;
             }
@@ -135,7 +140,7 @@ public class MigrationRunner
             .FirstOrDefault();
 
         if ( duplicate.HasValue )
-            throw new DuplicateMigrationException( $"Multiple migrations found with the version number `{duplicate.Value}`.", duplicate.Value );
+            throw new DuplicateMigrationException( $"Migration number conflict detected for version number `{duplicate.Value}`.", duplicate.Value );
 
         // success
         return ordered;

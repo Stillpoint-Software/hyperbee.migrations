@@ -29,12 +29,12 @@ A migration looks like the following:
 [Migration(1)]                 
 public class PeopleHaveFullNames : Migration // #2 inherit from Migration
 {
-    // #3 Do the migration using RQL.
-    public async override Task UpAsync()
+    // #3 Do the migration
+    public async override Task UpAsync( CancellationToken cancellationToken = default )
     {
     }
     // #4 optional: undo the migration
-    public async override Task DownAsync()
+    public async override Task DownAsync( CancellationToken cancellationToken = default )
     {
     }
 }
@@ -119,7 +119,7 @@ profile, you can control which migrations run in which environments.
 [Migration(3, "development")]
 public class Development_Migration : Migration
 {
-    public async override Task UpAsync()
+    public async override Task UpAsync( CancellationToken cancellationToken = default )
     {
         // do something nice for local developers
     }
@@ -151,14 +151,14 @@ public class MyMigration : Migration
 	private IClusterProvider _clusterProvider;
     private ILogger _logger;
 
-	// Inject services registered with the container.
-	public MyMigrationUsingServices( IClusterProvider clusterProvider,ILogger<MyMigration> logger )
+	// Inject services registered with the container
+	public MyMigrationUsingServices( IClusterProvider clusterProvider, ILogger<MyMigration> logger )
 	{
         _clusterProvider = clusterProvider;
 		_logger = logger;
 	}
 
-	public async override Task UpAsync()
+	public async override Task UpAsync( CancellationToken cancellationToken = default )
 	{
 		// do something with clusterProvider
 	}
@@ -200,7 +200,7 @@ public class PersonNameMigration : Migration
 		_logger = logger;
 	}
 
-    public async override Task UpAsync()
+    public async override Task UpAsync( CancellationToken cancellationToken = default )
     {
         var cluster = await _clusterProvider.GetClusterAsync();
 
@@ -213,7 +213,7 @@ public class PersonNameMigration : Migration
     }
 
     // Undo
-    public async override Task DownAsync()
+    public async override Task DownAsync( CancellationToken cancellationToken = default )
     {
         var cluster = await _clusterProvider.GetClusterAsync();
 
@@ -311,9 +311,9 @@ public async Task MainAsync()
 Hyperbee.Migrations currently supports **Couchbase** databases but it can easily be extended.
 The steps are:
 
-* #1 Derive from IMigrationRecordStore
-* #2 Derive from MigrationOptions to add any store specific configuration
-* #3 Implement ServiceCollectionExtensions to register your implementation
+1. Derive from IMigrationRecordStore
+2. Derive from MigrationOptions to add any store specific configuration
+3. Implement ServiceCollectionExtensions to register your implementation
 
 See the Couchbase implementation for reference.
 

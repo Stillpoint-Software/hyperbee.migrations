@@ -13,7 +13,7 @@ public class WeReallyAreTheBest : Migration
         _logger = logger;
     }
 
-    public override Task UpAsync()
+    public override Task UpAsync( CancellationToken cancellationToken = default )
     {
         _logger.LogInformation( "Inside {name} `{direction}`", nameof(WeReallyAreTheBest), nameof(UpAsync) );
         return Task.CompletedTask;

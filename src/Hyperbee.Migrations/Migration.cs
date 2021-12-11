@@ -1,10 +1,11 @@
 ﻿
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Hyperbee.Migrations;
 
 public abstract class Migration
 {
-    public abstract Task UpAsync();
-    public virtual Task DownAsync() => Task.CompletedTask;
+    public abstract Task UpAsync( CancellationToken cancellationToken = default );
+    public virtual Task DownAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
 }
