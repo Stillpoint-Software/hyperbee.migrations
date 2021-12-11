@@ -15,10 +15,10 @@ public class CouchbaseRecordStore : IMigrationRecordStore
     private readonly CouchbaseMigrationOptions _options;
     private readonly ILogger<CouchbaseRecordStore> _logger;
 
-    public CouchbaseRecordStore( IClusterProvider clusterProvider, MigrationOptions options, ILogger<CouchbaseRecordStore> logger )
+    public CouchbaseRecordStore( IClusterProvider clusterProvider, CouchbaseMigrationOptions options, ILogger<CouchbaseRecordStore> logger )
     {
         _clusterProvider = clusterProvider;
-        _options = (CouchbaseMigrationOptions)options;
+        _options = options;
         _logger = logger;
     }
 

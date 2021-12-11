@@ -20,7 +20,7 @@ public static class ServiceCollectionExtensions
 
     private static IServiceCollection AddCouchbaseMigrations( IServiceCollection services, Action<CouchbaseMigrationOptions> configuration, Assembly defaultAssembly )
     {
-        services.AddSingleton<MigrationOptions>( provider =>
+        CouchbaseMigrationOptions CouchbaseMigrationOptionsFactory( IServiceProvider provider )
         {
             var options = new CouchbaseMigrationOptions( new DefaultMigrationActivator( provider ) );
 
@@ -35,13 +35,15 @@ public static class ServiceCollectionExtensions
                 .Get<string[]>()
                 .Select( name => Assembly.Load( new AssemblyName( name ) ) )
                 .Concat( options.Assemblies ) // add existing items
-                .Distinct() 
+                .Distinct()
                 .DefaultIfEmpty( defaultAssembly )
                 .ToList();
 
             return options;
-        } );
-        
+        }
+
+        services.AddSingleton( CouchbaseMigrationOptionsFactory );
+        services.AddSingleton<MigrationOptions>( provider => provider.GetRequiredService<CouchbaseMigrationOptions>() );
         services.AddSingleton<IMigrationRecordStore, CouchbaseRecordStore>();
         services.AddSingleton<MigrationRunner>();
 
