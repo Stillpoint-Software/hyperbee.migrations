@@ -1,5 +1,4 @@
-﻿using DnsClient.Internal;
-using Hyperbee.Migrations;
+﻿using Hyperbee.Migrations;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.MigrationRunner.Migrations;
@@ -7,16 +6,16 @@ namespace Hyperbee.MigrationRunner.Migrations;
 [Migration(2)]
 public class WeTheBest : Migration
 {
-    private readonly ILogger<WeTheBest> _logger;
+    private readonly ILogger _logger;
 
     public WeTheBest( ILogger<WeTheBest> logger )
     {
         _logger = logger;
     }
 
-    public override Task Up()
+    public override Task UpAsync( CancellationToken cancellationToken = default )
     {
-        _logger.LogInformation( "Inside {name} `{direction}`", nameof(WeTheBest), nameof(Up) );
+        _logger.LogInformation( "Inside {name} `{direction}`", nameof(WeTheBest), nameof(UpAsync) );
         return Task.CompletedTask;
     }
 }

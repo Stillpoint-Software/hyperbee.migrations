@@ -16,15 +16,15 @@ public class MySuperAwesomeTransformation : Migration
         _logger = logger;
     }
 
-    public override Task Up()
+    public override Task UpAsync( CancellationToken cancellationToken = default )
     {
-        _logger.LogInformation( "Inside {name} `{direction}`", nameof(MySuperAwesomeTransformation), nameof(Up) );
+        _logger.LogInformation( "Inside {name} `{direction}`", nameof(MySuperAwesomeTransformation), nameof(UpAsync) );
         return Task.CompletedTask;
     }
 
-    public override Task Down()
+    public override Task DownAsync( CancellationToken cancellationToken = default )
     {
-        _logger.LogInformation( "Inside {name} `{direction}`", nameof(MySuperAwesomeTransformation), nameof(Down) );
+        _logger.LogInformation( "Inside {name} `{direction}`", nameof(MySuperAwesomeTransformation), nameof(DownAsync) );
         return Task.CompletedTask;
     }
 }

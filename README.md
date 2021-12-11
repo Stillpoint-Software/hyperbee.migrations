@@ -29,12 +29,12 @@ A migration looks like the following:
 [Migration(1)]                 
 public class PeopleHaveFullNames : Migration // #2 inherit from Migration
 {
-    // #3 Do the migration using RQL.
-    public async override Task Up()
+    // #3 Do the migration
+    public async override Task UpAsync( CancellationToken cancellationToken = default )
     {
     }
     // #4 optional: undo the migration
-    public async override Task Down()
+    public async override Task DownAsync( CancellationToken cancellationToken = default )
     {
     }
 }
@@ -47,10 +47,10 @@ To run the migrations, here's how it'd look in an ASP.NET Core app.
 public void ConfigureServices(IServiceCollection services)
 {
     // Configure couchbase
-    services.AddCouchbase();
+    services.AddCouchbase(...);
 
     // Add the MigrationRunner into the container.
-    services.AddCouchbaseMigrations();
+    services.AddCouchbaseMigrations(...);
 }
 
 public void Configure(IApplicationBuilder app, ...)
@@ -78,7 +78,7 @@ public void ConfigureServices(IServiceCollection services)
 {
     services.AddCouchbaseMigrations( options => 
     {
-        // Configure the migration options here
+        // Configure migration options
         options.Direction = Direction.Down;
     });
 }
@@ -96,9 +96,9 @@ If you wish to allow multiple simultaneous migrations, or change the migration t
 so by overriding the default migration options:
 
 ``` c#
-services.AddCouchbaseMigrations(options =>
+services.AddCouchbaseMigrations( options =>
 {
-    // To allow simultaneous migrations - beware, here be dragons. Defaults to true.
+    // To allow simultaneous migrations - don't be that guy. Defaults to true.
     options.MutexEnabled = false;
 
     // To change how long the migrations lock can be held for. Defaults shown.
@@ -119,15 +119,15 @@ profile, you can control which migrations run in which environments.
 [Migration(3, "development")]
 public class Development_Migration : Migration
 {
-    public async override Task Up()
+    public async override Task UpAsync( CancellationToken cancellationToken = default )
     {
-        // do something nice for developers
+        // do something nice for local developers
     }
 }
 
 ...
 // Add the MigrationRunner and configure it to run development migrations only.
-services.AddCouchbaseMigrations(options => options.Profiles = new[] { "development" } });
+services.AddCouchbaseMigrations( options => options.Profiles = new[] { "development" } } );
 
 ```
 
@@ -138,24 +138,27 @@ the attribute.
 [Migration(3, "development", "demo")]
 ```
 
-This migration would run if either (or both) the development and demo profiles were specified in the MigrationOptions.
+This migration would run if either (or both) the **development** and **demo** profiles were specified in 
+**MigrationOptions**.
 
 #### Migrations and dependency injection
+Hyperbee.Migrations relies on dependency injection to pass services to your migration.
+
 ``` c#
 [Migration(1)]
-public class MyMigrationUsingServices : Migration
+public class MyMigration : Migration
 {
 	private IClusterProvider _clusterProvider;
-    private ILogger<MyMigrationUsingServices> _logger;
+    private ILogger _logger;
 
-	// Inject an IFoo for use in our patch.
-	public MyMigrationUsingServices(IClusterProvider clusterProvider,ILogger<MyMigrationUsingServices> logger)
+	// Inject services registered with the container
+	public MyMigrationUsingServices( IClusterProvider clusterProvider, ILogger<MyMigration> logger )
 	{
         _clusterProvider = clusterProvider;
 		_logger = logger;
 	}
 
-	public async override Task Up()
+	public async override Task UpAsync( CancellationToken cancellationToken = default )
 	{
 		// do something with clusterProvider
 	}
@@ -189,16 +192,15 @@ migration uses N1QL to split out the first and last names:
 public class PersonNameMigration : Migration
 {
 	private IClusterProvider _clusterProvider;
-    private ILogger<PersonNameMigration> _logger;
+    private ILogger _logger;
 
-	// Inject an IFoo for use in our patch.
-	public MyMigrationUsingServices(IClusterProvider clusterProvider,ILogger<PersonNameMigration> logger)
+	public MyMigrationUsingServices( IClusterProvider clusterProvider,ILogger<PersonNameMigration> logger )
 	{
         _clusterProvider = clusterProvider;
 		_logger = logger;
 	}
 
-    public async override Task Up()
+    public async override Task UpAsync( CancellationToken cancellationToken = default )
     {
         var cluster = await _clusterProvider.GetClusterAsync();
 
@@ -210,8 +212,8 @@ public class PersonNameMigration : Migration
         ).ConfigureAwait( false );
     }
 
-    // Undo the patch
-    public async override Task Down()
+    // Undo
+    public async override Task DownAsync( CancellationToken cancellationToken = default )
     {
         var cluster = await _clusterProvider.GetClusterAsync();
 
@@ -231,7 +233,7 @@ apply to your application before you application starts. If you do not want to d
 out of band using a seperate application. If you're using ASP.NET Core, you can run them in your Startup.cs
 
 ``` c#
-public void ConfigureServices(IServiceCollection services)
+public void ConfigureServices( IServiceCollection services )
 {
     // Add the MigrationRunner into the dependency injection container.
     services.AddCouchbaseMigrations();
@@ -244,18 +246,76 @@ public void ConfigureServices(IServiceCollection services)
 }
 ```
 
-Not using ASP.NET Core? You can create the runner manually:
+Not using ASP.NET Core? You can still use Dependency Injection:
 ``` c#
-// Skip dependency injection and run the migrations.
+// create a host
+var host = Host.CreateDefaultBuilder()
+    .ConfigureServices( ( context, services ) =>
+    {
+        services.AddCouchbase(...);
+        services.AddCouchbaseMigrations(...);
+    } )
+    .Build();
 
-// Create migration options, using all Migration objects found in the current assembly.
-var options = new MigrationOptions();
-options.Assemblies.Add(Assembly.GetExecutingAssembly());
-
-// Create a new migration runner. docStore is your HyperbeeDB IDocumentStore. Logger is an ILogger<MigrationRunner>.
-var migrationRunner = new MigrationRunner(docStore, options, logger);
-migrationRunner.Run();
+// create a container scope
+using var serviceScope = host.Services.CreateScope();
+{
+    await serviceScope
+        .ServiceProvider
+        .GetRequiredService<Hyperbee.Migrations.MigrationRunner>()
+        .RunAsync();
+}
 ```
+
+Don't want to use Dependency Injection? Derive from **IMigrationActivator** and have it your way. :
+
+``` c#
+// Derive from IMigrationActivator
+public class MyCustomActivator : IMigrationActivator
+{
+    private IClusterProvider _clusterProvider;
+    private ILoggerFactory _factory;
+
+    public MyCustomActivator( IClusterProvider clusterProvider, ILoggerFactory factory )
+    {
+        _clusterProvider = clusterProvider;
+        _factory = factory;
+    }
+
+    public Migration CreateInstance( Type migrationType )
+        => (Migration) Activator.CreateInstance( migrationType, clusterProvider, _factory.CreateLogger( migrationType ) );
+}
+
+// Run migrations
+public async Task MainAsync()
+{
+    // configure your store
+    IClusterProvider clusterProvider = ...;
+    ILoggerFactory factory = ...;
+
+    var options = CouchbaseMigrationOptions
+    {
+        MigrationActivator = new MyCustomActivator( clusterProvider, factory ),
+        Assemblies = new List<Assembly> { Assembly.GetEntryAssembly() }
+    } );
+
+    var store = new CouchbaseRecordStore( clusterProvider, options, logger );
+
+    // run your migrations
+    var runner = new MigrationRunner( store, options, logger );
+    await runner.RunAsync();
+}
+```
+
+### The Record Store
+Hyperbee.Migrations currently supports **Couchbase** databases but it can easily be extended.
+The steps are:
+
+1. Derive from IMigrationRecordStore
+2. Derive from MigrationOptions to add any store specific configuration
+3. Implement ServiceCollectionExtensions to register your implementation
+
+See the Couchbase implementation for reference.
 
 ### Solution Structure
 
