@@ -36,8 +36,7 @@ internal static class Program
             {
                 try
                 {
-                    var services = serviceScope.ServiceProvider;
-                    var app = services.GetRequiredService<Hyperbee.Migrations.MigrationRunner>();
+                    var app = serviceScope.ServiceProvider.GetRequiredService<Hyperbee.Migrations.MigrationRunner>();
                     await app.RunAsync();
                 }
                 catch ( Exception ex )
