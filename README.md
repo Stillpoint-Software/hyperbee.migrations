@@ -2,23 +2,18 @@
 
 ## Introduction
 
-Hyperbee Migrations is a migration framework to help with common tasks you might have to do over time. 
+Hyperbee Migrations is a migration framework for .NET. Migrations are a structured way to alter your database 
+schema and are an alternative to creating lots of database scripts that have to be run manually by every 
+developer involved. Migrations solve the problem of evolving a database schema (and data) for multiple databases
+(for example, the developer's local database, the test database and the production database). Database changes 
+are described in classes written in C# that can be checked into a version control system.
+
 The framework API is heavily influenced by [Fluent Migrator](https://github.com/schambers/fluentmigrator)
 and [Raven Migrations](https://github.com/migrating-ravens/RavenMigrations).
 
-## Philosophy
-
-We believe any changes to your domain should be visible in your code and reflected as such. Changing things
- "on the fly", can lead to issues, where as migrations can be tested and throughly vetted before being exposed 
-into your production environment. 
-
-This is important, once a migration is in your production environment, **NEVER** modify it in your code. 
-Treat a migration like a historical record of changes.
-
 ## Concepts
 
-Every migration has several elements you need to be aware of. Additionally, there are over arching concepts that
-will help you structure your project to take advantage of this library.
+Every migration has several elements you need to be aware of. 
 
 ### A Migration
 
@@ -29,10 +24,11 @@ A migration looks like the following:
 [Migration(1)]                 
 public class PeopleHaveFullNames : Migration // #2 inherit from Migration
 {
-    // #3 Do the migration
+    // #3 do the migration
     public async override Task UpAsync( CancellationToken cancellationToken = default )
     {
     }
+
     // #4 optional: undo the migration
     public async override Task DownAsync( CancellationToken cancellationToken = default )
     {
@@ -63,18 +59,18 @@ public void Configure(IApplicationBuilder app, ...)
 
 ### The Runner
 
-The migration runner scans all provided assemblies for any classes implementing the 
-**Migration** base class and then orders them according to their migration value.
+At the heart of migrations is the **MigrationRunner**. The migration runner scans all provided assemblies for 
+classes deriving from the **Migration** base class and then orders them according to their migration value.
 
 After each migration is executed, a **MigrationRecord** is inserted into your database, to ensure the 
 next time the runner is executed that migration is not executed again. When a migration is rolled back 
-the document is removed.
+the **MigrationRecord** is removed.
 
 You can modify the runner options by passing an action to the **.AddCouchbaseMigrations** call:
 
 ``` c#
 // In Startup.cs
-public void ConfigureServices(IServiceCollection services)
+public void ConfigureServices( IServiceCollection services )
 {
     services.AddCouchbaseMigrations( options => 
     {
@@ -85,33 +81,32 @@ public void ConfigureServices(IServiceCollection services)
 ```
 #### Preventing simultaneous migrations
 
-By default, Hyperbee Migrations uses a mutex to prevent parallel migration runs. 
-If you have 2 instances of your app running, and both try to run migrations, Hyperbee Migrations
-will prevent the second instance from running migrations and will log a warning.
+By default, Hyperbee Migrations prevents parallel migration. If you have 2 instances of your app running, and 
+both try to run migrations, Hyperbee Migrations will prevent the second instance from running migrations and 
+will log a warning.
 
-Hyperbee Migrations accomplishes this by using a distributed mutex implemented at the database layer. 
-The default implementation uses a timeout value and an auto-renewal interval to prevent orphaned locks.
+Hyperbee Migrations accomplishes this by using a distributed lock at the database layer. The default 
+implementation uses a timeout and an auto-renewal interval to prevent orphaned locks.
 
-If you wish to allow multiple simultaneous migrations, or change the migration timeout lock, you can do 
-so by overriding the default migration options:
+If you want to change this behavior you can override the default options:
 
 ``` c#
 services.AddCouchbaseMigrations( options =>
 {
     // To allow simultaneous migrations - don't be that guy. Defaults to true.
-    options.MutexEnabled = false;
+    options.LockingEnabled = false;
 
     // To change how long the migrations lock can be held for. Defaults shown.
-    options.MutexMaxLifetime = TimeSpan.FromHours( 1 );         // max time-to-live
-    options.MutexExpireInterval = TimeSpan.FromMinutes( 5 );    // expire heartbeat
-    options.MutexRenewInterval = TimeSpan.FromMinutes( 2 );     // renewal heartbeat
+    options.LockMaxLifetime = TimeSpan.FromHours( 1 );         // max time-to-live
+    options.LockExpireInterval = TimeSpan.FromMinutes( 5 );    // expire heartbeat
+    options.LockRenewInterval = TimeSpan.FromMinutes( 2 );     // renewal heartbeat
 });
 ```
 
 ### Profiles
 
-We understand there are times when you want to run specific migrations in certain environments. To allow this
-Hyperbee Migrations supports profiles. For instance, some migrations might only run during development, by 
+There are times when you may want to run specific migrations in certain environments. To allow this
+Hyperbee Migrations supports profiles. For instance, some migrations might only run during development. By 
 decorating your migration with the profile of *"development"* and setting the options to include only that 
 profile, you can control which migrations run in which environments.
 
@@ -126,23 +121,22 @@ public class Development_Migration : Migration
 }
 
 ...
-// Add the MigrationRunner and configure it to run development migrations only.
+// Add the MigrationRunner and configure it to only run development migrations
 services.AddCouchbaseMigrations( options => options.Profiles = new[] { "development" } } );
 
 ```
 
-You can also specify that a particular profile belongs in more than one profile by setting multiple profile names in 
-the attribute.
+A migration may belong to multiple profiles.
 
 ``` c#
-[Migration(3, "development", "demo")]
+[Migration(3, "development", "staging")]
 ```
 
-This migration would run if either (or both) the **development** and **demo** profiles were specified in 
+This migration will run if either the **development** or the **stating** profile is specified in 
 **MigrationOptions**.
 
-#### Migrations and dependency injection
-Hyperbee.Migrations relies on dependency injection to pass services to your migration.
+#### Migrations and Dependency Injection
+Hyperbee Migrations relies on dependency injection to pass services to your migration.
 
 ``` c#
 [Migration(1)]
@@ -151,7 +145,7 @@ public class MyMigration : Migration
 	private IClusterProvider _clusterProvider;
     private ILogger _logger;
 
-	// Inject services registered with the container
+	// Injected services registered with the container
 	public MyMigrationUsingServices( IClusterProvider clusterProvider, ILogger<MyMigration> logger )
 	{
         _clusterProvider = clusterProvider;
@@ -165,66 +159,6 @@ public class MyMigration : Migration
 }
 ```
 
-#### Example: Adding and deleting properties
-Let's say you start using a single Name property:
-
-``` c#
-public class Person
-{
-    public string Id { get; set; }
-    public string Name { get; set; }
-}
-```
-But then want to change using two properties, FirstName and LastName:
-``` c#
-public class Person
-{
-    public string Id { get; set; }
-    public string FirstName { get; set; }
-    public string LastName { get; set; }
-}
-```
-You now need to migrate your documents or you will lose data when you load your new ```Person```.  The following 
-migration uses N1QL to split out the first and last names:
-
-``` c#
-[Migration(1)]
-public class PersonNameMigration : Migration
-{
-	private IClusterProvider _clusterProvider;
-    private ILogger _logger;
-
-	public MyMigrationUsingServices( IClusterProvider clusterProvider,ILogger<PersonNameMigration> logger )
-	{
-        _clusterProvider = clusterProvider;
-		_logger = logger;
-	}
-
-    public async override Task UpAsync( CancellationToken cancellationToken = default )
-    {
-        var cluster = await _clusterProvider.GetClusterAsync();
-
-        await cluster.QueryAsync( @"
-            UPDATE `travel-sample`.inventory.airport
-            SET FirstName = SPLIT(Name, ' ')[0],
-                LastName = SPLIT(Names,' ')[1]
-            UNSET Name" 
-        ).ConfigureAwait( false );
-    }
-
-    // Undo
-    public async override Task DownAsync( CancellationToken cancellationToken = default )
-    {
-        var cluster = await _clusterProvider.GetClusterAsync();
-
-        await cluster.QueryAsync( @"
-            UPDATE `travel-sample`.inventory.airport
-            SET Name = FirstName + ' ' + LastName
-            UNSET FirstName, LastName" 
-        ).ConfigureAwait( false );
-    }
-}
-```
 
 ## Integration
 
@@ -246,7 +180,7 @@ public void ConfigureServices( IServiceCollection services )
 }
 ```
 
-Not using ASP.NET Core? You can still use Dependency Injection:
+Running a Console App? You can still use Dependency Injection:
 ``` c#
 // create a host
 var host = Host.CreateDefaultBuilder()
@@ -267,7 +201,7 @@ using var serviceScope = host.Services.CreateScope();
 }
 ```
 
-Don't want to use Dependency Injection? Derive from **IMigrationActivator** and have it your way. :
+Don't want to use Dependency Injection? Derive from **IMigrationActivator** and have it your way:
 
 ``` c#
 // Derive from IMigrationActivator
@@ -289,7 +223,7 @@ public class MyCustomActivator : IMigrationActivator
 // Run migrations
 public async Task MainAsync()
 {
-    // configure your store
+    // configure
     IClusterProvider clusterProvider = ...;
     ILoggerFactory factory = ...;
 
@@ -308,7 +242,7 @@ public async Task MainAsync()
 ```
 
 ### The Record Store
-Hyperbee.Migrations currently supports **Couchbase** databases but it can easily be extended.
+Hyperbee Migrations currently supports **Couchbase** databases but it can easily be extended.
 The steps are:
 
 1. Derive from IMigrationRecordStore
@@ -316,19 +250,4 @@ The steps are:
 3. Implement ServiceCollectionExtensions to register your implementation
 
 See the Couchbase implementation for reference.
-
-### Solution Structure
-
-We recommend you create a folder called Migrations, then name your files according to the migration number and name:
-
-```
-\Migrations
-    - 001_FirstMigration.cs
-    - 002_SecondMigration.cs
-    - 003_ThirdMigration.cs
-```
-
-The advantage to this approach, is that your IDE will order the migrations alpha-numerically allowing you to easily 
-find the first and last migration.
-
 
