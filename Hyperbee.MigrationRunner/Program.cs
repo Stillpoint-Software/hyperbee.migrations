@@ -9,22 +9,22 @@ namespace Hyperbee.MigrationRunner;
 
 internal static class Program
 {
-    public static async Task Main(string[] args)
+    public static async Task Main( string[] args )
     {
         var config = CreateLocalConfiguration(); // local config without secrets
         var logger = CreateLogger( config );
 
         try
         {
-            logger.Information("Starting ...");
+            logger.Information( "Starting ..." );
 
             var host = Host.CreateDefaultBuilder()
                 .ConfigureAppConfiguration( x =>
                 {
                     x.AddJsonSettingsAndEnvironment()
-                     .AddUserSecrets( typeof(Program).Assembly );
+                        .AddUserSecrets( typeof(Program).Assembly );
                 } )
-                .ConfigureServices((context, services) =>
+                .ConfigureServices( ( context, services ) =>
                 {
                     var startup = new Startup( context.Configuration );
                     startup.ConfigureContainer( services );
@@ -34,22 +34,21 @@ internal static class Program
 
             using var serviceScope = host.Services.CreateScope();
             {
-                var services = serviceScope.ServiceProvider;
-
                 try
                 {
+                    var services = serviceScope.ServiceProvider;
                     var app = services.GetRequiredService<Hyperbee.Migrations.MigrationRunner>();
                     await app.RunAsync();
                 }
-                catch (Exception ex)
+                catch ( Exception ex )
                 {
-                    logger.Fatal(ex, "Application Failure.");
+                    logger.Fatal( ex, "Application Failure." );
                 }
             }
         }
-        catch (Exception ex)
+        catch ( Exception ex )
         {
-            logger.Fatal(ex, "Initialization Failure.");
+            logger.Fatal( ex, "Initialization Failure." );
         }
         finally
         {

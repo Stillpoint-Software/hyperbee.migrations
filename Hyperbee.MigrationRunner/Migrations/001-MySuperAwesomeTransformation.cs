@@ -16,13 +16,15 @@ public class MySuperAwesomeTransformation : Migration
         _logger = logger;
     }
 
-    public override void Up()
+    public override Task Up()
     {
         _logger.LogDebug( $"In Up `{nameof(MySuperAwesomeTransformation)}`" );
+        return Task.CompletedTask;
     }
 
-    public override void Down()
+    public override Task Down()
     {
         _logger.LogDebug( $"In Down `{nameof(MySuperAwesomeTransformation)}`" );
+        return Task.CompletedTask;
     }
 }

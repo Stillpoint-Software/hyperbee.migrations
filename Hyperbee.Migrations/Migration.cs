@@ -1,10 +1,10 @@
 ﻿
+using System.Threading.Tasks;
+
 namespace Hyperbee.Migrations;
 
 public abstract class Migration
 {
-    public abstract void Up();
-    public virtual void Down()
-    {
-    }
+    public abstract Task Up();
+    public virtual Task Down() => Task.CompletedTask;
 }

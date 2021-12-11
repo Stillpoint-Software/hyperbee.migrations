@@ -6,8 +6,8 @@ namespace Hyperbee.Migrations;
 
 public class MigrationOptions
 {
-    public MigrationOptions() 
-        : this(null)
+    public MigrationOptions()
+        : this( null )
     {
     }
 
@@ -19,8 +19,8 @@ public class MigrationOptions
         Assemblies = new List<Assembly>();
         ToVersion = 0;
         MutexEnabled = false;
-        MigrationActivator = migrationActivator; 
-        Conventions = new DefaultMigrationConventions(); 
+        MigrationActivator = migrationActivator;
+        Conventions = new DefaultMigrationConventions();
     }
 
     public Direction Direction { get; set; }

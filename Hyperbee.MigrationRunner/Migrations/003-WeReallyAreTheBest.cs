@@ -13,8 +13,9 @@ public class WeReallyAreTheBest : Migration
         _logger = logger;
     }
 
-    public override void Up()
+    public override Task Up()
     {
         _logger.LogDebug( $"In Up `{nameof(WeReallyAreTheBest)}`" );
+        return Task.CompletedTask;
     }
 }
