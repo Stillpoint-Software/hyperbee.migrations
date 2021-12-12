@@ -34,8 +34,7 @@ internal static class StartupExtensions
             c.WithConnectionString( connectionString );
             c.WithCredentials( userName, password );
             c.MaxHttpConnections = maxHttpConnections;
-        } )
-        .AddCouchbaseBucket<IMigrationBucketProvider>( bucket );
+        } );
 
         return services;
     }
