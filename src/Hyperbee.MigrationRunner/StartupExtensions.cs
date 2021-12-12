@@ -10,9 +10,9 @@ internal static class StartupExtensions
     internal static IConfigurationBuilder AddJsonSettingsAndEnvironment( this IConfigurationBuilder builder )
     {
         return builder
-        .AddJsonFile( "appsettings.json", optional: false, reloadOnChange: true )
-        .AddJsonFile( $"appsettings.{Environment.GetEnvironmentVariable( "ASPNETCORE_ENVIRONMENT" ) ?? "Development"}.json", optional: true )
-        .AddEnvironmentVariables();
+            .AddJsonFile( "appsettings.json", optional: false, reloadOnChange: true )
+            .AddJsonFile( $"appsettings.{Environment.GetEnvironmentVariable( "NETCORE_ENVIRONMENT" ) ?? "Development"}.json", optional: true )
+            .AddEnvironmentVariables();
     }
 
     public static IServiceCollection AddCouchbase( this IServiceCollection services, IConfiguration config )

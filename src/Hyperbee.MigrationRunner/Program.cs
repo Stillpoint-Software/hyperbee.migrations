@@ -22,19 +22,22 @@ internal static class Program
         {
             logger.Information( "Starting ..." );
 
-            var host = Host.CreateDefaultBuilder()
-            .ConfigureAppConfiguration( builder =>
-            {
-                builder.AddJsonSettingsAndEnvironment()
-                .AddUserSecrets( typeof(Program).Assembly );
-            } )
-            .ConfigureServices( ( context, services ) =>
-            {
-                services.AddCouchbase( context.Configuration );
-                services.AddCouchbaseMigrations( context.Configuration );
-            } )
-            .UseSerilog()
-            .Build();
+            var host = Host
+                .CreateDefaultBuilder()
+                .ConfigureAppConfiguration( builder =>
+                {
+                    builder
+                        .AddJsonSettingsAndEnvironment()
+                        .AddUserSecrets( typeof(Program).Assembly );
+                } )
+                .ConfigureServices( ( context, services ) =>
+                {
+                    services
+                        .AddCouchbase( context.Configuration )
+                        .AddCouchbaseMigrations( context.Configuration );
+                } )
+                .UseSerilog()
+                .Build();
 
             // for this application, choosing Build() and CreateScope() instead of .RunConsoleAsync()
             // which requires a registered IHostService and adds a lot of extra boilerplate.
@@ -46,8 +49,9 @@ internal static class Program
                     var provider = serviceScope.ServiceProvider;
 
                     couchbaseLifetime = provider.GetRequiredService<ICouchbaseLifetimeService>();
-                    var app = provider.GetRequiredService<Hyperbee.Migrations.MigrationRunner>();
-                    await app.RunAsync();
+                    var runner = provider.GetRequiredService<Migrations.MigrationRunner>();
+
+                    await runner.RunAsync();
                 }
                 catch ( Exception ex )
                 {
@@ -71,9 +75,9 @@ internal static class Program
     private static IConfiguration CreateLocalConfiguration()
     {
         return new ConfigurationBuilder()
-        .SetBasePath( Directory.GetCurrentDirectory() )
-        .AddJsonSettingsAndEnvironment()
-        .Build();
+            .SetBasePath( Directory.GetCurrentDirectory() )
+            .AddJsonSettingsAndEnvironment()
+            .Build();
     }
 
     private static ILogger CreateLogger( IConfiguration config )
@@ -82,12 +86,12 @@ internal static class Program
         var pathFormat = $".{Path.DirectorySeparatorChar}logs{Path.DirectorySeparatorChar}hyperbee-migrations.json";
 
         Log.Logger = new LoggerConfiguration()
-        .MinimumLevel.Debug()
-        .ReadFrom.Configuration( config )
-        .Enrich.FromLogContext()
-        .WriteTo.File( jsonFormatter, pathFormat )
-        .WriteTo.Console( restrictedToMinimumLevel: LogEventLevel.Information )
-        .CreateLogger();
+            .MinimumLevel.Debug()
+            .ReadFrom.Configuration( config )
+            .Enrich.FromLogContext()
+            .WriteTo.File( jsonFormatter, pathFormat )
+            .WriteTo.Console( restrictedToMinimumLevel: LogEventLevel.Information )
+            .CreateLogger();
 
         return Log.ForContext( typeof(Program) );
     }

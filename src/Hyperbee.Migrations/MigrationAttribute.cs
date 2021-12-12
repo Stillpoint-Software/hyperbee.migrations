@@ -12,7 +12,7 @@ public class MigrationAttribute : Attribute
     public string Description { get; set; } = string.Empty;
 
     public MigrationAttribute( long version )
-    : this( version, Array.Empty<string>() )
+        : this( version, Array.Empty<string>() )
     {
     }
 

@@ -36,7 +36,7 @@ public class PeopleHaveFullNames : Migration // #2 inherit from Migration
 }
 ```
 
-To run the migrations, here's how it'd look in an ASP.NET Core app.
+To run the migrations from an ASP.NET Core app.
 
 ``` c#
 // In Startup.cs
@@ -45,7 +45,7 @@ public void ConfigureServices(IServiceCollection services)
     // Configure couchbase
     services.AddCouchbase(...);
 
-    // Add the MigrationRunner into the container.
+    // Add the MigrationRunner
     services.AddCouchbaseMigrations(...);
 }
 
@@ -60,11 +60,12 @@ public void Configure(IApplicationBuilder app, ...)
 ### The Runner
 
 At the heart of migrations is the **MigrationRunner**. The migration runner scans all provided assemblies for 
-classes deriving from the **Migration** base class and then orders them according to their migration value.
+classes deriving from the **Migration** base class and then orders them according to their migration attribute
+value.
 
-After each migration is executed, a **MigrationRecord** is inserted into your database, to ensure the 
-next time the runner is executed that migration is not executed again. When a migration is rolled back 
-the **MigrationRecord** is removed.
+After each migration is executed a **MigrationRecord** is inserted into your database. This ensures that the 
+next time the runner is executed, previously completed migrations are not executed again. When a migration is 
+rolled back the **MigrationRecord** is removed.
 
 You can modify the runner options by passing an action to the **.AddCouchbaseMigrations** call:
 
@@ -81,9 +82,9 @@ public void ConfigureServices( IServiceCollection services )
 ```
 #### Preventing simultaneous migrations
 
-By default, Hyperbee Migrations prevents parallel migration. If you have 2 instances of your app running, and 
-both try to run migrations, Hyperbee Migrations will prevent the second instance from running migrations and 
-will log a warning.
+By default, Hyperbee Migrations prevents parallel migration runner execution. If you have 2 instances of your 
+app running, and both try to run migrations, Hyperbee Migrations will prevent the second instance from running 
+migrations and will log a warning.
 
 Hyperbee Migrations accomplishes this by using a distributed lock at the database layer. The default 
 implementation uses a timeout and an auto-renewal interval to prevent orphaned locks.
@@ -93,10 +94,10 @@ If you want to change this behavior you can override the default options:
 ``` c#
 services.AddCouchbaseMigrations( options =>
 {
-    // To allow simultaneous migrations - don't be that guy. Defaults to true.
+    // Locking is on by default. Set to false to allow simultaneous runners - but don't be that guy. 
     options.LockingEnabled = false;
 
-    // To change how long the migrations lock can be held for. Defaults shown.
+    // You can change locking behavior. Defaults shown.
     options.LockMaxLifetime = TimeSpan.FromHours( 1 );         // max time-to-live
     options.LockExpireInterval = TimeSpan.FromMinutes( 5 );    // expire heartbeat
     options.LockRenewInterval = TimeSpan.FromMinutes( 2 );     // renewal heartbeat
@@ -105,14 +106,14 @@ services.AddCouchbaseMigrations( options =>
 
 ### Profiles
 
-There are times when you may want to run specific migrations in certain environments. To allow this
-Hyperbee Migrations supports profiles. For instance, some migrations might only run during development. By 
-decorating your migration with the profile of *"development"* and setting the options to include only that 
-profile, you can control which migrations run in which environments.
+There are times when you may want to scope migrations to specific environments. To allow this Hyperbee Migrations
+supports profiles. For instance, some migrations might only run during development. By decorating your migration 
+with the profile of *"development"* and setting **options** to include only that profile, you can control which 
+migrations run in which environments.
 
 ``` c#
 [Migration(3, "development")]
-public class Development_Migration : Migration
+public class DevelopmentOnlyMigration : Migration
 {
     public async override Task UpAsync( CancellationToken cancellationToken = default )
     {
@@ -121,15 +122,26 @@ public class Development_Migration : Migration
 }
 
 ...
-// Add the MigrationRunner and configure it to only run development migrations
-services.AddCouchbaseMigrations( options => options.Profiles = new[] { "development" } } );
 
+// In Startup.cs
+public void ConfigureServices( IServiceCollection services )
+{
+    services.AddCouchbaseMigrations( options => 
+    {
+        // Configure to only run development migrations
+         options.Profiles = new[] { "development" } };
+    });
+}
 ```
 
 A migration may belong to multiple profiles.
 
 ``` c#
 [Migration(3, "development", "staging")]
+public class TargetedMigration : Migration
+{
+    // ...
+}
 ```
 
 This migration will run if either the **development** or the **stating** profile is specified in 
@@ -146,7 +158,7 @@ public class MyMigration : Migration
     private ILogger _logger;
 
 	// Injected services registered with the container
-	public MyMigrationUsingServices( IClusterProvider clusterProvider, ILogger<MyMigration> logger )
+	public MyMigration( IClusterProvider clusterProvider, ILogger<MyMigration> logger )
 	{
         _clusterProvider = clusterProvider;
 		_logger = logger;
@@ -221,7 +233,7 @@ public class MyCustomActivator : IMigrationActivator
 }
 
 // Run migrations
-public async Task MainAsync()
+public async Task Main()
 {
     // configure
     IClusterProvider clusterProvider = ...;

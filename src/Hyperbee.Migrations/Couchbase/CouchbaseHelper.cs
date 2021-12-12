@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Couchbase.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -82,7 +83,9 @@ public static class CouchbaseHelper
         return await result.Rows.FirstOrDefaultAsync() > 0;
     }
 
-    public static async Task WaitUntilAsync( Func<Task<bool>> condition, TimeSpan waitInterval, int maxAttempts, ILogger logger = default )
+    public static async Task WaitUntilAsync( Func<Task<bool>> condition, TimeSpan waitInterval, int maxAttempts, ILogger logger = default, 
+        [CallerMemberName] string memberName = "", 
+        [CallerLineNumber] int lineNumber = 0 )
     {
         while ( maxAttempts-- >= 0 )
         {
@@ -94,5 +97,7 @@ public static class CouchbaseHelper
             logger.LogInformation( "Waiting..." );
             await Task.Delay( waitInterval );
         }
+
+        throw new MigrationTimeoutException( $"{nameof(WaitUntilAsync)} timed out. Called from member `{memberName}`, line {lineNumber}." );
     }
 }
