@@ -1,7 +1,5 @@
 ﻿using System;
-using System.Linq;
 using System.Threading.Tasks;
-using Couchbase;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
@@ -34,81 +32,63 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
     public async Task InitializeAsync()
     {
-        var cluster = await _clusterProvider.GetClusterAsync();
+        // wait for cluster ready
 
-        var bucketName = _options.BucketName;
-        var scopeName = _options.ScopeName;
-        var collectionName = _options.CollectionName;
+        var cluster = await _clusterProvider.GetClusterAsync();
+        await cluster.WaitUntilReadyAsync( _options.ClusterReadyTimeout );
+
+        var (bucketName, scopeName, collectionName) = _options;
 
         // check for bucket
 
-        var hasBucketResult = await cluster.QueryAsync<int>( $"SELECT RAW count(*) FROM system:buckets WHERE name = '{bucketName}'" )
-        .ConfigureAwait( false );
-
-        if ( await hasBucketResult.Rows.FirstOrDefaultAsync() == 0 )
-        {
+        if ( !await CouchbaseHelper.BucketExistsAsync( _clusterProvider, bucketName ) )
             throw new MigrationException( $"Missing bucket `{bucketName}`." );
-        }
 
         // check for scope
 
-        await CreateAsync(
-        cluster,
-        () => _logger.LogInformation( "Creating scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName ),
-        testStatement: $"SELECT RAW count(*) FROM system:scopes WHERE `bucket` = '{bucketName}' AND name = '{scopeName}'",
-        createStatement: $"CREATE SCOPE `{bucketName}`.`{scopeName}`",
-        maxAttempts: 10,
-        retryInterval: TimeSpan.FromSeconds( 3 )
-        );
+        if ( !await CouchbaseHelper.ScopeExistsAsync( _clusterProvider, bucketName, scopeName ) )
+        {
+            _logger.LogInformation( "Creating scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName );
+            await CouchbaseHelper.CreateScopeAsync( _clusterProvider, bucketName, scopeName );
+
+            await CouchbaseHelper.WaitUntilAsync(
+                async () => await CouchbaseHelper.ScopeExistsAsync( _clusterProvider, bucketName, scopeName ),
+                _options.ProvisionRetryInterval, 
+                _options.ProvisionAttempts,
+                _logger
+            );
+        }
 
         // check for collection
 
-        await CreateAsync(
-        cluster,
-        () => _logger.LogInformation( "Creating collection `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName ),
-        testStatement: $"SELECT RAW count(*) FROM system:keyspaces WHERE `bucket` = '{bucketName}' AND `scope` = '{scopeName}' AND name = '{collectionName}'",
-        createStatement: $"CREATE COLLECTION `{bucketName}`.`{scopeName}`.`{collectionName}`",
-        maxAttempts: 10,
-        retryInterval: TimeSpan.FromSeconds( 3 )
-        );
+        if ( !await CouchbaseHelper.CollectionExistsAsync( _clusterProvider, bucketName, scopeName, collectionName ) )
+        {
+            _logger.LogInformation( "Creating collection `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
+
+            await CouchbaseHelper.CreateCollectionAsync( _clusterProvider, bucketName, scopeName, collectionName );
+
+            await CouchbaseHelper.WaitUntilAsync(
+                async () => await CouchbaseHelper.CollectionExistsAsync( _clusterProvider, bucketName, scopeName, collectionName ),
+                _options.ProvisionRetryInterval,
+                _options.ProvisionAttempts,
+                _logger
+            );
+        }
 
         // check for primary index
 
-        await CreateAsync(
-        cluster,
-        () => _logger.LogInformation( "Creating primary index `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName ),
-        testStatement: $"SELECT RAW count(*) FROM system:indexes WHERE bucket_id = '{bucketName}' AND scope_id = '{scopeName}' AND keyspace_id = '{collectionName}' AND is_primary",
-        createStatement: $"CREATE PRIMARY INDEX ON `default`:`{bucketName}`.`{scopeName}`.`{collectionName}`",
-        maxAttempts: 10,
-        retryInterval: TimeSpan.FromSeconds( 3 )
-        );
-    }
-
-    private async Task CreateAsync( ICluster cluster, Action logAction, string testStatement, string createStatement, int maxAttempts = 0, TimeSpan retryInterval = default )
-    {
-        var hasPrimaryIndexResult = await cluster.QueryAsync<int>( testStatement )
-        .ConfigureAwait( false );
-
-        if ( await hasPrimaryIndexResult.Rows.FirstOrDefaultAsync() == 0 )
+        if ( !await CouchbaseHelper.PrimaryCollectionIndexExistsAsync( _clusterProvider, bucketName, scopeName, collectionName ) )
         {
-            logAction();
+            _logger.LogInformation( "Creating primary index `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
 
-            await cluster.QueryAsync<dynamic>( createStatement )
-            .ConfigureAwait( false );
+            await CouchbaseHelper.CreatePrimaryCollectionIndexAsync( _clusterProvider, bucketName, scopeName, collectionName );
 
-            // wait for creation
-            //
-            while ( maxAttempts-- > 0 )
-            {
-                hasPrimaryIndexResult = await cluster.QueryAsync<int>( testStatement )
-                .ConfigureAwait( false );
-
-                if ( await hasPrimaryIndexResult.Rows.FirstOrDefaultAsync() > 0 )
-                    break;
-
-                _logger.LogInformation( "WAITING..." );
-                await Task.Delay( retryInterval );
-            }
+            await CouchbaseHelper.WaitUntilAsync(
+                async () => await CouchbaseHelper.CollectionExistsAsync( _clusterProvider, bucketName, scopeName, collectionName ),
+                _options.ProvisionRetryInterval,
+                _options.ProvisionAttempts,
+                _logger
+            );
         }
     }
 
@@ -121,7 +101,7 @@ public class CouchbaseRecordStore : IMigrationRecordStore
         try
         {
             var mutex = await collection.RequestMutexAsync( _options.LockName, _options.LockExpireInterval )
-            .ConfigureAwait( false );
+                .ConfigureAwait( false );
 
             mutex.AutoRenew( _options.LockRenewInterval, _options.LockMaxLifetime );
             return mutex;
@@ -135,9 +115,9 @@ public class CouchbaseRecordStore : IMigrationRecordStore
     public async Task<bool> ExistsAsync( string recordId )
     {
         var collection = await GetCollectionAsync();
-        
+
         var check = await collection.ExistsAsync( recordId )
-        .ConfigureAwait( false );
+            .ConfigureAwait( false );
 
         return check.Exists;
     }
@@ -145,9 +125,9 @@ public class CouchbaseRecordStore : IMigrationRecordStore
     public async Task DeleteAsync( string recordId )
     {
         var collection = await GetCollectionAsync();
-        
+
         await collection.RemoveAsync( recordId )
-        .ConfigureAwait( false );
+            .ConfigureAwait( false );
     }
 
     public async Task StoreAsync( string recordId )
@@ -156,10 +136,10 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
         var record = new MigrationRecord
         {
-        Id = recordId
+            Id = recordId
         };
 
         await collection.InsertAsync( recordId, record )
-        .ConfigureAwait( false );
+            .ConfigureAwait( false );
     }
 }
