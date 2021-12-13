@@ -83,7 +83,7 @@ internal static class Program
     private static ILogger CreateLogger( IConfiguration config )
     {
         var jsonFormatter = new CompactJsonFormatter();
-        var pathFormat = $".{Path.DirectorySeparatorChar}logs{Path.DirectorySeparatorChar}hyperbee-migrations.json";
+        var pathFormat = $".{Path.DirectorySeparatorChar}logs{Path.DirectorySeparatorChar}hyperbee-migrations-.json";
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()

@@ -1,11 +1,11 @@
-﻿using Microsoft.Extensions.Logging;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations;
 
@@ -113,29 +113,29 @@ public class MigrationRunner
     {
         // discover descriptors
         var descriptors = options.Assemblies
-        .SelectMany( assembly => assembly.GetTypes() )
-        .Where( type => typeof(Migration).IsAssignableFrom( type ) && !type.IsAbstract )
-        .Select( type =>
-        {
-            var attribute = type.GetCustomAttribute( typeof(MigrationAttribute) ) as MigrationAttribute;
-            return new MigrationDescriptor( type, attribute );
-        } )
-        .Where( descriptor => IsInScope( descriptor, options ) );
+            .SelectMany( assembly => assembly.GetTypes() )
+            .Where( type => typeof(Migration).IsAssignableFrom( type ) && !type.IsAbstract )
+            .Select( type =>
+            {
+                var attribute = type.GetCustomAttribute( typeof(MigrationAttribute) ) as MigrationAttribute;
+                return new MigrationDescriptor( type, attribute );
+            } )
+            .Where( descriptor => DescriptorInScope( descriptor, options ) );
 
         // order by id
         var ordered = (options.Direction == Direction.Up
-        ? descriptors.OrderBy( x => x.Attribute!.Version )
-        : descriptors.OrderByDescending( x => x.Attribute!.Version ))
-        .ToList();
+                ? descriptors.OrderBy( x => x.Attribute!.Version )
+                : descriptors.OrderByDescending( x => x.Attribute!.Version ))
+            .ToList();
 
         // throw if any duplicates
         var set = new HashSet<long>();
 
         var duplicate = ordered
-        .Select( x => x.Attribute!.Version )
-        .Where( x => !set.Add( x ) )
-        .Select( x => new long?( x ) )
-        .FirstOrDefault();
+            .Select( x => x.Attribute!.Version )
+            .Where( x => !set.Add( x ) )
+            .Select( x => new long?( x ) )
+            .FirstOrDefault();
 
         if ( duplicate.HasValue )
             throw new DuplicateMigrationException( $"Migration number conflict detected for version number `{duplicate.Value}`.", duplicate.Value );
@@ -144,7 +144,7 @@ public class MigrationRunner
         return ordered;
     }
 
-    private static bool IsInScope( MigrationDescriptor descriptor, MigrationOptions options )
+    private static bool DescriptorInScope( MigrationDescriptor descriptor, MigrationOptions options )
     {
         var (_, attribute) = descriptor;
 
@@ -159,7 +159,7 @@ public class MigrationRunner
         // the migration must belong to one of the specified profiles
 
         return options.Profiles
-        .Intersect( attribute.Profiles, StringComparer.OrdinalIgnoreCase )
-        .Any();
+            .Intersect( attribute.Profiles, StringComparer.OrdinalIgnoreCase )
+            .Any();
     }
 }
