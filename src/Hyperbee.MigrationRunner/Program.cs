@@ -4,7 +4,6 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
-using ILogger = Serilog.ILogger;
 
 namespace Hyperbee.MigrationRunner;
 
@@ -17,7 +16,7 @@ internal class Program
 
         try
         {
-            logger.Information( "Starting ..." );
+            logger.Information( "Starting host..." );
 
             await Host
                 .CreateDefaultBuilder()
