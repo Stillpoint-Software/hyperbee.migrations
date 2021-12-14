@@ -15,6 +15,18 @@ internal static class StartupExtensions
             .AddEnvironmentVariables();
     }
 
+    internal static IConfigurationBuilder AddAppSettingsFile( this IConfigurationBuilder builder )
+    {
+        return builder
+            .AddJsonFile( "appsettings.json", optional: false, reloadOnChange: true );
+    }
+
+    internal static IConfigurationBuilder AddAppSettingsEnvironmentFile( this IConfigurationBuilder builder )
+    {
+        return builder
+            .AddJsonFile( $"appsettings.{Environment.GetEnvironmentVariable( "ASPNETCORE_ENVIRONMENT" ) ?? "Development"}.json", optional: true );
+    }
+
     public static IServiceCollection AddCouchbase( this IServiceCollection services, IConfiguration config )
     {
         var connectionString = config["Couchbase:ConnectionString"]; // from appsettings.<ENV>.json couchbase://localhost

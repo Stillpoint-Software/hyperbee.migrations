@@ -1,5 +1,4 @@
-﻿using Couchbase.Extensions.DependencyInjection;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -9,55 +8,36 @@ using ILogger = Serilog.ILogger;
 
 namespace Hyperbee.MigrationRunner;
 
-internal static class Program
+internal class Program
 {
     public static async Task Main( string[] args )
     {
         var config = CreateLocalConfiguration(); // local config without secrets
         var logger = CreateLogger( config );
 
-        ICouchbaseLifetimeService couchbaseLifetime = null;
-
         try
         {
             logger.Information( "Starting ..." );
 
-            var host = Host
+            await Host
                 .CreateDefaultBuilder()
                 .ConfigureAppConfiguration( builder =>
                 {
                     builder
-                        .AddJsonSettingsAndEnvironment()
-                        .AddUserSecrets( typeof(Program).Assembly );
+                        .AddAppSettingsFile()
+                        .AddAppSettingsEnvironmentFile()
+                        .AddUserSecrets<Program>()
+                        .AddEnvironmentVariables();
                 } )
                 .ConfigureServices( ( context, services ) =>
                 {
                     services
                         .AddCouchbase( context.Configuration )
-                        .AddCouchbaseMigrations( context.Configuration );
+                        .AddCouchbaseMigrations( context.Configuration )
+                        .AddHostedService<MigrationRunnerService>();
                 } )
                 .UseSerilog()
-                .Build();
-
-            // for this application, choosing Build() and CreateScope() instead of .RunConsoleAsync()
-            // which requires a registered IHostService and adds a lot of extra boilerplate.
-
-            using var serviceScope = host.Services.CreateScope();
-            {
-                try
-                {
-                    var provider = serviceScope.ServiceProvider;
-
-                    couchbaseLifetime = provider.GetRequiredService<ICouchbaseLifetimeService>();
-                    var runner = provider.GetRequiredService<Migrations.MigrationRunner>();
-
-                    await runner.RunAsync();
-                }
-                catch ( Exception ex )
-                {
-                    logger.Fatal( ex, "Application Failure." );
-                }
-            }
+                .RunConsoleAsync();
         }
         catch ( Exception ex )
         {
@@ -65,9 +45,6 @@ internal static class Program
         }
         finally
         {
-            if ( couchbaseLifetime != null )
-                await couchbaseLifetime.CloseAsync();
-
             Log.CloseAndFlush();
         }
     }
@@ -76,7 +53,9 @@ internal static class Program
     {
         return new ConfigurationBuilder()
             .SetBasePath( Directory.GetCurrentDirectory() )
-            .AddJsonSettingsAndEnvironment()
+            .AddAppSettingsFile()
+            .AddAppSettingsEnvironmentFile()
+            .AddEnvironmentVariables()
             .Build();
     }
 
