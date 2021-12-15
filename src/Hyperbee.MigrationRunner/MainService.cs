@@ -5,13 +5,13 @@ using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.MigrationRunner;
 
-public class MigrationRunnerService: BackgroundService
+public class MainService: BackgroundService
 {
     private readonly IHostApplicationLifetime _applicationLifetime;
-    private readonly ILogger<MigrationRunnerService> _logger;
+    private readonly ILogger<MainService> _logger;
     private readonly IServiceProvider _serviceProvider;
 
-    public MigrationRunnerService( IServiceProvider serviceProvider, IHostApplicationLifetime applicationLifetime, ILogger<MigrationRunnerService> logger )
+    public MainService( IServiceProvider serviceProvider, IHostApplicationLifetime applicationLifetime, ILogger<MainService> logger )
     {
         _applicationLifetime = applicationLifetime;
         _logger = logger;

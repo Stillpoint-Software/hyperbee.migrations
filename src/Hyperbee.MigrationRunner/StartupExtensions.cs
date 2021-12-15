@@ -7,14 +7,6 @@ namespace Hyperbee.MigrationRunner;
 
 internal static class StartupExtensions
 {
-    internal static IConfigurationBuilder AddJsonSettingsAndEnvironment( this IConfigurationBuilder builder )
-    {
-        return builder
-            .AddJsonFile( "appsettings.json", optional: false, reloadOnChange: true )
-            .AddJsonFile( $"appsettings.{Environment.GetEnvironmentVariable( "NETCORE_ENVIRONMENT" ) ?? "Development"}.json", optional: true )
-            .AddEnvironmentVariables();
-    }
-
     internal static IConfigurationBuilder AddAppSettingsFile( this IConfigurationBuilder builder )
     {
         return builder
@@ -24,7 +16,7 @@ internal static class StartupExtensions
     internal static IConfigurationBuilder AddAppSettingsEnvironmentFile( this IConfigurationBuilder builder )
     {
         return builder
-            .AddJsonFile( $"appsettings.{Environment.GetEnvironmentVariable( "ASPNETCORE_ENVIRONMENT" ) ?? "Development"}.json", optional: true );
+            .AddJsonFile( $"appsettings.{Environment.GetEnvironmentVariable( "NETCORE_ENVIRONMENT" ) ?? "Development"}.json", optional: true );
     }
 
     public static IServiceCollection AddCouchbase( this IServiceCollection services, IConfiguration config )

@@ -33,7 +33,7 @@ internal class Program
                     services
                         .AddCouchbase( context.Configuration )
                         .AddCouchbaseMigrations( context.Configuration )
-                        .AddHostedService<MigrationRunnerService>();
+                        .AddHostedService<MainService>();
                 } )
                 .UseSerilog()
                 .RunConsoleAsync();
