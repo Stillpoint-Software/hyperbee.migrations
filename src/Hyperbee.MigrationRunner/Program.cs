@@ -26,7 +26,8 @@ internal class Program
                         .AddAppSettingsFile()
                         .AddAppSettingsEnvironmentFile()
                         .AddUserSecrets<Program>()
-                        .AddEnvironmentVariables();
+                        .AddEnvironmentVariables()
+                        .AddCommandLine( args, SwitchMappings() ); 
                 } )
                 .ConfigureServices( ( context, services ) =>
                 {
@@ -72,5 +73,29 @@ internal class Program
             .CreateLogger();
 
         return Log.ForContext( typeof(Program) );
+    }
+
+    private static IDictionary<string,string> SwitchMappings()
+    {
+        // pass array of FromAssemblies: --n:0 AssemblyName1 --n:1 AssemblyName2
+
+        return new Dictionary<string, string>()
+        {
+            // short names
+            { "-n", "FromPaths" },
+            { "-a", "FromAssemblies" },
+            { "-p", "Profiles" },
+            { "-b", "BucketName" },
+            { "-s", "ScopeName" },
+            { "-c", "CollectionName" },
+
+            // aliases
+            { "--names", "FromPaths" },
+            { "--assemblies", "FromAssemblies" },
+            { "--profiles", "Profiles" },
+            { "--bucket", "BucketName" },
+            { "--scope", "ScopeName" },
+            { "--collection", "CollectionName" }
+        };
     }
 }
