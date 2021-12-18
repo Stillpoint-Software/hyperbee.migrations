@@ -12,6 +12,40 @@ namespace Hyperbee.Migrations.Samples;
 
 public static class CouchbaseResourceHelper
 {
+    public static async Task CreateBucketsFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, string resourceName, TimeSpan waitInterval, int maxAttempts )
+    {
+        static IEnumerable<BucketSettings> ReadResources( string migrationName, string resourceName )
+        {
+            var json = ResourceHelper.GetResource( migrationName, resourceName );
+
+            var options = new JsonSerializerOptions
+            {
+                AllowTrailingCommas = true,
+                PropertyNameCaseInsensitive = true,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            };
+
+            return JsonSerializer.Deserialize<IList<BucketSettings>>( json, options );
+        }
+
+        foreach ( var bucketSettings in ReadResources( migrationName, resourceName ) )
+        {
+            if ( await clusterHelper.BucketExistsAsync( bucketSettings.Name ) )
+                continue;
+
+            logger?.LogInformation( "Creating bucket `{bucketName}`", bucketSettings.Name );
+
+            await clusterHelper.Cluster.Buckets.CreateBucketAsync( bucketSettings )
+                .ConfigureAwait( false );
+
+            await clusterHelper.WaitUntilAsync(
+                async () => await clusterHelper.BucketExistsAsync( bucketSettings.Name ),
+                waitInterval,
+                maxAttempts
+            );
+        }
+    }
+
     private record IndexItem( string BucketName, string IndexName, string Statement );
 
     public static async Task CreateIndexesFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, params string[] resourceNames )
@@ -47,47 +81,11 @@ public static class CouchbaseResourceHelper
         }
     }
 
-    public static async Task CreateBucketsFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, string resourceName, TimeSpan waitInterval, int maxAttempts )
+    private record DocumentItem( string BucketName, string CollectionName, string Id, string Content );
+
+    public static async Task CreateDocumentsFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, params string[] resourcePaths )
     {
-        static IEnumerable<BucketSettings> ReadResources( string migrationName, string resourceName )
-        {
-            var json = ResourceHelper.GetResource( migrationName, resourceName );
-
-            var options = new JsonSerializerOptions
-            {
-                AllowTrailingCommas = true,
-                PropertyNameCaseInsensitive = true,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            };
-
-            return JsonSerializer.Deserialize<IList<BucketSettings>>( json, options );
-        }
-
-        var cluster = clusterHelper.Cluster;
-
-        foreach ( var bucketSettings in ReadResources( migrationName, resourceName ) )
-        {
-            if ( await clusterHelper.BucketExistsAsync( bucketSettings.Name ) )
-                continue;
-
-            logger?.LogInformation( "Creating bucket `{bucketName}`", bucketSettings.Name );
-
-            await cluster.Buckets.CreateBucketAsync( bucketSettings )
-                .ConfigureAwait( false );
-
-            await clusterHelper.WaitUntilAsync(
-                async () => await clusterHelper.BucketExistsAsync( bucketSettings.Name ),
-                waitInterval,
-                maxAttempts
-            );
-        }
-    }
-
-    private record BucketItem( string BucketName, string CollectionName, string Id, string Content );
-
-    public static async Task CreateDataFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, params string[] resourcePaths )
-    {
-        static BucketItem ToRecord( string resourcePath, JsonNode node, JsonSerializerOptions options )
+        static DocumentItem CreateDocumentItem( string resourcePath, JsonNode node, JsonSerializerOptions options )
         {
             var resourceParts = resourcePath.Split( '.', '/' );
 
@@ -97,10 +95,10 @@ public static class CouchbaseResourceHelper
             var id = node["id"]!.GetValue<string>();
             var content = node.ToJsonString( options );
 
-            return new BucketItem( bucketName, collectionName, id, content );
+            return new DocumentItem( bucketName, collectionName, id, content );
         }
 
-        static IEnumerable<BucketItem> ReadResources( string migrationName, params string[] resourcePaths )
+        static IEnumerable<DocumentItem> ReadResources( string migrationName, params string[] resourcePaths )
         {
             foreach ( var resourcePath in resourcePaths )
             {
@@ -123,13 +121,13 @@ public static class CouchbaseResourceHelper
                     {
                         case JsonObject:
                         {
-                            yield return ToRecord( resourcePath, node, options );
+                            yield return CreateDocumentItem( resourcePath, node, options );
                             break;
                         }
                         case JsonArray:
                         {
                             foreach ( var item in node.AsArray() )
-                                yield return ToRecord( resourcePath, item, options );
+                                yield return CreateDocumentItem( resourcePath, item, options );
                             break;
                         }
                     }
@@ -137,13 +135,11 @@ public static class CouchbaseResourceHelper
             }
         }
 
-        var cluster = clusterHelper.Cluster;
-
         foreach ( var (bucketName, collectionName, id, content) in ReadResources( migrationName, resourcePaths ) )
         {
             logger?.LogInformation( "Upserting `{id}` TO {bucketName}", id, bucketName );
 
-            var bucket = await cluster.BucketAsync( bucketName );
+            var bucket = await clusterHelper.Cluster.BucketAsync( bucketName );
             var collection = await bucket.CollectionAsync( collectionName );
             await collection.UpsertAsync( id, content, x => x.Transcoder( new RawStringTranscoder() ) );
         }

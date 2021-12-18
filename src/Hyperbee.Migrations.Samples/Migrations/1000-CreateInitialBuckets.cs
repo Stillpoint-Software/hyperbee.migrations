@@ -39,7 +39,7 @@ public class CreateInitialBuckets : Migration
             "wagglebeecache/indexes.json" 
         );
 
-        await clusterHelper.CreateDataFromResourcesAsync(
+        await clusterHelper.CreateDocumentsFromResourcesAsync(
             _logger,
             VersionedName(),
             "cloudc/_default",
