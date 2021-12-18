@@ -47,7 +47,7 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
         if ( !await clusterHelper.BucketExistsAsync( bucketName ) )
         {
-            _logger.LogInformation( "Creating bucket `{name}`.", bucketName );
+            _logger.LogInformation( "Creating ledger bucket `{name}`.", bucketName );
 
             await cluster.Buckets.CreateBucketAsync( new BucketSettings
                 {
@@ -63,7 +63,7 @@ public class CouchbaseRecordStore : IMigrationRecordStore
                 _logger
             );
 
-            _logger.LogInformation( "Creating bucket indexes.", bucketName );
+            _logger.LogInformation( "Creating ledger bucket indexes." );
 
             await cluster.QueryIndexes.CreatePrimaryIndexAsync( bucketName );
             await cluster.QueryIndexes.CreateIndexAsync( bucketName, "ix_type", new [] { "type" } );
@@ -76,7 +76,7 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
         if ( !await clusterHelper.ScopeExistsAsync( bucketName, scopeName ) )
         {
-            _logger.LogInformation( "Creating scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName );
+            _logger.LogInformation( "Creating ledger scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName );
             await clusterHelper.CreateScopeAsync( bucketName, scopeName );
 
             await clusterHelper.WaitUntilAsync(
@@ -90,7 +90,7 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
         if ( !await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ) )
         {
-            _logger.LogInformation( "Creating collection `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
+            _logger.LogInformation( "Creating ledger collection `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
 
             await clusterHelper.CreateCollectionAsync( bucketName, scopeName, collectionName );
 
@@ -105,7 +105,7 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
         if ( !await clusterHelper.PrimaryCollectionIndexExistsAsync( bucketName, scopeName, collectionName ) )
         {
-            _logger.LogInformation( "Creating primary index `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
+            _logger.LogInformation( "Creating ledger primary index `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
 
             await clusterHelper.CreatePrimaryCollectionIndexAsync( bucketName, scopeName, collectionName );
 

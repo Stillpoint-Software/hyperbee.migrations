@@ -70,20 +70,20 @@ public static class CouchbaseResourceHelper
                     .Where( x => x != null );
 
                 foreach ( var statement in statements )
-                {
                     yield return clusterHelper.GetIndexItem( statement );
-                }
             }
         }
-
-        var count = 0;
 
         foreach ( var (bucketName, indexName, statement, _ ) in ReadResources( clusterHelper, migrationName, resourceNames ) )
         {
             if ( indexName != null && await clusterHelper.IndexExistsAsync( bucketName, indexName ) )
                 continue;
 
-            logger?.LogInformation( "Creating index {count}. {indexName} ON {bucketName}", ++count, indexName ?? "<BUILD>", bucketName ); // empty index name indicates BUILD operation
+            if ( indexName == null ) // empty index name indicates BUILD operation
+                logger?.LogInformation( "Building indexes ON {bucketName}", bucketName ); 
+            else
+                logger?.LogInformation( "Creating index {indexName} ON {bucketName}", indexName, bucketName );
+
             await clusterHelper.QueryExecuteAsync( statement );
         }
     }
