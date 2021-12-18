@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Couchbase;
+using Couchbase.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Couchbase;
@@ -12,7 +13,13 @@ public sealed record ClusterHelper( ICluster Cluster );
 
 public static class ClusterProviderExtensions
 {
-    public static ClusterHelper Helper( this ICluster cluster ) => new( cluster );
+    public static ClusterHelper Helper( this ICluster cluster ) => new(cluster);
+
+    public static async Task<ClusterHelper> GetClusterHelperAsync( this IClusterProvider clusterProvider )
+    {
+        var cluster = await clusterProvider.GetClusterAsync();
+        return cluster.Helper();
+    }
 }
 
 public static class CouchbaseHelper

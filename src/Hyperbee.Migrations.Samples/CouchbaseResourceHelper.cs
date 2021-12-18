@@ -2,7 +2,6 @@
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Couchbase.Core.IO.Transcoders;
-using Couchbase.Extensions.DependencyInjection;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
 using Hyperbee.Migrations.Couchbase;
@@ -15,7 +14,7 @@ public static class CouchbaseResourceHelper
 {
     private record IndexItem( string BucketName, string IndexName, string Statement );
 
-    public static async Task CreateIndexesFromResourcesAsync( IClusterProvider clusterProvider, ILogger logger, string migrationName, params string[] resourceNames )
+    public static async Task CreateIndexesFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, params string[] resourceNames )
     {
         static IEnumerable<IndexItem> ReadResources( ClusterHelper clusterHelper, string migrationName, params string[] resourceNames )
         {
@@ -36,8 +35,6 @@ public static class CouchbaseResourceHelper
             }
         }
 
-        var cluster = await clusterProvider.GetClusterAsync();
-        var clusterHelper = cluster.Helper();
         var count = 0;
 
         foreach ( var (bucketName, indexName, statement) in ReadResources( clusterHelper, migrationName, resourceNames ) )
@@ -50,7 +47,7 @@ public static class CouchbaseResourceHelper
         }
     }
 
-    public static async Task CreateBucketsFromResourcesAsync( IClusterProvider clusterProvider, ILogger logger, string migrationName, string resourceName, TimeSpan waitInterval, int maxAttempts )
+    public static async Task CreateBucketsFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, string resourceName, TimeSpan waitInterval, int maxAttempts )
     {
         static IEnumerable<BucketSettings> ReadResources( string migrationName, string resourceName )
         {
@@ -65,9 +62,8 @@ public static class CouchbaseResourceHelper
 
             return JsonSerializer.Deserialize<IList<BucketSettings>>( json, options );
         }
-        
-        var cluster = await clusterProvider.GetClusterAsync();
-        var clusterHelper = cluster.Helper();
+
+        var cluster = clusterHelper.Cluster;
 
         foreach ( var bucketSettings in ReadResources( migrationName, resourceName ) )
         {
@@ -89,7 +85,7 @@ public static class CouchbaseResourceHelper
 
     private record BucketItem( string BucketName, string CollectionName, string Id, string Content );
 
-    public static async Task CreateDataFromResourcesAsync( IClusterProvider clusterProvider, ILogger logger, string migrationName, params string[] resourcePaths )
+    public static async Task CreateDataFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, params string[] resourcePaths )
     {
         static BucketItem ToRecord( string resourcePath, JsonNode node, JsonSerializerOptions options )
         {
@@ -141,7 +137,7 @@ public static class CouchbaseResourceHelper
             }
         }
 
-        var cluster = await clusterProvider.GetClusterAsync();
+        var cluster = clusterHelper.Cluster;
 
         foreach ( var (bucketName, collectionName, id, content) in ReadResources( migrationName, resourcePaths ) )
         {

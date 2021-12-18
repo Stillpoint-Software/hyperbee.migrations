@@ -1,4 +1,5 @@
 ﻿using Couchbase.Extensions.DependencyInjection;
+using Hyperbee.Migrations.Couchbase;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Samples.Migrations;
@@ -17,11 +18,12 @@ public class CreateInitialBuckets : Migration
 
     public override async Task UpAsync( CancellationToken cancellationToken = default )
     {
-        // run a `resource` migration to create initial buckets, indexes, and data.
-        // `resource` migrations are atypical; prefer `n1ql` migrations.
+        // run a `resource` migration to create initial buckets and state.
+        // resource migrations are atypical; prefer `n1ql` migrations.
 
-        await CouchbaseResourceHelper.CreateBucketsFromResourcesAsync(
-            _clusterProvider,
+        var clusterHelper = await _clusterProvider.GetClusterHelperAsync();
+
+        await clusterHelper.CreateBucketsFromResourcesAsync(
             _logger,
             VersionedName(),
             "buckets.json",
@@ -29,8 +31,7 @@ public class CreateInitialBuckets : Migration
             maxAttempts: 10
         );
 
-        await CouchbaseResourceHelper.CreateIndexesFromResourcesAsync( 
-            _clusterProvider, 
+        await clusterHelper.CreateIndexesFromResourcesAsync( 
             _logger,
             VersionedName(), 
             "cloudc/indexes.json", 
@@ -38,8 +39,7 @@ public class CreateInitialBuckets : Migration
             "wagglebeecache/indexes.json" 
         );
 
-        await CouchbaseResourceHelper.CreateDataFromResourcesAsync(
-            _clusterProvider,
+        await clusterHelper.CreateDataFromResourcesAsync(
             _logger,
             VersionedName(),
             "cloudc/_default",
