@@ -12,7 +12,12 @@ namespace Hyperbee.Migrations.Samples;
 
 public static class CouchbaseResourceHelper
 {
-    public static async Task CreateBucketsFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, string resourceName, TimeSpan waitInterval, int maxAttempts )
+    public static async Task CreateBucketsFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, string resourceName )
+    {
+        await CreateBucketsFromResourcesAsync( clusterHelper, logger, migrationName, default, resourceName );
+    }
+
+    public static async Task CreateBucketsFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, WaitSettings waitSettings, string resourceName )
     {
         static IEnumerable<BucketSettings> ReadResources( string migrationName, string resourceName )
         {
@@ -28,6 +33,8 @@ public static class CouchbaseResourceHelper
             return JsonSerializer.Deserialize<IList<BucketSettings>>( json, options );
         }
 
+        waitSettings ??= new WaitSettings( TimeSpan.Zero, 0 );
+
         foreach ( var bucketSettings in ReadResources( migrationName, resourceName ) )
         {
             if ( await clusterHelper.BucketExistsAsync( bucketSettings.Name ) )
@@ -38,15 +45,16 @@ public static class CouchbaseResourceHelper
             await clusterHelper.Cluster.Buckets.CreateBucketAsync( bucketSettings )
                 .ConfigureAwait( false );
 
+            if ( waitSettings.WaitInterval == TimeSpan.Zero || waitSettings.MaxAttempts <= 0 )
+                continue;
+
             await clusterHelper.WaitUntilAsync(
                 async () => await clusterHelper.BucketExistsAsync( bucketSettings.Name ),
-                waitInterval,
-                maxAttempts
+                waitSettings.WaitInterval,
+                waitSettings.MaxAttempts
             );
         }
     }
-
-    private record IndexItem( string BucketName, string IndexName, string Statement );
 
     public static async Task CreateIndexesFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, params string[] resourceNames )
     {
@@ -63,15 +71,14 @@ public static class CouchbaseResourceHelper
 
                 foreach ( var statement in statements )
                 {
-                    clusterHelper.ExtractIndexNameAndBucketFromStatement( statement, out var indexName, out var bucketName );
-                    yield return new IndexItem( bucketName, indexName, statement );
+                    yield return clusterHelper.GetIndexItem( statement );
                 }
             }
         }
 
         var count = 0;
 
-        foreach ( var (bucketName, indexName, statement) in ReadResources( clusterHelper, migrationName, resourceNames ) )
+        foreach ( var (bucketName, indexName, statement, _ ) in ReadResources( clusterHelper, migrationName, resourceNames ) )
         {
             if ( indexName != null && await clusterHelper.IndexExistsAsync( bucketName, indexName ) )
                 continue;

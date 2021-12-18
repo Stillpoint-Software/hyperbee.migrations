@@ -1,11 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
-using Couchbase.Management.Query;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Couchbase;
@@ -42,7 +40,9 @@ public class CouchbaseRecordStore : IMigrationRecordStore
         var clusterHelper = cluster.Helper();
 
         var (bucketName, scopeName, collectionName) = _options;
-        
+
+        var waitSettings = new WaitSettings( _options.ProvisionRetryInterval, _options.ProvisionAttempts );
+
         // check for bucket
 
         if ( !await clusterHelper.BucketExistsAsync( bucketName ) )
@@ -59,8 +59,7 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
             await clusterHelper.WaitUntilAsync(
                 async () => await clusterHelper.BucketExistsAsync( bucketName ),
-                _options.ProvisionRetryInterval,
-                _options.ProvisionAttempts,
+                waitSettings,
                 _logger
             );
 
@@ -82,8 +81,7 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
             await clusterHelper.WaitUntilAsync(
                 async () => await clusterHelper.ScopeExistsAsync( bucketName, scopeName ),
-                _options.ProvisionRetryInterval, 
-                _options.ProvisionAttempts,
+                waitSettings,
                 _logger
             );
         }
@@ -98,8 +96,7 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
             await clusterHelper.WaitUntilAsync(
                 async () => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ),
-                _options.ProvisionRetryInterval,
-                _options.ProvisionAttempts,
+                waitSettings,
                 _logger
             );
         }
@@ -114,8 +111,7 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
             await clusterHelper.WaitUntilAsync(
                 async () => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ),
-                _options.ProvisionRetryInterval,
-                _options.ProvisionAttempts,
+                waitSettings,
                 _logger
             );
         }

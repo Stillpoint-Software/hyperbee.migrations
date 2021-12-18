@@ -19,16 +19,16 @@ public class CreateInitialBuckets : Migration
     public override async Task UpAsync( CancellationToken cancellationToken = default )
     {
         // run a `resource` migration to create initial buckets and state.
-        // resource migrations are atypical; prefer `n1ql` migrations.
+        // resource migrations are a-typical; prefer `n1ql` migrations.
 
         var clusterHelper = await _clusterProvider.GetClusterHelperAsync();
+        var waitSettings = new WaitSettings( TimeSpan.FromSeconds( 3 ), 20 );
 
         await clusterHelper.CreateBucketsFromResourcesAsync(
             _logger,
             VersionedName(),
-            "buckets.json",
-            waitInterval: TimeSpan.FromSeconds( 3 ),
-            maxAttempts: 10
+            waitSettings,
+            "buckets.json"
         );
 
         await clusterHelper.CreateIndexesFromResourcesAsync( 

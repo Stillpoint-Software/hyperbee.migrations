@@ -9,6 +9,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Couchbase;
 
+public sealed record IndexItem( string BucketName, string IndexName, string Statement, bool IsPrimary );
+public sealed record WaitSettings( TimeSpan WaitInterval, int MaxAttempts );
+
 public sealed record ClusterHelper( ICluster Cluster );
 
 public static class ClusterProviderExtensions
@@ -110,29 +113,40 @@ public static class CouchbaseHelper
         return await result.Rows.FirstOrDefaultAsync() > 0;
     }
 
-    public static void ExtractIndexNameAndBucketFromStatement( this ClusterHelper clusterHelper, string statement, out string indexName, out string bucketName )
+    public static IndexItem GetIndexItem( this ClusterHelper clusterHelper, string statement )
     {
-        // hack method to parse out the bucket and index name from an index statement.
-        // the regex could do with a _lot_ of improvement. trimming, different kinds
-        // (or lack of) whitespace, leading and trailing whitespace, \r\n, etc.
+        // hackish method to parse out the bucket and index name from an index statement.
+        // the regex could do with improvement. trimming, different kinds (or lack of)
+        // whitespace, leading and trailing whitespace, \r\n, etc.
 
         var splitChars = new[] { '\'', '`', ' ', '\t', '(' };
 
-        // CREATE INDEX <index> ON <bucket>
-        // CREATE PRIMARY INDEX <index> ON <bucket>
-        // BUILD INDEX ON <bucket>
+        // CREATE [PRIMARY] INDEX <index> ON <bucket> [..rest] | BUILD INDEX ON <bucket> [..rest]
 
-        var match = Regex.Match( statement, @"^\s*(?:CREATE|BUILD)\s+(?:PRIMARY )?INDEX\s*(.*)\s+ON\s*?([^ ]+)", RegexOptions.IgnoreCase );
+        var match = Regex.Match( statement, @"^\s*(?:CREATE|BUILD)\s+(?<opt>PRIMARY\s+)?INDEX\s*(?<idx>.*)\s+ON\s*?(?<on>[^\s]+)", RegexOptions.IgnoreCase );
 
-        indexName = match.Groups[1].Value
+        var isPrimary = match.Groups["opt"].Value
+            .StartsWith( "PRIMARY", StringComparison.OrdinalIgnoreCase );
+
+        var indexName = match.Groups["idx"].Value
             .Split( splitChars, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries )
             .FirstOrDefault()
             ?.Trim( splitChars );
 
-        bucketName = match.Groups[2].Value
+        var bucketName = match.Groups["on"].Value
             .Split( splitChars, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries )
             .FirstOrDefault()
             ?.Trim( splitChars );
+
+        return new IndexItem( bucketName, indexName, statement, isPrimary );
+    }
+
+    public static async Task WaitUntilAsync( this ClusterHelper clusterHelper, Func<Task<bool>> condition, WaitSettings settings, ILogger logger = default,
+        [CallerMemberName] string memberName = "",
+        [CallerLineNumber] int lineNumber = 0 )
+    {
+        var (waitInterval, maxAttempts) = settings ?? throw new ArgumentNullException( nameof(settings) );
+        await WaitUntilAsync( clusterHelper, condition, waitInterval, maxAttempts, logger, memberName, lineNumber );
     }
 
     public static async Task WaitUntilAsync( this ClusterHelper clusterHelper, Func<Task<bool>> condition, TimeSpan waitInterval, int maxAttempts, ILogger logger = default,
@@ -150,6 +164,6 @@ public static class CouchbaseHelper
             await Task.Delay( waitInterval );
         }
 
-        throw new MigrationTimeoutException( $"{nameof( WaitUntilAsync )} timed out. Called from member `{memberName}`, line {lineNumber}." );
+        throw new MigrationTimeoutException( $"{nameof(WaitUntilAsync)} timed out. Called from member `{memberName}`, line {lineNumber}." );
     }
 }
