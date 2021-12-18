@@ -50,6 +50,10 @@ public class MigrationRunner
 
     private async Task RunMigrationsAsync( CancellationToken cancellationToken )
     {
+        var direction = _options.Direction;
+
+        _logger.LogInformation( "Discovering {direction} migrations ...", direction );
+
         var migrations = DiscoverMigrations( _options );
 
         var executionStopwatch = Stopwatch.StartNew();
@@ -68,7 +72,6 @@ public class MigrationRunner
             var recordId = _options.Conventions.GetRecordId( migration );
 
             var exists = await _recordStore.ExistsAsync( recordId );
-            var direction = _options.Direction;
 
             switch ( direction )
             {

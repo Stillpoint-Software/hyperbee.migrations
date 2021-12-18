@@ -1,0 +1,23 @@
+﻿{
+  "statements": [
+    {
+      "statement": "CREATE PRIMARY INDEX `idx_wagglebeecache_primary` ON `wagglebeecache` WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement":
+        "CREATE INDEX `idx_wagglebeecache_typeName` ON `wagglebeecache`(`typeName`) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement":
+        "CREATE INDEX idx_wagglebeecache_contentcache_swarmId_sequenceNumber_desc ON `wagglebeecache`(`swarmId`,`sequenceNumber` desc) WHERE (`typeName` = 'contentcache' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement":
+        "BUILD INDEX ON `wagglebeecache` ( ( SELECT RAW name FROM system:indexes WHERE keyspace_id = 'wagglebeecache' AND state = 'deferred' ));",
+      "args": null
+    }
+  ]
+}

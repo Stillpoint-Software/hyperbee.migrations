@@ -1,0 +1,14 @@
+{
+      "createdTimestamp": "2015-03-23T13:25:31.6742088+00:00",
+      "entityUri": "cc://0c81e0a030c64b8c80cbd05adf25e522/f90bcd5525b442dda8a5ee83e0987ec3",
+      "externalUser": false,
+      "id": "c9735a6691dd45b3834f8dd9eae6c2e1",
+      "orgId": "0c81e0a030c64b8c80cbd05adf25e522",
+      "schemaHash": null,
+      "schemaVersion": 0,
+      "sequenceNumber": 0,
+      "status": 1,
+      "typeName": "userorganization",
+      "updatedTimestamp": "2020-02-01T09:23:13.0723823+00:00",
+      "userId": "f90bcd5525b442dda8a5ee83e0987ec3"
+}

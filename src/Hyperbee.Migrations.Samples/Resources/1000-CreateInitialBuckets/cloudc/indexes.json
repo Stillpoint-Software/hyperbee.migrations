@@ -1,0 +1,328 @@
+﻿{
+  "statements": [
+    {
+      "statement": "CREATE PRIMARY INDEX `idx_cloudc_primary` ON `cloudc` USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_typeName` ON `cloudc`(`typeName`) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_user_lower_userName ON `cloudc`( lower( (`userName`) )) WHERE (`typeName` = 'user') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_user_confirmationCode ON `cloudc`(`confirmationCode`) WHERE (`typeName` = 'user' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_user_lower_rawShortName_typeName ON `cloudc`( lower( (`rawShortName`) )) WHERE (`typeName` = 'user') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_user_lower_shortName_typeName ON `cloudc`( lower( (`shortName`) )) WHERE (`typeName` = 'user') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_registration_email_verificationCode_registrationType` ON `cloudc`(`email`,`verificationCode`,`registrationType`) WHERE (`typeName` = \"registration\") USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_registration_registrationType_email` ON `cloudc`(`registrationType`,`email`) WHERE (`typeName` = \"registration\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_registration_email_registrationType ON `cloudc`(`email`,`registrationType`) WHERE (`typeName` = 'registration') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_registration_registrationType_lower_email ON `cloudc`(`registrationType`,lower( (`email`))) WHERE (`typeName` = 'registration') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_registration_registrationType_lower_email_lower_verificationCode ON `cloudc`(`registrationType`,lower( (`email`)),lower( (`verificationCode`))) WHERE (`typeName` = 'registration') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_userrole_entityType_userId_orgId_entityUri` ON `cloudc`(`entityType`,`userId`,`orgId`,`entityUri`) WHERE (`typeName` = \"userrole\") USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_userrole_entityUri_orgId` ON `cloudc`(`entityUri`,`orgId`) WHERE (`typeName` = \"userrole\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_userrole_orgId_name` ON `cloudc`(`orgId`,`name`) WHERE (`typeName` = \"userrole\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_updateditem_objectId` ON `cloudc`(`objectId`) WHERE (`typeName` = \"updateditem\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_userlastseen_personaId_entityUri` ON `cloudc`(`personaId`,`entityUri`) WHERE (`typeName` = \"userlastseen\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_usergroupuser_userGroupId_groupMemberEntityUri` ON `cloudc`(`userGroupId`,`groupMemberEntityUri`) WHERE (`typeName` = \"usergroupuser\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_usergroupuser_userGroupId_groupMemberRole` ON `cloudc`(`userGroupId`,`groupMemberRole`) WHERE (`typeName` = \"usergroupuser\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_usergroupuser_userGroupId_groupMemberStatus` ON `cloudc`(`userGroupId`,`groupMemberStatus`) WHERE (`typeName` = \"usergroupuser\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_usergroupuser_userGroupId_groupMemberUserId` ON `cloudc`(`userGroupId`,`groupMemberUserId`) WHERE (`typeName` = \"usergroupuser\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_usergroup_personaId_rawShortName` ON `cloudc`(`personaId`,`rawShortName`,`orgId`,`entityUri`) WHERE (`typeName` = \"usergroup\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_usergroup_rawShortName_orgId` ON `cloudc`(`rawShortName`,`orgId`) WHERE (`typeName` = \"usergroup\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_userorganization_entityUri_status` ON `cloudc`(`entityUri`,`status`) WHERE (`typeName` = \"userorganization\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_userorganization_userId_orgId` ON `cloudc`(`userId`,`orgId`) WHERE (`typeName` = \"userorganization\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_userorganization_entityUri_orgId` ON `cloudc`(`entityUri`,`orgId`) WHERE (`typeName` = \"userorganization\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_user_userName_state` ON `cloudc`(`userName`,`state`) WHERE (`typeName` = \"user\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_user_entityUri` ON `cloudc`(`entityUri`) WHERE (`typeName` = \"user\" ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_registration_registrationType_email_verificationCode ON `cloudc`(`registrationType`,`email`,`verificationCode`) WHERE (`typeName` = 'registration' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_temporarypassword_userEntityUri_userId` ON `cloudc`(`userEntityUri`,`userId`) WHERE (`typeName` = \"temporarypassword\") USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_product_orgId ON `cloudc`(`orgId`) WHERE (`typeName` = 'product') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_product_productstatus_orgId ON `cloudc`(`productStatus`.`orgId`) WHERE (`typeName` = 'product') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_organizationproperties_orgId ON `cloudc`(`orgId`) WHERE (`typeName` = 'organizationproperties') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_entitydevice_entityUri_appId ON `cloudc`(`entityUri`,`appId`) WHERE (`typeName` = 'entitydevice') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_entitydevice_deviceId_platform ON `cloudc`(`deviceId`,`platform`) WHERE (`typeName` = 'entitydevice') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_entitydevice_deviceId ON `cloudc`(`deviceId`) WHERE (`typeName` = 'entitydevice') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_entitydevice_deviceId_platform_entityUri ON `cloudc`(`deviceId`,`platform`,`entityUri`) WHERE (`typeName` = 'entitydevice') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_entitydevice_appid_deviceId_entityUri ON `cloudc`(`appId`,`deviceId`,`entityUri`) WHERE (`typeName` = 'entitydevice') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_entity_orgId ON `cloudc`(`orgId`) WHERE (`typeName` = 'entity') USING GSI WITH {'defer_build':true} ",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_entity_uri ON `cloudc`(`uri`) WHERE (`typeName` = 'entity') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_organization_restrictParticipationInOtherHives ON `cloudc`(`restrictParticipationInOtherHives`) WHERE (`typeName` = 'organization') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_organization_shortName_rawShortName ON `cloudc`(`shortName`,`rawShortName`) WHERE (`typeName` = 'organization') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_organization_uri ON `cloudc`(`uri`) WHERE (`typeName` = 'organization') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_organizationtrust_trusteeOrganizationUri_trustedOrganizationUri ON `cloudc`(`trusteeOrganizationUri`,`trustedOrganizationUri`) WHERE (`typeName` = 'organizationtrust') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_product_productCode_orgId ON `cloudc`(`productCode`,`orgId`) WHERE (`typeName` = 'product') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_organizationrole_orgId ON `cloudc`(`orgId`) WHERE (`typeName` = `organizationrole`) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_organizationrole_role_orgId ON `cloudc`(`role`, `orgId`) WHERE (`typeName` = 'organizationrole') USING GSI WITH {'defer_build':true} ",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_rolepermission_permission_role_orgId ON `cloudc`(`permission`,`role`,`orgId`) WHERE (`typeName` = 'rolepermission') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_userorganization_status_orgId_entityUri ON `cloudc`(`status`,`orgId`,`entityUri`) WHERE (`typeName` = 'userorganization') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_userrelation_sourceEntityUri_targetPersonaId_sourcePersonaId_relationType_targetEntityUri ON `cloudc`(`sourceEntityUri`,`targetPersonaId`,`sourcePersonaId`,`relationType`,`targetEntityUri`) WHERE(`typeName` = 'userrelation' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_auditentry_entityUri_entryType ON `cloudc`(`entityUri`,`entryType`) WHERE(`typeName` = 'auditentry' )USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_auditentry_entityUri ON `cloudc`(`entityUri`) WHERE(`typeName` = 'auditentry' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_hiveapikey_hiveId ON `cloudc`(`hiveId`) WHERE(`typeName` = 'hiveapikey' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_registeredentity_contextId ON `cloudc`(`contextId`) WHERE (`typeName` = 'registeredentity' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_entityopaquedata_runtimeId ON `cloudc`(`runtimeId`) WHERE (`typeName` = 'entityopaquedata' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_organizationtrust_trustedOrganizationUri ON `cloudc`(`trustedOrganizationUri`) WHERE (`typeName` = 'organizationtrust' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_userorganization_userId ON `cloudc`(`userId`) WHERE (`typeName` = 'userorganization') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_usergroup_lower_rawName_lower_name_lower_shortName_personaId_orgId_entityUri ON `cloudc`(lower((`rawName`)),lower((`name`)),lower((`shortName`)), `entityUri`, `personaId`, `orgId`) WHERE (`typeName` = 'usergroup') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_usergroup_entityUri_orgId_personaId ON `cloudc`(`entityUri`,`orgId`,`personaId`) WHERE (`typeName` = 'usergroup') USING GSI WITH {'defer_build':true} ",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_userrole_name_query_lower_rawEntityName_orgId ON `cloudc`(`name`,`query`,lower( (`rawEntityName`)),`orgId`) WHERE (`typeName` = 'userrole') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_userrole_name_orgId ON `cloudc`(`name`,`orgId`) WHERE (`typeName` = 'userrole') USING GSI WITH {'defer_build':true} ",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_userrole_name_query_entityType_lower_rawEntityName_orgId ON `cloudc`(`name`,`query`,`entityType`,lower( (`rawEntityName`)),`orgId`) WHERE (`typeName` = 'userrole') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_entity_lower_name_orgId ON `cloudc`( lower( (`name`) ),`orgId`) WHERE (`typeName` = 'entity') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_organization_organizationType_lower_name ON `cloudc`(`organizationType`,lower( (`name`))) WHERE (`typeName` = 'organization') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_registeredentity_entityRuntimeId_contextId_registrationId_entityUri ON `cloudc`(`entityRuntimeId`,`contextId`,`registrationId`, `entityUri`) WHERE (`typeName` = 'registeredentity') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_entitydevice_entityUri_platform_updatedTimestamp_desc ON `cloudc`(`entityUri`,`platform`, `updatedTimestamp` desc) WHERE (`typeName` = 'entitydevice' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_organization_organizationType_lower_name_rawName_asc ON `cloudc`(`organizationType`,lower( (`name`) ), `rawName` asc) WHERE (`typeName` = 'organization' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_organization_organizationType_lower_name_rawName_desc ON `cloudc`(`organizationType`,lower( (`name`) ), `rawName` desc) WHERE (`typeName` = 'organization' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_registeredentity_entityUri_createdTimestamp_desc ON `cloudc`(`entityUri`, `createdTimestamp` desc) WHERE (`typeName` = 'registeredentity' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_registeredentity_entityUri_entityRuntimeId_contextId_entityRuntimeId_registrationId_createdTimestamp_desc ON `cloudc`(`entityUri`,`entityRuntimeId`,`contextId`,`entityRuntimeId`,`registrationId` ,`createdTimestamp` desc) WHERE (`typeName` = 'registeredentity' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_usergroup_personaId_rawame_entityUri_orgId_name_asc ON `cloudc`(`personaId`,`rawName`,`entityUri`,`orgId`, `name` asc) WHERE (`typeName` = 'usergroup' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_usergroup_personaId_rawame_entityUri_orgId_name_desc ON `cloudc`(`personaId`,`rawName`,`entityUri`,`orgId`, `name` desc) WHERE (`typeName` = 'usergroup' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_usergroup_personaId_entityUri_visibility_id_orgId_updatedTimestamp_asc ON `cloudc`(`personaId`,`entityUri`,`Visibility`,`id`,`orgId`,`updatedTimestamp` asc ) WHERE ( `typeName` = 'usergroup') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_usergroup_personaId_entityUri_visibility_id_orgId_updatedTimestamp_desc ON `cloudc`(`personaId`,`entityUri`,`Visibility`,`id`,`orgId`,`updatedTimestamp` desc ) WHERE ( `typeName` = 'usergroup' ) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_user_id` ON `cloudc`(`id`) WHERE(`typeName` = 'user' ) USING GSI WITH { 'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_usergroupuser_groupMemberEntityUri` ON `cloudc`(`groupMemberEntityUri`) WHERE (`typeName` = 'usergroupuser') USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_usergroup_id` ON `cloudc`(`id`) WHERE(`typeName` = 'usergroup' ) USING GSI WITH { 'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_usergroup_userGroupId` ON `cloudc`(`userGroupId`) USING GSI WITH { 'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_usergroup_groupMemberUserId` ON `cloudc`(`groupMemberUserId`) USING GSI WITH { 'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_cloudc_userId` ON `cloudc`(`userId`) USING GSI WITH { 'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX idx_cloudc_guestuser_userName_typeName ON `cloudc`(`userName`,`typeName`) where(`typeName` = 'guestuser' ) USING GSI WITH { 'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "BUILD INDEX ON `cloudc` ( ( SELECT RAW name FROM system:indexes WHERE keyspace_id = 'cloudc' AND state = 'deferred' ));",
+      "args": null
+    }
+  ]
+}

@@ -1,8 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
+using Couchbase.Management.Buckets;
+using Couchbase.Management.Query;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Couchbase;
@@ -36,23 +39,49 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
         var cluster = await _clusterProvider.GetClusterAsync();
         await cluster.WaitUntilReadyAsync( _options.ClusterReadyTimeout );
+        var clusterHelper = cluster.Helper();
 
         var (bucketName, scopeName, collectionName) = _options;
-
+        
         // check for bucket
 
-        if ( !await CouchbaseHelper.BucketExistsAsync( _clusterProvider, bucketName ) )
-            throw new MigrationException( $"Missing bucket `{bucketName}`." );
+        if ( !await clusterHelper.BucketExistsAsync( bucketName ) )
+        {
+            _logger.LogInformation( "Creating bucket `{name}`.", bucketName );
+
+            await cluster.Buckets.CreateBucketAsync( new BucketSettings
+                {
+                    Name = bucketName,
+                    RamQuotaMB = 100,
+                    FlushEnabled = true
+                } )
+                .ConfigureAwait( false );
+
+            await clusterHelper.WaitUntilAsync(
+                async () => await clusterHelper.BucketExistsAsync( bucketName ),
+                _options.ProvisionRetryInterval,
+                _options.ProvisionAttempts,
+                _logger
+            );
+
+            _logger.LogInformation( "Creating bucket indexes.", bucketName );
+
+            await cluster.QueryIndexes.CreatePrimaryIndexAsync( bucketName );
+            await cluster.QueryIndexes.CreateIndexAsync( bucketName, "ix_type", new [] { "type" } );
+        }
+
+        var bucket = await cluster.BucketAsync( bucketName );
+        await bucket.WaitUntilReadyAsync( _options.ClusterReadyTimeout );
 
         // check for scope
 
-        if ( !await CouchbaseHelper.ScopeExistsAsync( _clusterProvider, bucketName, scopeName ) )
+        if ( !await clusterHelper.ScopeExistsAsync( bucketName, scopeName ) )
         {
             _logger.LogInformation( "Creating scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName );
-            await CouchbaseHelper.CreateScopeAsync( _clusterProvider, bucketName, scopeName );
+            await clusterHelper.CreateScopeAsync( bucketName, scopeName );
 
-            await CouchbaseHelper.WaitUntilAsync(
-                async () => await CouchbaseHelper.ScopeExistsAsync( _clusterProvider, bucketName, scopeName ),
+            await clusterHelper.WaitUntilAsync(
+                async () => await clusterHelper.ScopeExistsAsync( bucketName, scopeName ),
                 _options.ProvisionRetryInterval, 
                 _options.ProvisionAttempts,
                 _logger
@@ -61,14 +90,14 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
         // check for collection
 
-        if ( !await CouchbaseHelper.CollectionExistsAsync( _clusterProvider, bucketName, scopeName, collectionName ) )
+        if ( !await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ) )
         {
             _logger.LogInformation( "Creating collection `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
 
-            await CouchbaseHelper.CreateCollectionAsync( _clusterProvider, bucketName, scopeName, collectionName );
+            await clusterHelper.CreateCollectionAsync( bucketName, scopeName, collectionName );
 
-            await CouchbaseHelper.WaitUntilAsync(
-                async () => await CouchbaseHelper.CollectionExistsAsync( _clusterProvider, bucketName, scopeName, collectionName ),
+            await clusterHelper.WaitUntilAsync(
+                async () => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ),
                 _options.ProvisionRetryInterval,
                 _options.ProvisionAttempts,
                 _logger
@@ -77,14 +106,14 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
         // check for primary index
 
-        if ( !await CouchbaseHelper.PrimaryCollectionIndexExistsAsync( _clusterProvider, bucketName, scopeName, collectionName ) )
+        if ( !await clusterHelper.PrimaryCollectionIndexExistsAsync( bucketName, scopeName, collectionName ) )
         {
             _logger.LogInformation( "Creating primary index `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
 
-            await CouchbaseHelper.CreatePrimaryCollectionIndexAsync( _clusterProvider, bucketName, scopeName, collectionName );
+            await clusterHelper.CreatePrimaryCollectionIndexAsync( bucketName, scopeName, collectionName );
 
-            await CouchbaseHelper.WaitUntilAsync(
-                async () => await CouchbaseHelper.CollectionExistsAsync( _clusterProvider, bucketName, scopeName, collectionName ),
+            await clusterHelper.WaitUntilAsync(
+                async () => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ),
                 _options.ProvisionRetryInterval,
                 _options.ProvisionAttempts,
                 _logger
