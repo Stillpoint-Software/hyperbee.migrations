@@ -31,7 +31,7 @@ public class CreateInitialBuckets : Migration
             "buckets.json"
         );
 
-        await clusterHelper.CreateIndexesFromResourcesAsync( 
+        await clusterHelper.CreateStatementsFromResourcesAsync( 
             _logger,
             VersionedName(), 
             "cloudc/indexes.json", 

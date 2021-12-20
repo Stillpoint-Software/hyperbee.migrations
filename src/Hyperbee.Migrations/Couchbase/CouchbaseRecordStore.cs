@@ -31,16 +31,22 @@ public class CouchbaseRecordStore : IMigrationRecordStore
         return collection;
     }
 
+    private async Task WaitForStoreAsync()
+    {
+        var cluster = await _clusterProvider.GetClusterAsync();
+        await cluster.WaitUntilReadyAsync( _options.ClusterReadyTimeout );
+    }
+
     public async Task InitializeAsync()
     {
         // wait for cluster ready
 
-        var cluster = await _clusterProvider.GetClusterAsync();
-        await cluster.WaitUntilReadyAsync( _options.ClusterReadyTimeout );
-        var clusterHelper = cluster.Helper();
+        await WaitForStoreAsync();
+
+        var clusterHelper = await _clusterProvider.GetClusterHelperAsync();
+        var cluster = clusterHelper.Cluster;
 
         var (bucketName, scopeName, collectionName) = _options;
-
         var waitSettings = new WaitSettings( _options.ProvisionRetryInterval, _options.ProvisionAttempts );
 
         // check for bucket

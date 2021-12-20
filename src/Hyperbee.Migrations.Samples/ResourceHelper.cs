@@ -44,7 +44,7 @@ public static class ResourceHelper
         ' ',
         '\u00A0' /* non-breaking space */,  ',', ';', '|', '~', '@',
         '#', '%', '^', '&', '*', '+', '-', '/', '\\', '<', '>', '?', '[',
-        ']', '(', ')', '{', '}', '\"', '\'', '!'
+        ']', '(', ')', '{', '}', '\"', '\'', '!', '`', '='
     };
 
     private static string GetResourceName( string key )

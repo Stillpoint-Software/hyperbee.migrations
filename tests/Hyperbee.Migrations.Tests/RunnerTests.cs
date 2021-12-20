@@ -149,7 +149,7 @@ public class RunnerTests
         var store = new List<(string Id, MigrationRecord Record)>();
         var recordStore = InitializeStore( store );
         var options = GetMigrationOptions();
-        options.Profiles.Add("exclude-me");
+        options.Profiles.Add( "exclude-me" );
         var logger = Substitute.For<ILogger<MigrationRunner>>();
         var migrationRunner = new MigrationRunner( recordStore, options, logger );
 
@@ -209,38 +209,38 @@ public class FakeLock : IDisposable
     }
 }
 
-[Migration(1)]
+[Migration( 1 )]
 public class First_Migration : Migration
 {
     public override Task UpAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
     public override Task DownAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
 }
 
-[Migration(2)]
+[Migration( 2 )]
 public class Second_Migration : Migration
 {
     public override Task UpAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
     public override Task DownAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
 }
 
-[Migration(3, "development", "demo")]
+[Migration( 3, "development", "demo" )]
 public class Development_Migration : Migration
 {
     public override Task UpAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
 }
 
-[Migration(4, "uses-BaseMigration")]
+[Migration( 4, "uses-BaseMigration" )]
 public class Subclass_of_BaseMigration : BaseMigration
 {
     public override Task UpAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
-}    
+}
 
-[Migration(5, "exclude-me")]
+[Migration( 5, "exclude-me" )]
 public class _has_problems__with_underscores___ : Migration
 {
     public override Task UpAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
-}    
-    
+}
+
 public abstract class BaseMigration : Migration
 {
     public override Task UpAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
