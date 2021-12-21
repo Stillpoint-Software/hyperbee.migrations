@@ -33,6 +33,8 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
     private async Task WaitForStoreAsync()
     {
+        _logger.LogInformation( "Waiting for cluster..." );
+
         var cluster = await _clusterProvider.GetClusterAsync();
         await cluster.WaitUntilReadyAsync( _options.ClusterReadyTimeout );
     }

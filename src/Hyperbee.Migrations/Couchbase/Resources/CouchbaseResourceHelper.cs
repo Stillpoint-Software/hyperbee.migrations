@@ -1,31 +1,36 @@
-﻿using System.Text.Json;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 using Couchbase.Core.IO.Transcoders;
+using Couchbase.Diagnostics;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
-using Hyperbee.Migrations.Couchbase;
-using Hyperbee.Migrations.Samples.Resources;
 using Microsoft.Extensions.Logging;
 
-namespace Hyperbee.Migrations.Samples;
+namespace Hyperbee.Migrations.Couchbase.Resources;
 
 public static class CouchbaseResourceHelper
 {
     private const string DefaultName = "_default";
 
-    public static async Task CreateBucketsFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, string resourceName )
+    public static async Task CreateBucketsFromResourcesAsync<TMigration>( this ClusterHelper clusterHelper, ILogger logger, string resourceName )
+        where TMigration : Migration
     {
-        await CreateBucketsFromResourcesAsync( clusterHelper, logger, migrationName, default, resourceName );
+        await CreateBucketsFromResourcesAsync<TMigration>( clusterHelper, logger, default, resourceName );
     }
 
-    public static async Task CreateBucketsFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, WaitSettings waitSettings, string resourceName )
+    public static async Task CreateBucketsFromResourcesAsync<TMigration>( this ClusterHelper clusterHelper, ILogger logger, WaitSettings waitSettings, string resourceName )
+        where TMigration : Migration
     {
         // resourceName => name/bucket-resource.json
 
         static IEnumerable<BucketSettings> ReadResources( string migrationName, string resourceName )
         {
-            var json = ResourceHelper.GetResource( migrationName, resourceName );
+            var json = ResourceHelper.GetResource<TMigration>( $"{migrationName}.{resourceName}" );
 
             var options = new JsonSerializerOptions
             {
@@ -37,21 +42,25 @@ public static class CouchbaseResourceHelper
             return JsonSerializer.Deserialize<IList<BucketSettings>>( json, options );
         }
 
+        ThrowIfNoResourceLocationFor<TMigration>();
+        var migrationName = Migration.VersionedName<TMigration>();
+
         waitSettings ??= new WaitSettings( TimeSpan.Zero, 0 );
 
         foreach ( var bucketSettings in ReadResources( migrationName, resourceName ) )
             await CreateBucketAsync( clusterHelper, bucketSettings, waitSettings, logger );
     }
 
-    public static async Task CreateStatementsFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, params string[] resourceNames )
+    public static async Task CreateStatementsFromResourcesAsync<TMigration>( this ClusterHelper clusterHelper, ILogger logger, params string[] resourceNames )
+        where TMigration : Migration
     {
         // resourceName => name/bucket/statement-resource.json
 
-        static IEnumerable<StatementItem> ReadResources( ClusterHelper clusterHelper, string migrationName, params string[] resourceNames )
+        static IEnumerable<StatementItem> ReadResources( string migrationName, params string[] resourceNames )
         {
             foreach ( var resourceName in resourceNames )
             {
-                var json = ResourceHelper.GetResource( migrationName, resourceName );
+                var json = ResourceHelper.GetResource<TMigration>( $"{migrationName}.{resourceName}" );
                 var node = JsonNode.Parse( json );
 
                 var statements = node!["statements"]!.AsArray()
@@ -65,7 +74,10 @@ public static class CouchbaseResourceHelper
             }
         }
 
-        foreach ( var statementItem in ReadResources( clusterHelper, migrationName, resourceNames ) )
+        ThrowIfNoResourceLocationFor<TMigration>();
+        var migrationName = Migration.VersionedName<TMigration>();
+
+        foreach ( var statementItem in ReadResources( migrationName, resourceNames ) )
         {
             switch(statementItem.StatementType)
             {
@@ -94,7 +106,8 @@ public static class CouchbaseResourceHelper
 
     private record DocumentItem( KeyspaceRef Keyspace, string Id, string Content );
 
-    public static async Task CreateDocumentsFromResourcesAsync( this ClusterHelper clusterHelper, ILogger logger, string migrationName, params string[] resourcePaths )
+    public static async Task CreateDocumentsFromResourcesAsync<TMigration>( this ClusterHelper clusterHelper, ILogger logger, params string[] resourcePaths )
+        where TMigration : Migration
     {
         // resourcePath => name/bucket[/scope]/collection
 
@@ -126,8 +139,8 @@ public static class CouchbaseResourceHelper
         {
             foreach ( var resourcePath in resourcePaths )
             {
-                var resourcePrefix = ResourceHelper.GetResourceName( migrationName, resourcePath ) + "."; // add trailing '.' to ensure StartsWith doesn't find false positives
-                var resourceNames = ResourceHelper.GetManifestResourceNames().Where( x => x.StartsWith( resourcePrefix, StringComparison.OrdinalIgnoreCase ) );
+                var resourcePrefix = ResourceHelper.GetResourceName<TMigration>( $"{migrationName}.{resourcePath}." ); // add trailing '.' to ensure StartsWith doesn't find false positives
+                var resourceNames = ResourceHelper.GetResourceNames<TMigration>().Where( x => x.StartsWith( resourcePrefix, StringComparison.OrdinalIgnoreCase ) );
 
                 var options = new JsonSerializerOptions
                 {
@@ -138,7 +151,7 @@ public static class CouchbaseResourceHelper
 
                 foreach ( var resourceName in resourceNames )
                 {
-                    var json = ResourceHelper.GetResource( resourceName );
+                    var json = ResourceHelper.GetResource<TMigration>( resourceName, fullyQualified: true );
                     var node = JsonNode.Parse( json );
 
                     switch ( node )
@@ -159,8 +172,24 @@ public static class CouchbaseResourceHelper
             }
         }
 
+        ThrowIfNoResourceLocationFor<TMigration>();
+        var migrationName = Migration.VersionedName<TMigration>();
+
         foreach ( var (keyspace, id, content) in ReadResources( migrationName, resourcePaths ) )
             await UpsertDocumentAsync( clusterHelper, keyspace, id, content, logger );
+    }
+
+    private static void ThrowIfNoResourceLocationFor<TMigration>()
+        where TMigration : Migration
+    {
+        var exists = typeof(TMigration)
+            .Assembly
+            .GetCustomAttributes( typeof(ResourceLocationAttribute), false )
+            .Cast<ResourceLocationAttribute>()
+            .Any();
+
+        if ( !exists )
+            throw new NotSupportedException( $"Missing required assembly attribute: {nameof(ResourceLocationAttribute)}." );
     }
 
     private static async Task CreateBucketAsync( ClusterHelper clusterHelper, BucketSettings bucketSettings, WaitSettings waitSettings, ILogger logger )
@@ -192,6 +221,8 @@ public static class CouchbaseResourceHelper
 
         logger?.LogInformation( "CREATE {kind} {indexName} ON {keyspace}", kind, item.Name, item.Keyspace );
         await clusterHelper.QueryExecuteAsync( item.Statement );
+
+        clusterHelper.Cluster.WaitUntilReadyAsync
     }
 
     private static async Task CreateScopeAsync( ClusterHelper clusterHelper, StatementItem item, ILogger logger )
@@ -214,7 +245,7 @@ public static class CouchbaseResourceHelper
 
     private static async Task UpsertDocumentAsync( ClusterHelper clusterHelper, KeyspaceRef keyspace, string id, string content, ILogger logger )
     {
-        logger?.LogInformation( "Upserting `{id}` TO {bucketName} SCOPE {scopeName} COLLECTION {collectionName}", id, keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName );
+        logger?.LogInformation( "UPSERT `{id}` TO {bucketName} SCOPE {scopeName} COLLECTION {collectionName}", id, keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName );
 
         var bucket = await clusterHelper.Cluster.BucketAsync( keyspace.BucketName );
         var scope = await bucket.ScopeAsync( keyspace.ScopeName );

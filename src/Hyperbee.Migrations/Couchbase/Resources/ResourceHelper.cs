@@ -1,19 +1,18 @@
-﻿using System.Text;
+﻿using System;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text;
 
-// ReSharper disable once CheckNamespace
-namespace Hyperbee.Migrations.Samples.Resources;
+namespace Hyperbee.Migrations.Couchbase.Resources;
 
 public static class ResourceHelper
 {
-    public static string GetResource( string locator, string name )
+    public static string GetResource<TType>( string name, bool fullyQualified = false )
     {
-        var resourceName = GetResourceName( locator, name );
-        return GetResource( resourceName );
-    }
+        var fullyQualifiedName = fullyQualified ? name : GetResourceName<TType>( name );
 
-    public static string GetResource( string fullyQualifiedName )
-    {
-        using var stream = typeof(ResourceHelper).Assembly.GetManifestResourceStream( fullyQualifiedName );
+        using var stream = typeof(TType).Assembly.GetManifestResourceStream( fullyQualifiedName );
 
         if ( stream == null )
             throw new FileNotFoundException( $"Cannot find '{fullyQualifiedName}'." );
@@ -22,22 +21,26 @@ public static class ResourceHelper
         return reader.ReadToEnd();
     }
 
-    public static string GetResourceName( string locator, string name )
+    public static string GetResourceName<TType>( string name )
     {
-        if ( locator == null )
-            throw new ArgumentNullException( nameof(locator) );
-
         if ( name == null )
             throw new ArgumentNullException( nameof(name) );
 
-        var key = SanitizeName( $"{locator}.{name}" );
+        var ns = typeof(TType) // look for assembly attribute
+            .Assembly
+            .GetCustomAttributes( typeof(ResourceLocationAttribute), false )
+            .Cast<ResourceLocationAttribute>()
+            .Select( x => x.RootNamespace )
+            .FirstOrDefault() ?? typeof(TType).Namespace; // default to type namespace
 
-        return $"{typeof(ResourceHelper).Namespace}.{key}";
+        var key = SanitizeName( name );
+
+        return $"{ns}.{key}";
     }
 
-    public static string[] GetManifestResourceNames()
+    public static string[] GetResourceNames<TType>()
     {
-        return typeof(ResourceHelper).Assembly.GetManifestResourceNames();
+        return typeof(TType).Assembly.GetManifestResourceNames();
     }
 
     private static readonly char[] InvalidChars = {

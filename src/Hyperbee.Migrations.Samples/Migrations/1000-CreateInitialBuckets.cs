@@ -1,6 +1,9 @@
 ﻿using Couchbase.Extensions.DependencyInjection;
 using Hyperbee.Migrations.Couchbase;
+using Hyperbee.Migrations.Couchbase.Resources;
 using Microsoft.Extensions.Logging;
+
+[assembly:ResourceLocation( "Hyperbee.Migrations.Samples.Resources" )] // define once for the assembly
 
 namespace Hyperbee.Migrations.Samples.Migrations;
 
@@ -24,24 +27,21 @@ public class CreateInitialBuckets : Migration
         var clusterHelper = await _clusterProvider.GetClusterHelperAsync();
         var waitSettings = new WaitSettings( TimeSpan.FromSeconds( 3 ), 20 );
 
-        await clusterHelper.CreateBucketsFromResourcesAsync(
+        await clusterHelper.CreateBucketsFromResourcesAsync<CreateInitialBuckets>(
             _logger,
-            VersionedName(),
             waitSettings,
             "buckets.json"
         );
 
-        await clusterHelper.CreateStatementsFromResourcesAsync( 
+        await clusterHelper.CreateStatementsFromResourcesAsync<CreateInitialBuckets>( 
             _logger,
-            VersionedName(), 
-            "cloudc/indexes.json", 
-            "wagglebee/indexes.json", 
-            "wagglebeecache/indexes.json" 
+            "cloudc/statements.json",
+            "wagglebee/statements.json",
+            "wagglebeecache/statements.json"
         );
 
-        await clusterHelper.CreateDocumentsFromResourcesAsync(
+        await clusterHelper.CreateDocumentsFromResourcesAsync<CreateInitialBuckets>(
             _logger,
-            VersionedName(),
             "cloudc/_default",
             "wagglebee/_default",
             "wagglebeecache/_default"
