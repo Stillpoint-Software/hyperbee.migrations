@@ -30,7 +30,7 @@ public static class ResourceHelper
         if ( name == null )
             throw new ArgumentNullException( nameof(name) );
 
-        var key = GetResourceName( $"{locator}.{name}" );
+        var key = SanitizeName( $"{locator}.{name}" );
 
         return $"{typeof(ResourceHelper).Namespace}.{key}";
     }
@@ -47,19 +47,21 @@ public static class ResourceHelper
         ']', '(', ')', '{', '}', '\"', '\'', '!', '`', '='
     };
 
-    private static string GetResourceName( string key )
+    private static string SanitizeName( ReadOnlySpan<char> name )
     {
-        if ( string.IsNullOrEmpty( key ) )
+        name = name.Trim( '/' ); // allow path like names
+
+        if ( name.IsEmpty )
             return "_";
 
-        var builder = new StringBuilder( key.Length + 1 );
+        var builder = new StringBuilder( name.Length + 1 );
 
-        if ( char.IsDigit( key[0] ) )
+        if ( char.IsDigit( name[0] ) )
             builder.Append( '_' );
 
-        foreach ( var c in key )
+        foreach ( var c in name )
         {
-            if ( c == '/' )
+            if ( c == '/' ) // path
                 builder.Append( '.' );
             else
                 builder.Append( InvalidChars.Contains( c ) ? '_' : c );
