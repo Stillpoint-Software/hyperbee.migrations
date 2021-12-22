@@ -119,6 +119,8 @@ public static class CouchbaseHelper
         [CallerLineNumber] int lineNumber = 0 )
     {
         var (waitInterval, maxAttempts) = settings ?? throw new ArgumentNullException( nameof(settings) );
+        
+        // ReSharper disable once ExplicitCallerInfoArgument
         await WaitUntilAsync( clusterHelper, condition, waitInterval, maxAttempts, logger, memberName, lineNumber );
     }
 
