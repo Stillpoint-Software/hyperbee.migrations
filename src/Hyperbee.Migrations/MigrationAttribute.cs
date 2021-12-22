@@ -9,7 +9,6 @@ public class MigrationAttribute : Attribute
 {
     public long Version { get; set; }
     public IEnumerable<string> Profiles { get; set; }
-    public string Description { get; set; } = string.Empty;
 
     public MigrationAttribute( long version )
         : this( version, Array.Empty<string>() )

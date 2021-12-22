@@ -56,7 +56,7 @@ public class MigrationRunner
 
         var migrations = DiscoverMigrations( _options );
 
-        var executionStopwatch = Stopwatch.StartNew();
+        var stopwatch = Stopwatch.StartNew();
 
         var runCount = 0;
         foreach ( var (type, attribute) in migrations )
@@ -108,8 +108,8 @@ public class MigrationRunner
                 break;
         }
 
-        executionStopwatch.Stop();
-        _logger.LogInformation( "Executed {migrationCount} migrations in {elapsed}", runCount, executionStopwatch.Elapsed );
+        stopwatch.Stop();
+        _logger.LogInformation( "Executed {migrationCount} migrations in {elapsed}", runCount, stopwatch.Elapsed );
     }
 
     private static IEnumerable<MigrationDescriptor> DiscoverMigrations( MigrationOptions options )

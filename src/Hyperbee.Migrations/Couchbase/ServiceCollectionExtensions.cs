@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
+using Hyperbee.Migrations.Couchbase.Resources;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -57,6 +58,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<MigrationOptions>( provider => provider.GetRequiredService<CouchbaseMigrationOptions>() );
         services.AddSingleton<IMigrationRecordStore, CouchbaseRecordStore>();
         services.AddSingleton<MigrationRunner>();
+        
+        services.AddTransient( typeof(CouchbaseResourceRunner<>) ); // technically singleton works because of the nature of migrations, but even so ..
 
         return services;
     }

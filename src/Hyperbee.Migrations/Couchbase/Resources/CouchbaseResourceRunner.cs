@@ -6,25 +6,30 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Couchbase.Core.IO.Transcoders;
-using Couchbase.Diagnostics;
+using Couchbase.Extensions.DependencyInjection;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Couchbase.Resources;
 
-public static class CouchbaseResourceHelper
+public class CouchbaseResourceRunner<TMigration>
+    where TMigration : Migration
 {
     private const string DefaultName = "_default";
 
-    public static async Task CreateBucketsFromResourcesAsync<TMigration>( this ClusterHelper clusterHelper, ILogger logger, string resourceName )
-        where TMigration : Migration
+    private readonly IClusterProvider _clusterProvider;
+    private readonly ILogger _logger;
+
+    public WaitSettings WaitSettings { get; set; }
+
+    public CouchbaseResourceRunner( IClusterProvider clusterProvider, ILogger<TMigration> logger )
     {
-        await CreateBucketsFromResourcesAsync<TMigration>( clusterHelper, logger, default, resourceName );
+        _clusterProvider = clusterProvider;
+        _logger = logger;
     }
 
-    public static async Task CreateBucketsFromResourcesAsync<TMigration>( this ClusterHelper clusterHelper, ILogger logger, WaitSettings waitSettings, string resourceName )
-        where TMigration : Migration
+    public async Task CreateBucketsFromAsync( string resourceName )
     {
         // resourceName => name/bucket-resource.json
 
@@ -42,17 +47,18 @@ public static class CouchbaseResourceHelper
             return JsonSerializer.Deserialize<IList<BucketSettings>>( json, options );
         }
 
-        ThrowIfNoResourceLocationFor<TMigration>();
-        var migrationName = Migration.VersionedName<TMigration>();
+        ThrowIfNoResourceLocationFor();
 
-        waitSettings ??= new WaitSettings( TimeSpan.Zero, 0 );
+        var migrationName = Migration.VersionedName<TMigration>();
+        var waitSettings = WaitSettings ?? new WaitSettings( TimeSpan.Zero, 0 );
+
+        var clusterHelper = await _clusterProvider.GetClusterHelperAsync();
 
         foreach ( var bucketSettings in ReadResources( migrationName, resourceName ) )
-            await CreateBucketAsync( clusterHelper, bucketSettings, waitSettings, logger );
+            await CreateBucketAsync( clusterHelper, bucketSettings, waitSettings, _logger );
     }
 
-    public static async Task CreateStatementsFromResourcesAsync<TMigration>( this ClusterHelper clusterHelper, ILogger logger, params string[] resourceNames )
-        where TMigration : Migration
+    public async Task CreateStatementsFromAsync( params string[] resourceNames )
     {
         // resourceName => name/bucket/statement-resource.json
 
@@ -74,28 +80,31 @@ public static class CouchbaseResourceHelper
             }
         }
 
-        ThrowIfNoResourceLocationFor<TMigration>();
+        ThrowIfNoResourceLocationFor();
+
         var migrationName = Migration.VersionedName<TMigration>();
+
+        var clusterHelper = await _clusterProvider.GetClusterHelperAsync();
 
         foreach ( var statementItem in ReadResources( migrationName, resourceNames ) )
         {
-            switch(statementItem.StatementType)
+            switch ( statementItem.StatementType )
             {
                 case StatementType.Index:
                 case StatementType.PrimaryIndex:
-                    await CreateIndexAsync( clusterHelper, statementItem, logger );
+                    await CreateIndexAsync( clusterHelper, statementItem );
                     break;
 
                 case StatementType.Scope:
-                    await CreateScopeAsync( clusterHelper, statementItem, logger );
+                    await CreateScopeAsync( clusterHelper, statementItem );
                     break;
 
                 case StatementType.Collection:
-                    await CreateCollectionAsync( clusterHelper, statementItem, logger );
+                    await CreateCollectionAsync( clusterHelper, statementItem );
                     break;
 
                 case StatementType.Build:
-                    await BuildIndexesAsync( clusterHelper, statementItem, logger );
+                    await BuildIndexesAsync( clusterHelper, statementItem );
                     break;
 
                 default:
@@ -106,8 +115,7 @@ public static class CouchbaseResourceHelper
 
     private record DocumentItem( KeyspaceRef Keyspace, string Id, string Content );
 
-    public static async Task CreateDocumentsFromResourcesAsync<TMigration>( this ClusterHelper clusterHelper, ILogger logger, params string[] resourcePaths )
-        where TMigration : Migration
+    public async Task CreateDocumentsFromAsync( params string[] resourcePaths )
     {
         // resourcePath => name/bucket[/scope]/collection
 
@@ -119,7 +127,7 @@ public static class CouchbaseResourceHelper
             var count = resourceParts.Length;
 
             if ( count < 2 || count > 4 )
-                throw new ArgumentException( "Invalid resource path. Path must be in the form 'name/bucket[/scope]/collection'.", nameof(resourcePaths) );
+                throw new ArgumentException( "Invalid resource path. Path must be in the form 'name/bucket[/scope]/collection'.", nameof( resourcePaths ) );
 
             var bucketName = resourceParts[0];
             var scopeName = count == 4 ? resourceParts[^2] : DefaultName;
@@ -172,27 +180,28 @@ public static class CouchbaseResourceHelper
             }
         }
 
-        ThrowIfNoResourceLocationFor<TMigration>();
+        ThrowIfNoResourceLocationFor();
         var migrationName = Migration.VersionedName<TMigration>();
 
+        var clusterHelper = await _clusterProvider.GetClusterHelperAsync();
+
         foreach ( var (keyspace, id, content) in ReadResources( migrationName, resourcePaths ) )
-            await UpsertDocumentAsync( clusterHelper, keyspace, id, content, logger );
+            await UpsertDocumentAsync( clusterHelper, keyspace, id, content );
     }
 
-    private static void ThrowIfNoResourceLocationFor<TMigration>()
-        where TMigration : Migration
+    private static void ThrowIfNoResourceLocationFor()
     {
-        var exists = typeof(TMigration)
+        var exists = typeof( TMigration )
             .Assembly
-            .GetCustomAttributes( typeof(ResourceLocationAttribute), false )
+            .GetCustomAttributes( typeof( ResourceLocationAttribute ), false )
             .Cast<ResourceLocationAttribute>()
             .Any();
 
         if ( !exists )
-            throw new NotSupportedException( $"Missing required assembly attribute: {nameof(ResourceLocationAttribute)}." );
+            throw new NotSupportedException( $"Missing required assembly attribute: {nameof( ResourceLocationAttribute )}." );
     }
 
-    private static async Task CreateBucketAsync( ClusterHelper clusterHelper, BucketSettings bucketSettings, WaitSettings waitSettings, ILogger logger )
+    private async Task CreateBucketAsync( ClusterHelper clusterHelper, BucketSettings bucketSettings, WaitSettings waitSettings, ILogger logger )
     {
         if ( await clusterHelper.BucketExistsAsync( bucketSettings.Name ) )
             return;
@@ -212,40 +221,38 @@ public static class CouchbaseResourceHelper
         );
     }
 
-    private static async Task CreateIndexAsync( ClusterHelper clusterHelper, StatementItem item, ILogger logger )
+    private async Task CreateIndexAsync( ClusterHelper clusterHelper, StatementItem item )
     {
         if ( item.Name != null && await clusterHelper.IndexExistsAsync( item.Keyspace.BucketName, item.Name ) )
             return;
 
         var kind = item.StatementType == StatementType.PrimaryIndex ? "PRIMARY INDEX" : "INDEX";
 
-        logger?.LogInformation( "CREATE {kind} {indexName} ON {keyspace}", kind, item.Name, item.Keyspace );
-        await clusterHelper.QueryExecuteAsync( item.Statement );
-
-        clusterHelper.Cluster.WaitUntilReadyAsync
-    }
-
-    private static async Task CreateScopeAsync( ClusterHelper clusterHelper, StatementItem item, ILogger logger )
-    {
-        logger?.LogInformation( "CREATE SCOPE {indexName} ON {keyspace}", item.Name, item.Keyspace );
+        _logger?.LogInformation( "CREATE {kind} {indexName} ON {keyspace}", kind, item.Name, item.Keyspace );
         await clusterHelper.QueryExecuteAsync( item.Statement );
     }
 
-    private static async Task CreateCollectionAsync( ClusterHelper clusterHelper, StatementItem item, ILogger logger )
+    private async Task CreateScopeAsync( ClusterHelper clusterHelper, StatementItem item )
     {
-        logger?.LogInformation( "CREATE COLLECTION {indexName} ON {keyspace}", item.Name, item.Keyspace );
+        _logger?.LogInformation( "CREATE SCOPE {indexName} ON {keyspace}", item.Name, item.Keyspace );
         await clusterHelper.QueryExecuteAsync( item.Statement );
     }
 
-    private static async Task BuildIndexesAsync( ClusterHelper clusterHelper, StatementItem item, ILogger logger )
+    private async Task CreateCollectionAsync( ClusterHelper clusterHelper, StatementItem item )
     {
-        logger?.LogInformation( "BUILD INDEX ON {keyspace}", item.Keyspace );
+        _logger?.LogInformation( "CREATE COLLECTION {indexName} ON {keyspace}", item.Name, item.Keyspace );
         await clusterHelper.QueryExecuteAsync( item.Statement );
     }
 
-    private static async Task UpsertDocumentAsync( ClusterHelper clusterHelper, KeyspaceRef keyspace, string id, string content, ILogger logger )
+    private async Task BuildIndexesAsync( ClusterHelper clusterHelper, StatementItem item )
     {
-        logger?.LogInformation( "UPSERT `{id}` TO {bucketName} SCOPE {scopeName} COLLECTION {collectionName}", id, keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName );
+        _logger?.LogInformation( "BUILD INDEX ON {keyspace}", item.Keyspace );
+        await clusterHelper.QueryExecuteAsync( item.Statement );
+    }
+
+    private async Task UpsertDocumentAsync( ClusterHelper clusterHelper, KeyspaceRef keyspace, string id, string content )
+    {
+        _logger?.LogInformation( "UPSERT `{id}` TO {bucketName} SCOPE {scopeName} COLLECTION {collectionName}", id, keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName );
 
         var bucket = await clusterHelper.Cluster.BucketAsync( keyspace.BucketName );
         var scope = await bucket.ScopeAsync( keyspace.ScopeName );
@@ -253,4 +260,3 @@ public static class CouchbaseResourceHelper
         await collection.UpsertAsync( id, content, x => x.Transcoder( new RawStringTranscoder() ) );
     }
 }
-
