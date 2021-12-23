@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Text;
 
-namespace Hyperbee.Migrations.Couchbase;
+namespace Hyperbee.Migrations.Couchbase.Parsers;
 
 public record KeyspaceRef( string Namespace, string BucketName, string ScopeName, string CollectionName )
 {

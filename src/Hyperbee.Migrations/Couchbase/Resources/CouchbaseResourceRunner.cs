@@ -9,6 +9,7 @@ using Couchbase.Core.IO.Transcoders;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
+using Hyperbee.Migrations.Couchbase.Parsers;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Couchbase.Resources;
@@ -69,8 +70,9 @@ public class CouchbaseResourceRunner<TMigration>
                 var json = ResourceHelper.GetResource<TMigration>( $"{migrationName}.{resourceName}" );
                 var node = JsonNode.Parse( json );
 
-                var statements = node!["statements"]!.AsArray()
-                    .Select( e => e["statement"]?.ToString() )
+                var statements = node!["statements"]!
+                    .AsArray()
+                    .Select( x => x["statement"]?.ToString() )
                     .Where( x => x != null );
 
                 var parser = new StatementParser();

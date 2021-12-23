@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Hyperbee.Migrations.Couchbase;
+using Hyperbee.Migrations.Couchbase.Parsers;
 
 // ReSharper disable UnusedMember.Global
 // ReSharper disable InconsistentNaming
