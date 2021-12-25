@@ -81,13 +81,13 @@ internal class CouchbaseStartupWaiter : ICouchbaseStartupWaiter
         }
     }
 
-    private async Task WaitForManagementUriAsync( TimeSpan waitInterval, CancellationToken stopToken )
+    private async Task WaitForManagementUriAsync( TimeSpan waitInterval, CancellationToken timeoutToken )
     {
         _logger.LogInformation( "Waiting for management Uri..." );
 
         while ( true )
         {
-            stopToken.ThrowIfCancellationRequested();
+            timeoutToken.ThrowIfCancellationRequested();
 
             try
             {
@@ -105,15 +105,15 @@ internal class CouchbaseStartupWaiter : ICouchbaseStartupWaiter
         }
     }
 
-    private async Task WaitForClusterAsync( TimeSpan waitInterval, CancellationToken stopToken )
+    private async Task WaitForClusterAsync( TimeSpan waitInterval, CancellationToken timeoutToken )
     {
         _logger.LogInformation( "Waiting for cluster..." );
 
         while ( true )
         {
-            stopToken.ThrowIfCancellationRequested();
+            timeoutToken.ThrowIfCancellationRequested();
 
-            var result = await _restApiService.GetClusterDetailsAsync( stopToken );
+            var result = await _restApiService.GetClusterDetailsAsync( timeoutToken );
 
             var status = result!["nodes"]!.AsArray()
                 .Where( x => x["clusterMembership"]?.ToString() == "active" )
@@ -121,20 +121,20 @@ internal class CouchbaseStartupWaiter : ICouchbaseStartupWaiter
                 .Where( x => x != null )
                 .ToList();
 
-            if ( status.All( x => x == "healthy" ) )
+            if ( status.All( x => x == "healthy" ) ) // states: warmup, healthy, ??
                 break;
 
             _logger.LogInformation( "Wait..." );
 
-            await Task.Delay( waitInterval, stopToken );
+            await Task.Delay( waitInterval, timeoutToken );
         }
 
         _logger.LogInformation( "Cluster is ready." );
     }
 
-    private async Task SystemQueryWarmupAsync( CancellationToken stopToken )
+    private async Task SystemQueryWarmupAsync( CancellationToken timeoutToken )
     {
-        stopToken.ThrowIfCancellationRequested();
+        timeoutToken.ThrowIfCancellationRequested();
 
         // the first select against `system:*` returns unpredictable results
         // after hard shutdown. this is spooky but a sacrificial query seems
@@ -145,6 +145,6 @@ internal class CouchbaseStartupWaiter : ICouchbaseStartupWaiter
         var result = await clusterHelper.Cluster.QueryAsync<int>( "SELECT RAW count(*) FROM system:indexes WHERE is_primary" )
             .ConfigureAwait( false );
 
-        var _ = await result.Rows.FirstOrDefaultAsync( stopToken );
+        var _ = await result.Rows.FirstOrDefaultAsync( timeoutToken );
     }
 }

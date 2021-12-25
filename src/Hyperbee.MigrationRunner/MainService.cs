@@ -25,10 +25,10 @@ public class MainService: BackgroundService
         var provider = scope.ServiceProvider;
         var lifetime = provider.GetRequiredService<ICouchbaseLifetimeService>();
 
+        await Task.Delay( 1000, stoppingToken ); // small delay to let for startup logging finish
+
         try
         {
-            await Task.Delay( 1000, stoppingToken ); // wait for startup logging
-
             var runner = provider.GetRequiredService<Migrations.MigrationRunner>();
             await runner.RunAsync( stoppingToken );
         }
