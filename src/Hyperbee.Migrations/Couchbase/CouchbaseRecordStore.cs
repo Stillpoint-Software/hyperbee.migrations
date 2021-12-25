@@ -8,16 +8,18 @@ using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Couchbase;
 
-public class CouchbaseRecordStore : IMigrationRecordStore
+internal class CouchbaseRecordStore : IMigrationRecordStore
 {
     private readonly IClusterProvider _clusterProvider;
     private readonly CouchbaseMigrationOptions _options;
+    private readonly ICouchbaseStartupWaiter _startupWaiter;
     private readonly ILogger<CouchbaseRecordStore> _logger;
 
-    public CouchbaseRecordStore( IClusterProvider clusterProvider, CouchbaseMigrationOptions options, ILogger<CouchbaseRecordStore> logger )
+    public CouchbaseRecordStore( IClusterProvider clusterProvider, CouchbaseMigrationOptions options, ICouchbaseStartupWaiter startupWaiter, ILogger<CouchbaseRecordStore> logger )
     {
         _clusterProvider = clusterProvider;
         _options = options;
+        _startupWaiter = startupWaiter;
         _logger = logger;
     }
 
@@ -31,19 +33,13 @@ public class CouchbaseRecordStore : IMigrationRecordStore
         return collection;
     }
 
-    private async Task WaitForStoreAsync()
-    {
-        _logger.LogInformation( "Waiting for cluster..." );
-
-        var cluster = await _clusterProvider.GetClusterAsync();
-        await cluster.WaitUntilReadyAsync( _options.ClusterReadyTimeout );
-    }
-
     public async Task InitializeAsync()
     {
-        // wait for cluster ready
+        // wait for system ready
 
-        await WaitForStoreAsync();
+        await _startupWaiter.WaitForSystemReadyAsync( _options.ClusterReadyTimeout );
+
+        // get the cluster
 
         var clusterHelper = await _clusterProvider.GetClusterHelperAsync();
         var cluster = clusterHelper.Cluster;
@@ -75,10 +71,10 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
             await cluster.QueryIndexes.CreatePrimaryIndexAsync( bucketName );
             await cluster.QueryIndexes.CreateIndexAsync( bucketName, "ix_type", new [] { "type" } );
-        }
 
-        var bucket = await cluster.BucketAsync( bucketName );
-        await bucket.WaitUntilReadyAsync( _options.ClusterReadyTimeout );
+            var bucket = await cluster.BucketAsync( bucketName );
+            await bucket.WaitUntilReadyAsync( _options.ClusterReadyTimeout );
+        }
 
         // check for scope
 

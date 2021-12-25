@@ -31,8 +31,8 @@ public class RunnerTests
 
         // assert
         Assert.AreEqual( 2, store.Count );
-        Assert.AreEqual( "migrationrecord.first.migration.1", store.First().Id );
-        Assert.AreEqual( "migrationrecord.second.migration.2", store.Skip( 1 ).First().Id );
+        Assert.AreEqual( "record.1.first-migration", store.First().Id );
+        Assert.AreEqual( "record.2.second-migration", store.Skip( 1 ).First().Id );
     }
 
     [TestMethod]
@@ -51,7 +51,7 @@ public class RunnerTests
 
         // assert
         Assert.AreEqual( 1, store.Count );
-        Assert.AreEqual( "migrationrecord.first.migration.1", store.First().Id );
+        Assert.AreEqual( "record.1.first-migration", store.First().Id );
     }
 
     [TestMethod]
@@ -60,8 +60,8 @@ public class RunnerTests
         // arrange
         var store = new List<(string Id, MigrationRecord Record)>
         {
-        new("migrationrecord.first.migration.1", new MigrationRecord()),
-        new("migrationrecord.second.migration.2", new MigrationRecord()),
+            new("record.1.first-migration", new MigrationRecord()),
+            new("record.2.second-migration", new MigrationRecord()),
         };
         var recordStore = InitializeStore( store );
         var options = GetMigrationOptions();
@@ -82,8 +82,8 @@ public class RunnerTests
         // arrange
         var store = new List<(string Id, MigrationRecord Record)>
         {
-        new("migrationrecord.first.migration.1", new MigrationRecord()),
-        new("migrationrecord.second.migration.2", new MigrationRecord()),
+        new("record.1.first-migration", new MigrationRecord()),
+        new("record.2.second-migration", new MigrationRecord()),
         };
         var recordStore = InitializeStore( store );
         var options = GetMigrationOptions();
@@ -97,7 +97,7 @@ public class RunnerTests
 
         // assert
         Assert.AreEqual( 1, store.Count );
-        Assert.AreEqual( "migrationrecord.first.migration.1", store.First().Id );
+        Assert.AreEqual( "record.1.first-migration", store.First().Id );
     }
 
     [TestMethod]
@@ -116,9 +116,9 @@ public class RunnerTests
 
         // assert
         Assert.AreEqual( 3, store.Count );
-        Assert.AreEqual( "migrationrecord.first.migration.1", store.First().Id );
-        Assert.AreEqual( "migrationrecord.second.migration.2", store.Skip( 1 ).First().Id );
-        Assert.AreEqual( "migrationrecord.development.migration.3", store.Skip( 2 ).First().Id );
+        Assert.AreEqual( "record.1.first-migration", store.First().Id );
+        Assert.AreEqual( "record.2.second-migration", store.Skip( 1 ).First().Id );
+        Assert.AreEqual( "record.3.development-migration", store.Skip( 2 ).First().Id );
     }
 
     [TestMethod]
@@ -137,9 +137,9 @@ public class RunnerTests
 
         // assert
         Assert.AreEqual( 3, store.Count );
-        Assert.AreEqual( "migrationrecord.first.migration.1", store.First().Id );
-        Assert.AreEqual( "migrationrecord.second.migration.2", store.Skip( 1 ).First().Id );
-        Assert.AreEqual( "migrationrecord.subclass.of.basemigration.4", store.Skip( 2 ).First().Id );
+        Assert.AreEqual( "record.1.first-migration", store.First().Id );
+        Assert.AreEqual( "record.2.second-migration", store.Skip( 1 ).First().Id );
+        Assert.AreEqual( "record.4.subclass-of-basemigration", store.Skip( 2 ).First().Id );
     }
 
     [TestMethod]
@@ -158,9 +158,9 @@ public class RunnerTests
 
         // assert
         Assert.AreEqual( 3, store.Count );
-        Assert.AreEqual( "migrationrecord.first.migration.1", store.First().Id );
-        Assert.AreEqual( "migrationrecord.second.migration.2", store.Skip( 1 ).First().Id );
-        Assert.AreEqual( "migrationrecord.has.problems.with.underscores.5", store.Skip( 2 ).First().Id );
+        Assert.AreEqual( "record.1.first-migration", store.First().Id );
+        Assert.AreEqual( "record.2.second-migration", store.Skip( 1 ).First().Id );
+        Assert.AreEqual( "record.5.has-problems-with-underscores", store.Skip( 2 ).First().Id );
     }
 
     private static MigrationOptions GetMigrationOptions()

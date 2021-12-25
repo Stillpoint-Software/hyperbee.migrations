@@ -72,6 +72,8 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<ICouchbaseRestApiService, CouchbaseRestApiService>()
             .AddHttpMessageHandler<CouchbaseAuthenticationHandler>();
 
+        services.AddTransient<ICouchbaseStartupWaiter,CouchbaseStartupWaiter>();
+
         return services;
     }
 

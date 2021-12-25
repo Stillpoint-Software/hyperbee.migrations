@@ -27,6 +27,8 @@ public class MainService: BackgroundService
 
         try
         {
+            await Task.Delay( 1000, stoppingToken ); // wait for startup logging
+
             var runner = provider.GetRequiredService<Migrations.MigrationRunner>();
             await runner.RunAsync( stoppingToken );
         }
