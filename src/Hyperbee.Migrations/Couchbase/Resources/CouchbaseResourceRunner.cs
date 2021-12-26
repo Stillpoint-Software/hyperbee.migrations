@@ -56,7 +56,7 @@ public class CouchbaseResourceRunner<TMigration>
         var clusterHelper = await _clusterProvider.GetClusterHelperAsync();
 
         foreach ( var bucketSettings in ReadResources( migrationName, resourceName ) )
-            await CreateBucketAsync( clusterHelper, bucketSettings, waitSettings, _logger );
+            await CreateBucketAsync( clusterHelper, bucketSettings, waitSettings, _logger ).ConfigureAwait( false );
     }
 
     public async Task CreateStatementsFromAsync( params string[] resourceNames )
@@ -94,11 +94,11 @@ public class CouchbaseResourceRunner<TMigration>
             {
                 case StatementType.Index:
                 case StatementType.PrimaryIndex:
-                    await CreateIndexAsync( clusterHelper, statementItem );
+                    await CreateIndexAsync( clusterHelper, statementItem ).ConfigureAwait( false );
                     break;
 
                 case StatementType.Scope:
-                    await CreateScopeAsync( clusterHelper, statementItem );
+                    await CreateScopeAsync( clusterHelper, statementItem ).ConfigureAwait( false );
                     break;
 
                 case StatementType.Collection:
@@ -106,7 +106,7 @@ public class CouchbaseResourceRunner<TMigration>
                     break;
 
                 case StatementType.Build:
-                    await BuildIndexesAsync( clusterHelper, statementItem );
+                    await BuildIndexesAsync( clusterHelper, statementItem ).ConfigureAwait( false );
                     break;
 
                 default:
@@ -185,10 +185,11 @@ public class CouchbaseResourceRunner<TMigration>
         ThrowIfNoResourceLocationFor();
         var migrationName = Migration.VersionedName<TMigration>();
 
-        var clusterHelper = await _clusterProvider.GetClusterHelperAsync();
+        var clusterHelper = await _clusterProvider.GetClusterHelperAsync()
+            .ConfigureAwait( false );
 
         foreach ( var (keyspace, id, content) in ReadResources( migrationName, resourcePaths ) )
-            await UpsertDocumentAsync( clusterHelper, keyspace, id, content );
+            await UpsertDocumentAsync( clusterHelper, keyspace, id, content ).ConfigureAwait( false );
     }
 
     private static void ThrowIfNoResourceLocationFor()
@@ -203,7 +204,7 @@ public class CouchbaseResourceRunner<TMigration>
             throw new NotSupportedException( $"Missing required assembly attribute: {nameof( ResourceLocationAttribute )}." );
     }
 
-    private async Task CreateBucketAsync( ClusterHelper clusterHelper, BucketSettings bucketSettings, WaitSettings waitSettings, ILogger logger )
+    private static async Task CreateBucketAsync( ClusterHelper clusterHelper, BucketSettings bucketSettings, WaitSettings waitSettings, ILogger logger )
     {
         if ( await clusterHelper.BucketExistsAsync( bucketSettings.Name ) )
             return;
@@ -217,48 +218,48 @@ public class CouchbaseResourceRunner<TMigration>
             return;
 
         await clusterHelper.WaitUntilAsync(
-            async () => await clusterHelper.BucketExistsAsync( bucketSettings.Name ),
+            async () => await clusterHelper.BucketExistsAsync( bucketSettings.Name ).ConfigureAwait( false ),
             waitSettings.WaitInterval,
             waitSettings.MaxAttempts
-        );
+        ).ConfigureAwait( false );
     }
 
     private async Task CreateIndexAsync( ClusterHelper clusterHelper, StatementItem item )
     {
-        if ( item.Name != null && await clusterHelper.IndexExistsAsync( item.Keyspace.BucketName, item.Name ) )
+        if ( item.Name != null && await clusterHelper.IndexExistsAsync( item.Keyspace.BucketName, item.Name ).ConfigureAwait( false ) )
             return;
 
         var kind = item.StatementType == StatementType.PrimaryIndex ? "PRIMARY INDEX" : "INDEX";
 
         _logger?.LogInformation( "CREATE {kind} {indexName} ON {keyspace}", kind, item.Name, item.Keyspace );
-        await clusterHelper.QueryExecuteAsync( item.Statement );
+        await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
     }
 
     private async Task CreateScopeAsync( ClusterHelper clusterHelper, StatementItem item )
     {
         _logger?.LogInformation( "CREATE SCOPE {indexName} ON {keyspace}", item.Name, item.Keyspace );
-        await clusterHelper.QueryExecuteAsync( item.Statement );
+        await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
     }
 
     private async Task CreateCollectionAsync( ClusterHelper clusterHelper, StatementItem item )
     {
         _logger?.LogInformation( "CREATE COLLECTION {indexName} ON {keyspace}", item.Name, item.Keyspace );
-        await clusterHelper.QueryExecuteAsync( item.Statement );
+        await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
     }
 
     private async Task BuildIndexesAsync( ClusterHelper clusterHelper, StatementItem item )
     {
         _logger?.LogInformation( "BUILD INDEX ON {keyspace}", item.Keyspace );
-        await clusterHelper.QueryExecuteAsync( item.Statement );
+        await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
     }
 
     private async Task UpsertDocumentAsync( ClusterHelper clusterHelper, KeyspaceRef keyspace, string id, string content )
     {
         _logger?.LogInformation( "UPSERT `{id}` TO {bucketName} SCOPE {scopeName} COLLECTION {collectionName}", id, keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName );
 
-        var bucket = await clusterHelper.Cluster.BucketAsync( keyspace.BucketName );
-        var scope = await bucket.ScopeAsync( keyspace.ScopeName );
-        var collection = await scope.CollectionAsync( keyspace.CollectionName );
-        await collection.UpsertAsync( id, content, x => x.Transcoder( new RawStringTranscoder() ) );
+        var bucket = await clusterHelper.Cluster.BucketAsync( keyspace.BucketName ).ConfigureAwait( false );
+        var scope = await bucket.ScopeAsync( keyspace.ScopeName ).ConfigureAwait( false );
+        var collection = await scope.CollectionAsync( keyspace.CollectionName ).ConfigureAwait( false );
+        await collection.UpsertAsync( id, content, x => x.Transcoder( new RawStringTranscoder() ) ).ConfigureAwait( false );
     }
 }

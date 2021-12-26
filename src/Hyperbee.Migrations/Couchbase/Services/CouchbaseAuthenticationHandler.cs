@@ -20,8 +20,8 @@ namespace Hyperbee.Migrations.Couchbase.Services
 
         protected override async Task<HttpResponseMessage> SendAsync( HttpRequestMessage request, CancellationToken cancellationToken )
         {
-            request.Headers.Authorization = await _authenticationHeaderProvider.GetHeaderAsync( request.Options );
-            return await base.SendAsync( request, cancellationToken );
+            request.Headers.Authorization = await _authenticationHeaderProvider.GetHeaderAsync( request.Options ).ConfigureAwait( false );
+            return await base.SendAsync( request, cancellationToken ).ConfigureAwait( false );
         }
     }
 }

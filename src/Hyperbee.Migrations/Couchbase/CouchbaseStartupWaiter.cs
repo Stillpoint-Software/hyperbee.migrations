@@ -53,7 +53,7 @@ internal class CouchbaseStartupWaiter : ICouchbaseStartupWaiter
 
     public async Task WaitForSystemReadyAsync( TimeSpan timeout )
     {
-        _logger.LogInformation( "Waiting for system ready..." );
+        _logger?.LogInformation( "Waiting for system ready..." );
 
         // compute wait intervals
         var connectInterval = GetConnectInterval( timeout, 10 );
@@ -67,13 +67,16 @@ internal class CouchbaseStartupWaiter : ICouchbaseStartupWaiter
         try
         {
             // wait for management uri
-            await WaitForManagementUriAsync( connectInterval, timeoutToken );
+            await WaitForManagementUriAsync( connectInterval, timeoutToken )
+                .ConfigureAwait( false );
 
             // wait for cluster
-            await WaitForClusterAsync( waitInterval, timeoutToken );
+            await WaitForClusterAsync( waitInterval, timeoutToken )
+                .ConfigureAwait( false );
 
             // warm up n1ql
-            await SystemQueryWarmupAsync( timeoutToken );
+            await SystemQueryWarmupAsync( timeoutToken )
+                .ConfigureAwait( false );
         }
         catch ( OperationCanceledException ex )
         {
@@ -83,7 +86,7 @@ internal class CouchbaseStartupWaiter : ICouchbaseStartupWaiter
 
     private async Task WaitForManagementUriAsync( TimeSpan waitInterval, CancellationToken timeoutToken )
     {
-        _logger.LogInformation( "Waiting for management Uri..." );
+        _logger?.LogInformation( "Waiting for management Uri..." );
 
         while ( true )
         {
@@ -91,9 +94,10 @@ internal class CouchbaseStartupWaiter : ICouchbaseStartupWaiter
 
             try
             {
-                await _restApiService.WaitUntilManagementReadyAsync( waitInterval );
+                await _restApiService.WaitUntilManagementReadyAsync( waitInterval )
+                    .ConfigureAwait( false );
 
-                _logger.LogInformation( "Management Uri is ready." );
+                _logger?.LogInformation( "Management Uri is ready." );
                 return;
             }
             catch ( UnambiguousTimeoutException )
@@ -101,7 +105,7 @@ internal class CouchbaseStartupWaiter : ICouchbaseStartupWaiter
                 // reporting interval timeout
             }
 
-            _logger.LogInformation( "Wait..." );
+            _logger?.LogInformation( "Wait..." );
         }
     }
 
@@ -113,7 +117,8 @@ internal class CouchbaseStartupWaiter : ICouchbaseStartupWaiter
         {
             timeoutToken.ThrowIfCancellationRequested();
 
-            var result = await _restApiService.GetClusterDetailsAsync( timeoutToken );
+            var result = await _restApiService.GetClusterDetailsAsync( timeoutToken )
+                .ConfigureAwait( false );
 
             var status = result!["nodes"]!.AsArray()
                 .Where( x => x["clusterMembership"]?.ToString() == "active" )
@@ -126,10 +131,11 @@ internal class CouchbaseStartupWaiter : ICouchbaseStartupWaiter
 
             _logger.LogInformation( "Wait..." );
 
-            await Task.Delay( waitInterval, timeoutToken );
+            await Task.Delay( waitInterval, timeoutToken )
+                .ConfigureAwait( false );
         }
 
-        _logger.LogInformation( "Cluster is ready." );
+        _logger?.LogInformation( "Cluster is ready." );
     }
 
     private async Task SystemQueryWarmupAsync( CancellationToken timeoutToken )
@@ -140,11 +146,13 @@ internal class CouchbaseStartupWaiter : ICouchbaseStartupWaiter
         // after hard shutdown. this is spooky but a sacrificial query seems
         // to fix it.
 
-        var clusterHelper = await _clusterProvider.GetClusterHelperAsync();
+        var clusterHelper = await _clusterProvider.GetClusterHelperAsync()
+            .ConfigureAwait( false );
 
         var result = await clusterHelper.Cluster.QueryAsync<int>( "SELECT RAW count(*) FROM system:indexes WHERE is_primary" )
             .ConfigureAwait( false );
 
-        var _ = await result.Rows.FirstOrDefaultAsync( timeoutToken );
+        var _ = await result.Rows.FirstOrDefaultAsync( timeoutToken )
+            .ConfigureAwait( false );
     }
 }

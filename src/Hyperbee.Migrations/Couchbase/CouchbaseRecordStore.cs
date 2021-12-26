@@ -25,10 +25,10 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
     private async Task<ICouchbaseCollection> GetCollectionAsync()
     {
-        var cluster = await _clusterProvider.GetClusterAsync();
-        var bucket = await cluster.BucketAsync( _options.BucketName );
-        var scope = await bucket.ScopeAsync( _options.ScopeName );
-        var collection = await scope.CollectionAsync( _options.CollectionName );
+        var cluster = await _clusterProvider.GetClusterAsync().ConfigureAwait( false );
+        var bucket = await cluster.BucketAsync( _options.BucketName ).ConfigureAwait( false );
+        var scope = await bucket.ScopeAsync( _options.ScopeName ).ConfigureAwait( false );
+        var collection = await scope.CollectionAsync( _options.CollectionName ).ConfigureAwait( false );
 
         return collection;
     }
@@ -37,11 +37,14 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
     {
         // wait for system ready
 
-        await _startupWaiter.WaitForSystemReadyAsync( _options.ClusterReadyTimeout );
+        await _startupWaiter.WaitForSystemReadyAsync( _options.ClusterReadyTimeout )
+            .ConfigureAwait( false );
 
         // get the cluster
 
-        var clusterHelper = await _clusterProvider.GetClusterHelperAsync();
+        var clusterHelper = await _clusterProvider.GetClusterHelperAsync()
+            .ConfigureAwait( false );
+
         var cluster = clusterHelper.Cluster;
 
         var (bucketName, scopeName, collectionName) = _options;
@@ -65,15 +68,15 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
                 async () => await clusterHelper.BucketExistsAsync( bucketName ),
                 waitSettings,
                 _logger
-            );
+            ).ConfigureAwait( false );
 
             _logger.LogInformation( "Creating ledger bucket indexes." );
 
-            await cluster.QueryIndexes.CreatePrimaryIndexAsync( bucketName );
-            await cluster.QueryIndexes.CreateIndexAsync( bucketName, "ix_type", new [] { "type" } );
+            await cluster.QueryIndexes.CreatePrimaryIndexAsync( bucketName ).ConfigureAwait( false );
+            await cluster.QueryIndexes.CreateIndexAsync( bucketName, "ix_type", new [] { "type" } ).ConfigureAwait( false );
 
-            var bucket = await cluster.BucketAsync( bucketName );
-            await bucket.WaitUntilReadyAsync( _options.ClusterReadyTimeout );
+            var bucket = await cluster.BucketAsync( bucketName ).ConfigureAwait( false );
+            await bucket.WaitUntilReadyAsync( _options.ClusterReadyTimeout ).ConfigureAwait( false );
         }
 
         // check for scope
@@ -81,10 +84,10 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         if ( !await clusterHelper.ScopeExistsAsync( bucketName, scopeName ) )
         {
             _logger.LogInformation( "Creating ledger scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName );
-            await clusterHelper.CreateScopeAsync( bucketName, scopeName );
+            await clusterHelper.CreateScopeAsync( bucketName, scopeName ).ConfigureAwait( false );
 
             await clusterHelper.WaitUntilAsync(
-                async () => await clusterHelper.ScopeExistsAsync( bucketName, scopeName ),
+                async () => await clusterHelper.ScopeExistsAsync( bucketName, scopeName ).ConfigureAwait( false ),
                 waitSettings,
                 _logger
             );
@@ -96,10 +99,10 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         {
             _logger.LogInformation( "Creating ledger collection `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
 
-            await clusterHelper.CreateCollectionAsync( bucketName, scopeName, collectionName );
+            await clusterHelper.CreateCollectionAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false );
 
             await clusterHelper.WaitUntilAsync(
-                async () => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ),
+                async () => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
                 waitSettings,
                 _logger
             );
@@ -111,10 +114,10 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         {
             _logger.LogInformation( "Creating ledger primary index `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
 
-            await clusterHelper.CreatePrimaryCollectionIndexAsync( bucketName, scopeName, collectionName );
+            await clusterHelper.CreatePrimaryCollectionIndexAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false );
 
             await clusterHelper.WaitUntilAsync(
-                async () => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ),
+                async () => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
                 waitSettings,
                 _logger
             );
@@ -125,7 +128,8 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
     {
         // https://github.com/couchbaselabs/Couchbase.Extensions/blob/master/docs/locks.md
 
-        var collection = await GetCollectionAsync();
+        var collection = await GetCollectionAsync()
+            .ConfigureAwait( false );
 
         try
         {
@@ -143,7 +147,8 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
     public async Task<bool> ExistsAsync( string recordId )
     {
-        var collection = await GetCollectionAsync();
+        var collection = await GetCollectionAsync()
+            .ConfigureAwait( false );
 
         var check = await collection.ExistsAsync( recordId )
             .ConfigureAwait( false );
@@ -153,7 +158,8 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
     public async Task DeleteAsync( string recordId )
     {
-        var collection = await GetCollectionAsync();
+        var collection = await GetCollectionAsync()
+            .ConfigureAwait( false );
 
         await collection.RemoveAsync( recordId )
             .ConfigureAwait( false );
@@ -161,7 +167,8 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
     public async Task StoreAsync( string recordId )
     {
-        var collection = await GetCollectionAsync();
+        var collection = await GetCollectionAsync()
+            .ConfigureAwait( false );
 
         var record = new MigrationRecord
         {

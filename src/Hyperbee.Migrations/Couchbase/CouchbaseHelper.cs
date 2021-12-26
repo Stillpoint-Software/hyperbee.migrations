@@ -40,7 +40,7 @@ public static class CouchbaseHelper
         await QueryExecuteAsync(
             clusterHelper,
             $"CREATE SCOPE `{Unquote( bucketName )}`.`{Unquote( scopeName )}`"
-        );
+        ).ConfigureAwait( false );
     }
 
     public static async Task CreateCollectionAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
@@ -48,7 +48,7 @@ public static class CouchbaseHelper
         await QueryExecuteAsync(
             clusterHelper,
             $"CREATE COLLECTION `{Unquote(bucketName)}`.`{Unquote( scopeName )}`.`{Unquote( collectionName )}`"
-        );
+        ).ConfigureAwait( false );
     }
 
     public static async Task CreatePrimaryCollectionIndexAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
@@ -56,7 +56,7 @@ public static class CouchbaseHelper
         await QueryExecuteAsync(
             clusterHelper,
             $"CREATE PRIMARY INDEX ON `default`:`{Unquote(bucketName)}`.`{Unquote(scopeName)}`.`{Unquote(collectionName)}`"
-        );
+        ).ConfigureAwait( false );
     }
 
     public static async Task<bool> BucketExistsAsync( this ClusterHelper clusterHelper, string bucketName )
@@ -101,7 +101,7 @@ public static class CouchbaseHelper
             .ConfigureAwait( false );
 
         //var scopes = await bucket.Collections.GetAllScopesAsync().ConfigureAwait( false );
-        var scopes = await Fixes.GetAllScopesAsync( bucket.Collections );
+        var scopes = await Fixes.GetAllScopesAsync( bucket.Collections ).ConfigureAwait( false );
 
         scopeName = Unquote( scopeName );
         return scopes.Any( x => x.Name == scopeName );
@@ -131,7 +131,7 @@ public static class CouchbaseHelper
             .ConfigureAwait( false );
 
         //var scopes = await bucket.Collections.GetAllScopesAsync();
-        var scopes = await Fixes.GetAllScopesAsync( bucket.Collections );
+        var scopes = await Fixes.GetAllScopesAsync( bucket.Collections ).ConfigureAwait( false );
 
         scopeName = Unquote( scopeName );
         collectionName = Unquote( collectionName );
@@ -144,7 +144,7 @@ public static class CouchbaseHelper
         return await QueryExistsAsync(
             clusterHelper,
             $"SELECT RAW count(*) FROM system:indexes WHERE bucket_id = '{Unquote( bucketName )}' AND scope_id = '{Unquote( scopeName )}' AND keyspace_id = '{Unquote( collectionName )}' AND is_primary"
-        );
+        ).ConfigureAwait( false );
     }
 
     public static async Task<bool> IndexExistsAsync( this ClusterHelper clusterHelper, string bucketName, string indexName )
@@ -152,7 +152,7 @@ public static class CouchbaseHelper
         return await QueryExistsAsync(
             clusterHelper,
             $"SELECT RAW count(*) FROM system:indexes WHERE keyspace_id = '{Unquote(bucketName)}' AND name = '{Unquote(indexName)}'"
-        );
+        ).ConfigureAwait( false );
     }
 
     public static async Task<bool> PrimaryIndexExistsAsync( this ClusterHelper clusterHelper, string bucketName, string indexName )
@@ -160,7 +160,7 @@ public static class CouchbaseHelper
         return await QueryExistsAsync(
             clusterHelper,
             $"SELECT RAW count(*) FROM system:indexes WHERE keyspace_id = '{Unquote( bucketName )}' AND name = '{Unquote( indexName )}' AND is_primary"
-        );
+        ).ConfigureAwait( false );
     }
 
     internal static async Task QueryExecuteAsync( this ClusterHelper clusterHelper, string statement )
@@ -174,7 +174,7 @@ public static class CouchbaseHelper
         var result = await clusterHelper.Cluster.QueryAsync<int>( statement )
             .ConfigureAwait( false );
 
-        return await result.Rows.FirstOrDefaultAsync() > 0;
+        return await result.Rows.FirstOrDefaultAsync().ConfigureAwait( false ) > 0;
     }
 
     public static async Task WaitUntilAsync( this ClusterHelper clusterHelper, Func<Task<bool>> condition, WaitSettings settings, ILogger logger = default,
@@ -184,7 +184,8 @@ public static class CouchbaseHelper
         var (waitInterval, maxAttempts) = settings ?? throw new ArgumentNullException( nameof(settings) );
         
         // ReSharper disable once ExplicitCallerInfoArgument
-        await WaitUntilAsync( clusterHelper, condition, waitInterval, maxAttempts, logger, memberName, lineNumber );
+        await WaitUntilAsync( clusterHelper, condition, waitInterval, maxAttempts, logger, memberName, lineNumber )
+            .ConfigureAwait( false );
     }
 
     public static async Task WaitUntilAsync( this ClusterHelper clusterHelper, Func<Task<bool>> condition, TimeSpan waitInterval, int maxAttempts, ILogger logger = default,

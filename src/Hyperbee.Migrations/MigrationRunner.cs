@@ -34,7 +34,7 @@ public class MigrationRunner
             await _recordStore.InitializeAsync();
 
             if ( _options.LockingEnabled )
-                syncLock = await _recordStore.CreateLockAsync();
+                syncLock = await _recordStore.CreateLockAsync().ConfigureAwait( false );
 
             await RunMigrationsAsync( cancellationToken );
         }
@@ -71,7 +71,7 @@ public class MigrationRunner
 
             var recordId = _options.Conventions.GetRecordId( migration );
 
-            var exists = await _recordStore.ExistsAsync( recordId );
+            var exists = await _recordStore.ExistsAsync( recordId ).ConfigureAwait( false );
 
             switch ( direction )
             {
@@ -90,13 +90,13 @@ public class MigrationRunner
             switch ( direction )
             {
                 case Direction.Down:
-                    await migration.DownAsync( cancellationToken );
-                    await _recordStore.DeleteAsync( recordId );
+                    await migration.DownAsync( cancellationToken ).ConfigureAwait( false );
+                    await _recordStore.DeleteAsync( recordId ).ConfigureAwait( false );
                     break;
 
                 case Direction.Up:
-                    await migration.UpAsync( cancellationToken );
-                    await _recordStore.StoreAsync( recordId );
+                    await migration.UpAsync( cancellationToken ).ConfigureAwait( false );
+                    await _recordStore.StoreAsync( recordId ).ConfigureAwait( false );
                     break;
             }
 
