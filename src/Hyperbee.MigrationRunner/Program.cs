@@ -1,8 +1,12 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using System.Net;
+using Couchbase;
+using Couchbase.Core.Exceptions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
+using Serilog.Filters;
 using Serilog.Formatting.Compact;
 
 namespace Hyperbee.MigrationRunner;
@@ -26,14 +30,15 @@ internal class Program
                         .AddAppSettingsFile()
                         .AddAppSettingsEnvironmentFile()
                         .AddUserSecrets<Program>()
-                        .AddEnvironmentVariables();
+                        .AddEnvironmentVariables()
+                        .AddCommandLine( args, SwitchMappings() ); 
                 } )
                 .ConfigureServices( ( context, services ) =>
                 {
                     services
                         .AddCouchbase( context.Configuration )
                         .AddCouchbaseMigrations( context.Configuration )
-                        .AddHostedService<MigrationRunnerService>();
+                        .AddHostedService<MainService>();
                 } )
                 .UseSerilog()
                 .RunConsoleAsync();
@@ -67,10 +72,35 @@ internal class Program
             .MinimumLevel.Debug()
             .ReadFrom.Configuration( config )
             .Enrich.FromLogContext()
-            .WriteTo.File( jsonFormatter, pathFormat )
+            .Filter.ByExcluding( x => x.Exception is CouchbaseException { Context: ManagementErrorContext { HttpStatus: HttpStatusCode.OK } } ) // For GetAllScopesAsync false exceptions
+            .WriteTo.File( jsonFormatter, pathFormat, rollingInterval: RollingInterval.Day, shared: true )
             .WriteTo.Console( restrictedToMinimumLevel: LogEventLevel.Information )
             .CreateLogger();
 
         return Log.ForContext( typeof(Program) );
+    }
+
+    private static IDictionary<string,string> SwitchMappings()
+    {
+        // pass array of FromAssemblies: --n:0 AssemblyName1 --n:1 AssemblyName2
+
+        return new Dictionary<string, string>()
+        {
+            // short names
+            { "-n", "FromPaths" },
+            { "-a", "FromAssemblies" },
+            { "-p", "Profiles" },
+            { "-b", "BucketName" },
+            { "-s", "ScopeName" },
+            { "-c", "CollectionName" },
+
+            // aliases
+            { "--names", "FromPaths" },
+            { "--assemblies", "FromAssemblies" },
+            { "--profiles", "Profiles" },
+            { "--bucket", "BucketName" },
+            { "--scope", "ScopeName" },
+            { "--collection", "CollectionName" }
+        };
     }
 }

@@ -34,7 +34,7 @@ public class MigrationRunner
             await _recordStore.InitializeAsync();
 
             if ( _options.LockingEnabled )
-                syncLock = await _recordStore.CreateLockAsync();
+                syncLock = await _recordStore.CreateLockAsync().ConfigureAwait( false );
 
             await RunMigrationsAsync( cancellationToken );
         }
@@ -50,9 +50,13 @@ public class MigrationRunner
 
     private async Task RunMigrationsAsync( CancellationToken cancellationToken )
     {
+        var direction = _options.Direction;
+
+        _logger.LogInformation( "Discovering {direction} migrations ...", direction );
+
         var migrations = DiscoverMigrations( _options );
 
-        var executionStopwatch = Stopwatch.StartNew();
+        var stopwatch = Stopwatch.StartNew();
 
         var runCount = 0;
         foreach ( var (type, attribute) in migrations )
@@ -67,8 +71,7 @@ public class MigrationRunner
 
             var recordId = _options.Conventions.GetRecordId( migration );
 
-            var exists = await _recordStore.ExistsAsync( recordId );
-            var direction = _options.Direction;
+            var exists = await _recordStore.ExistsAsync( recordId ).ConfigureAwait( false );
 
             switch ( direction )
             {
@@ -87,13 +90,13 @@ public class MigrationRunner
             switch ( direction )
             {
                 case Direction.Down:
-                    await migration.DownAsync( cancellationToken );
-                    await _recordStore.DeleteAsync( recordId );
+                    await migration.DownAsync( cancellationToken ).ConfigureAwait( false );
+                    await _recordStore.DeleteAsync( recordId ).ConfigureAwait( false );
                     break;
 
                 case Direction.Up:
-                    await migration.UpAsync( cancellationToken );
-                    await _recordStore.StoreAsync( recordId );
+                    await migration.UpAsync( cancellationToken ).ConfigureAwait( false );
+                    await _recordStore.StoreAsync( recordId ).ConfigureAwait( false );
                     break;
             }
 
@@ -105,8 +108,8 @@ public class MigrationRunner
                 break;
         }
 
-        executionStopwatch.Stop();
-        _logger.LogInformation( "Executed {migrationCount} migrations in {elapsed}", runCount, executionStopwatch.Elapsed );
+        stopwatch.Stop();
+        _logger.LogInformation( "Executed {migrationCount} migrations in {elapsed}", runCount, stopwatch.Elapsed );
     }
 
     private static IEnumerable<MigrationDescriptor> DiscoverMigrations( MigrationOptions options )

@@ -4,8 +4,12 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
+using Couchbase;
+using Hyperbee.Migrations.Couchbase.Resources;
+using Hyperbee.Migrations.Couchbase.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Hyperbee.Migrations.Couchbase;
 
@@ -57,6 +61,18 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<MigrationOptions>( provider => provider.GetRequiredService<CouchbaseMigrationOptions>() );
         services.AddSingleton<IMigrationRecordStore, CouchbaseRecordStore>();
         services.AddSingleton<MigrationRunner>();
+        
+        services.AddTransient( typeof(CouchbaseResourceRunner<>) ); // technically singleton works because of the nature of migrations, but even so ..
+
+        // add support for calling couchbase web sdk api (outside of the couchbase net sdk).
+
+        services.AddScoped<CouchbaseAuthenticationHandler>();
+
+        services.AddHttpClient();
+        services.AddHttpClient<ICouchbaseRestApiService, CouchbaseRestApiService>()
+            .AddHttpMessageHandler<CouchbaseAuthenticationHandler>();
+
+        services.AddTransient<ICouchbaseStartupWaiter,CouchbaseStartupWaiter>();
 
         return services;
     }

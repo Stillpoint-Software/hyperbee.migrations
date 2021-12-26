@@ -1,0 +1,17 @@
+﻿[
+  {
+    "Name": "cloudc",
+    "RamQuotaMB": 256,
+    "FlushEnabled": true
+  },
+  {
+    "Name": "wagglebee",
+    "RamQuotaMB": 512,
+    "FlushEnabled": true
+  },
+  {
+    "Name": "wagglebeecache",
+    "RamQuotaMB": 100,
+    "FlushEnabled": true
+  }
+]

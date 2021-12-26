@@ -3,90 +3,122 @@ using System.Threading.Tasks;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
+using Couchbase.Management.Buckets;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Couchbase;
 
-public class CouchbaseRecordStore : IMigrationRecordStore
+internal class CouchbaseRecordStore : IMigrationRecordStore
 {
     private readonly IClusterProvider _clusterProvider;
     private readonly CouchbaseMigrationOptions _options;
+    private readonly ICouchbaseStartupWaiter _startupWaiter;
     private readonly ILogger<CouchbaseRecordStore> _logger;
 
-    public CouchbaseRecordStore( IClusterProvider clusterProvider, CouchbaseMigrationOptions options, ILogger<CouchbaseRecordStore> logger )
+    public CouchbaseRecordStore( IClusterProvider clusterProvider, CouchbaseMigrationOptions options, ICouchbaseStartupWaiter startupWaiter, ILogger<CouchbaseRecordStore> logger )
     {
         _clusterProvider = clusterProvider;
         _options = options;
+        _startupWaiter = startupWaiter;
         _logger = logger;
     }
 
     private async Task<ICouchbaseCollection> GetCollectionAsync()
     {
-        var cluster = await _clusterProvider.GetClusterAsync();
-        var bucket = await cluster.BucketAsync( _options.BucketName );
-        var scope = await bucket.ScopeAsync( _options.ScopeName );
-        var collection = await scope.CollectionAsync( _options.CollectionName );
+        var cluster = await _clusterProvider.GetClusterAsync().ConfigureAwait( false );
+        var bucket = await cluster.BucketAsync( _options.BucketName ).ConfigureAwait( false );
+        var scope = await bucket.ScopeAsync( _options.ScopeName ).ConfigureAwait( false );
+        var collection = await scope.CollectionAsync( _options.CollectionName ).ConfigureAwait( false );
 
         return collection;
     }
 
     public async Task InitializeAsync()
     {
-        // wait for cluster ready
+        // wait for system ready
 
-        var cluster = await _clusterProvider.GetClusterAsync();
-        await cluster.WaitUntilReadyAsync( _options.ClusterReadyTimeout );
+        await _startupWaiter.WaitForSystemReadyAsync( _options.ClusterReadyTimeout )
+            .ConfigureAwait( false );
+
+        // get the cluster
+
+        var clusterHelper = await _clusterProvider.GetClusterHelperAsync()
+            .ConfigureAwait( false );
+
+        var cluster = clusterHelper.Cluster;
 
         var (bucketName, scopeName, collectionName) = _options;
+        var waitSettings = new WaitSettings( _options.ProvisionRetryInterval, _options.ProvisionAttempts );
 
         // check for bucket
 
-        if ( !await CouchbaseHelper.BucketExistsAsync( _clusterProvider, bucketName ) )
-            throw new MigrationException( $"Missing bucket `{bucketName}`." );
+        if ( !await clusterHelper.BucketExistsAsync( bucketName ) )
+        {
+            _logger.LogInformation( "Creating ledger bucket `{name}`.", bucketName );
+
+            await cluster.Buckets.CreateBucketAsync( new BucketSettings
+                {
+                    Name = bucketName,
+                    RamQuotaMB = 100,
+                    FlushEnabled = true
+                } )
+                .ConfigureAwait( false );
+
+            await clusterHelper.WaitUntilAsync(
+                async () => await clusterHelper.BucketExistsAsync( bucketName ),
+                waitSettings,
+                _logger
+            ).ConfigureAwait( false );
+
+            _logger.LogInformation( "Creating ledger bucket indexes." );
+
+            await cluster.QueryIndexes.CreatePrimaryIndexAsync( bucketName ).ConfigureAwait( false );
+            await cluster.QueryIndexes.CreateIndexAsync( bucketName, "ix_type", new [] { "type" } ).ConfigureAwait( false );
+
+            var bucket = await cluster.BucketAsync( bucketName ).ConfigureAwait( false );
+            await bucket.WaitUntilReadyAsync( _options.ClusterReadyTimeout ).ConfigureAwait( false );
+        }
 
         // check for scope
 
-        if ( !await CouchbaseHelper.ScopeExistsAsync( _clusterProvider, bucketName, scopeName ) )
+        if ( !await clusterHelper.ScopeExistsAsync( bucketName, scopeName ) )
         {
-            _logger.LogInformation( "Creating scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName );
-            await CouchbaseHelper.CreateScopeAsync( _clusterProvider, bucketName, scopeName );
+            _logger.LogInformation( "Creating ledger scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName );
+            await clusterHelper.CreateScopeAsync( bucketName, scopeName ).ConfigureAwait( false );
 
-            await CouchbaseHelper.WaitUntilAsync(
-                async () => await CouchbaseHelper.ScopeExistsAsync( _clusterProvider, bucketName, scopeName ),
-                _options.ProvisionRetryInterval, 
-                _options.ProvisionAttempts,
+            await clusterHelper.WaitUntilAsync(
+                async () => await clusterHelper.ScopeExistsAsync( bucketName, scopeName ).ConfigureAwait( false ),
+                waitSettings,
                 _logger
             );
         }
 
         // check for collection
 
-        if ( !await CouchbaseHelper.CollectionExistsAsync( _clusterProvider, bucketName, scopeName, collectionName ) )
+        if ( !await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ) )
         {
-            _logger.LogInformation( "Creating collection `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
+            _logger.LogInformation( "Creating ledger collection `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
 
-            await CouchbaseHelper.CreateCollectionAsync( _clusterProvider, bucketName, scopeName, collectionName );
+            await clusterHelper.CreateCollectionAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false );
 
-            await CouchbaseHelper.WaitUntilAsync(
-                async () => await CouchbaseHelper.CollectionExistsAsync( _clusterProvider, bucketName, scopeName, collectionName ),
-                _options.ProvisionRetryInterval,
-                _options.ProvisionAttempts,
+            await clusterHelper.WaitUntilAsync(
+                async () => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
+                waitSettings,
                 _logger
             );
         }
 
         // check for primary index
 
-        if ( !await CouchbaseHelper.PrimaryCollectionIndexExistsAsync( _clusterProvider, bucketName, scopeName, collectionName ) )
+        if ( !await clusterHelper.PrimaryCollectionIndexExistsAsync( bucketName, scopeName, collectionName ) )
         {
-            _logger.LogInformation( "Creating primary index `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
+            _logger.LogInformation( "Creating ledger primary index `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
 
-            await CouchbaseHelper.CreatePrimaryCollectionIndexAsync( _clusterProvider, bucketName, scopeName, collectionName );
+            await clusterHelper.CreatePrimaryCollectionIndexAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false );
 
-            await CouchbaseHelper.WaitUntilAsync(
-                async () => await CouchbaseHelper.CollectionExistsAsync( _clusterProvider, bucketName, scopeName, collectionName ),
-                _options.ProvisionRetryInterval,
-                _options.ProvisionAttempts,
+            await clusterHelper.WaitUntilAsync(
+                async () => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
+                waitSettings,
                 _logger
             );
         }
@@ -96,7 +128,8 @@ public class CouchbaseRecordStore : IMigrationRecordStore
     {
         // https://github.com/couchbaselabs/Couchbase.Extensions/blob/master/docs/locks.md
 
-        var collection = await GetCollectionAsync();
+        var collection = await GetCollectionAsync()
+            .ConfigureAwait( false );
 
         try
         {
@@ -114,7 +147,8 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
     public async Task<bool> ExistsAsync( string recordId )
     {
-        var collection = await GetCollectionAsync();
+        var collection = await GetCollectionAsync()
+            .ConfigureAwait( false );
 
         var check = await collection.ExistsAsync( recordId )
             .ConfigureAwait( false );
@@ -124,7 +158,8 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
     public async Task DeleteAsync( string recordId )
     {
-        var collection = await GetCollectionAsync();
+        var collection = await GetCollectionAsync()
+            .ConfigureAwait( false );
 
         await collection.RemoveAsync( recordId )
             .ConfigureAwait( false );
@@ -132,7 +167,8 @@ public class CouchbaseRecordStore : IMigrationRecordStore
 
     public async Task StoreAsync( string recordId )
     {
-        var collection = await GetCollectionAsync();
+        var collection = await GetCollectionAsync()
+            .ConfigureAwait( false );
 
         var record = new MigrationRecord
         {
