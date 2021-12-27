@@ -7,7 +7,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
-using Serilog.Filters;
 using Serilog.Formatting.Compact;
 
 namespace Hyperbee.MigrationRunner;

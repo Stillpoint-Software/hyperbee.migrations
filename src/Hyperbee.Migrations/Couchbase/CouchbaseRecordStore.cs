@@ -5,7 +5,6 @@ using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
-using Hyperbee.Migrations.Couchbase.Services;
 using Hyperbee.Migrations.Couchbase.Wait;
 using Microsoft.Extensions.Logging;
 
@@ -40,7 +39,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
     {
         // wait for system ready
 
-        await _bootstrapper.WaitForSystemReadyAsync( _options.ClusterReadyTimeout )
+        await _bootstrapper.WaitForSystemReadyAsync( _options.ClusterReadyTimeout, cancellationToken )
             .ConfigureAwait( false );
 
         // get the cluster

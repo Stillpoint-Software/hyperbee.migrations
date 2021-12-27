@@ -6,13 +6,14 @@ using Couchbase.Core.Exceptions;
 using Couchbase.Diagnostics;
 using Couchbase.Extensions.DependencyInjection;
 using Hyperbee.Migrations.Couchbase.Services;
+using Hyperbee.Migrations.Couchbase.Wait;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Couchbase;
 
 internal interface ICouchbaseBootstrapper
 {
-    Task WaitForSystemReadyAsync( TimeSpan timeout );
+    Task WaitForSystemReadyAsync( TimeSpan? timeout, CancellationToken cancellationToken = default );
 }
 
 internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
@@ -28,61 +29,60 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
         _logger = logger;
     }
 
-    private static TimeSpan GetWaitInterval( TimeSpan timeout, int reportSeconds )
+    private static TimeSpan GetNotifyInterval( TimeSpan? timeout, int reportSeconds )
     {
-        var timeoutSeconds = timeout.TotalSeconds;
+        var timeoutSeconds = timeout?.TotalSeconds ?? double.MaxValue;
         var intervalSeconds = Math.Min( timeoutSeconds, reportSeconds );
 
         return TimeSpan.FromSeconds( intervalSeconds );
     }
 
-    public async Task WaitForSystemReadyAsync( TimeSpan timeout )
+    public async Task WaitForSystemReadyAsync( TimeSpan? timeout, CancellationToken cancellationToken = default )
     {
         _logger?.LogInformation( "Waiting for system ready..." );
 
-        // compute wait intervals
-        var waitInterval = GetWaitInterval( timeout, 10 );
-
-        // cancellation token
-        using var tokenSource = new CancellationTokenSource();
-        tokenSource.CancelAfter( timeout );
-        var timeoutToken = tokenSource.Token;
+        var tokenProvider = new TimeoutTokenProvider( timeout, cancellationToken );
+        var operationCancelToken = tokenProvider.Token;
+        var notifyInterval = GetNotifyInterval( timeout, 10 );
 
         try
         {
             // wait for management uri
-            await WaitForManagementUriAsync( waitInterval, timeoutToken )
+            await WaitForManagementUriAsync( notifyInterval, operationCancelToken )
                 .ConfigureAwait( false );
 
             // wait for cluster
-            await WaitForClusterAsync( waitInterval, timeoutToken )
+            await WaitForClusterAsync( notifyInterval, operationCancelToken )
                 .ConfigureAwait( false );
 
             // wait for buckets
-            await WaitForBucketsAsync( waitInterval, timeoutToken )
+            await WaitForBucketsAsync( notifyInterval, operationCancelToken )
                 .ConfigureAwait( false );
 
             // warm up n1ql
-            await SystemQueryWarmupAsync( timeoutToken )
+            await SystemQueryWarmupAsync( operationCancelToken )
                 .ConfigureAwait( false );
         }
         catch ( OperationCanceledException ex )
         {
-            throw new UnambiguousTimeoutException( $"Timed out after {timeout.TotalSeconds}.", ex );
+            if ( ex.CancellationToken == tokenProvider.TimeoutToken )
+                throw new UnambiguousTimeoutException( $"Timed out after {timeout!.Value.TotalSeconds}.", ex );
+
+            throw;
         }
     }
 
-    private async Task WaitForManagementUriAsync( TimeSpan waitInterval, CancellationToken timeoutToken )
+    private async Task WaitForManagementUriAsync( TimeSpan notifyInterval, CancellationToken operationCancelToken )
     {
         _logger?.LogInformation( "Waiting for management Uri..." );
 
         while ( true )
         {
-            timeoutToken.ThrowIfCancellationRequested();
+            operationCancelToken.ThrowIfCancellationRequested();
 
             try
             {
-                await _restApiService.WaitUntilManagementReadyAsync( waitInterval, timeoutToken )
+                await _restApiService.WaitUntilManagementReadyAsync( notifyInterval, operationCancelToken )
                     .ConfigureAwait( false );
 
                 _logger?.LogInformation( "Management Uri is ready." );
@@ -97,7 +97,7 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
         }
     }
 
-    private async Task WaitForClusterAsync( TimeSpan waitInterval, CancellationToken timeoutToken )
+    private async Task WaitForClusterAsync( TimeSpan notifyInterval, CancellationToken operationCancelToken )
     {
         // calling the client `cluster.WaitUntilReadyAsync()` is not sufficient because
         // the cluster is considered ready as soon as it is ping-able. cluster buckets
@@ -120,7 +120,7 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
 
         while ( true )
         {
-            timeoutToken.ThrowIfCancellationRequested();
+            operationCancelToken.ThrowIfCancellationRequested();
 
             try
             {
@@ -128,7 +128,7 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
                 {
                     case WaitForHealthy:
                     {
-                        await _restApiService.WaitUntilClusterHealthyAsync( waitInterval, timeoutToken ).ConfigureAwait( false );
+                        await _restApiService.WaitUntilClusterHealthyAsync( notifyInterval, operationCancelToken ).ConfigureAwait( false );
                         state = WaitForMoment;
                         _logger?.LogInformation( "Cluster is healthy." );
                         break;
@@ -144,7 +144,7 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
                         //
                         // try to remedy by adding a delay until we can find a better solution.
                         
-                        await Task.Delay( 5000, timeoutToken );
+                        await Task.Delay( 5000, operationCancelToken );
                         state = WaitForReady;
                         break;
                     }
@@ -152,8 +152,8 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
                     case WaitForReady:
                     {
                         var cluster = await _clusterProvider.GetClusterAsync().ConfigureAwait( false );
-                        var waitOptions = new WaitUntilReadyOptions().CancellationToken( timeoutToken );
-                        await cluster.WaitUntilReadyAsync( waitInterval, waitOptions ).ConfigureAwait( false );
+                        var waitOptions = new WaitUntilReadyOptions().CancellationToken( operationCancelToken );
+                        await cluster.WaitUntilReadyAsync( notifyInterval, waitOptions ).ConfigureAwait( false );
                         _logger?.LogInformation( "Cluster is ready." );
                         return;
                     }
@@ -180,7 +180,7 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
         }
     }
 
-    private async Task WaitForBucketsAsync( TimeSpan waitInterval, CancellationToken timeoutToken )
+    private async Task WaitForBucketsAsync( TimeSpan notifyInterval, CancellationToken operationCancelToken )
     {
         _logger?.LogInformation( "Waiting for buckets..." );
 
@@ -194,11 +194,11 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
 
             while ( true )
             {
-                timeoutToken.ThrowIfCancellationRequested();
+                operationCancelToken.ThrowIfCancellationRequested();
 
                 try
                 {
-                    await bucket.WaitUntilReadyAsync( waitInterval )
+                    await bucket.WaitUntilReadyAsync( notifyInterval )
                         .ConfigureAwait( false );
 
                     _logger?.LogInformation( "Bucket {bucketName} is ready.", bucketName );
@@ -214,9 +214,9 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
         }
     }
 
-    private async Task SystemQueryWarmupAsync( CancellationToken timeoutToken )
+    private async Task SystemQueryWarmupAsync( CancellationToken operationCancelToken )
     {
-        timeoutToken.ThrowIfCancellationRequested();
+        operationCancelToken.ThrowIfCancellationRequested();
 
         // the first select against `system:*` returns unpredictable results
         // after hard shutdown. this is spooky but a sacrificial query seems
@@ -228,7 +228,7 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
         var result = await clusterHelper.Cluster.QueryAsync<int>( "SELECT RAW count(*) FROM system:indexes WHERE is_primary" )
             .ConfigureAwait( false );
 
-        var _ = await result.Rows.FirstOrDefaultAsync( timeoutToken )
+        var _ = await result.Rows.FirstOrDefaultAsync( operationCancelToken )
             .ConfigureAwait( false );
     }
 }
