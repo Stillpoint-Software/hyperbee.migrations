@@ -2,22 +2,16 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Couchbase;
 using Couchbase.Core.Exceptions;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Management.Collections;
-using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 
 namespace Hyperbee.Migrations.Couchbase;
 
 public sealed record IndexItem( string BucketName, string IndexName, string Statement, bool IsPrimary );
-public sealed record WaitSettings( TimeSpan WaitInterval, int MaxAttempts )
-{
-    public int TotalSeconds => WaitInterval.TotalSeconds <= 0 ? 0 : (int) (WaitInterval.TotalSeconds * MaxAttempts);
-}
 
 public sealed record ClusterHelper( ICluster Cluster );
 
@@ -178,37 +172,6 @@ public static class CouchbaseHelper
             .ConfigureAwait( false );
 
         return await result.Rows.FirstOrDefaultAsync().ConfigureAwait( false ) > 0;
-    }
-
-    public static async Task WaitUntilAsync( this ClusterHelper clusterHelper, Func<Task<bool>> condition, WaitSettings settings, ILogger logger = default,
-        [CallerMemberName] string memberName = "",
-        [CallerLineNumber] int lineNumber = 0 )
-    {
-        var (waitInterval, maxAttempts) = settings ?? throw new ArgumentNullException( nameof(settings) );
-        
-        // ReSharper disable once ExplicitCallerInfoArgument
-        await WaitUntilAsync( clusterHelper, condition, waitInterval, maxAttempts, logger, memberName, lineNumber )
-            .ConfigureAwait( false );
-    }
-
-    public static async Task WaitUntilAsync( this ClusterHelper clusterHelper, Func<Task<bool>> condition, TimeSpan waitInterval, int maxAttempts, ILogger logger = default,
-        [CallerMemberName] string memberName = "",
-        [CallerLineNumber] int lineNumber = 0 )
-    {
-        while ( maxAttempts-- >= 0 )
-        {
-            var result = await condition();
-
-            if ( result )
-                return;
-
-            logger?.LogInformation( "Waiting..." );
-
-            await Task.Delay( waitInterval )
-                .ConfigureAwait( false );
-        }
-
-        throw new MigrationTimeoutException( $"{nameof(WaitUntilAsync)} timed out. Called from member `{memberName}`, line {lineNumber}." );
     }
 
     private static class Fixes

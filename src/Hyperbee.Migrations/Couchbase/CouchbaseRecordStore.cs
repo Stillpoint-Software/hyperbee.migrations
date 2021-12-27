@@ -5,6 +5,8 @@ using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
+using Hyperbee.Migrations.Couchbase.Services;
+using Hyperbee.Migrations.Couchbase.Wait;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Couchbase;
@@ -49,7 +51,6 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         var cluster = clusterHelper.Cluster;
 
         var (bucketName, scopeName, collectionName) = _options;
-        var waitSettings = new WaitSettings( _options.ProvisionRetryInterval, _options.ProvisionAttempts );
 
         // check for bucket
 
@@ -65,14 +66,16 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
                 } )
                 .ConfigureAwait( false );
 
-            await clusterHelper.WaitUntilAsync(
-                async () => await clusterHelper.BucketExistsAsync( bucketName ),
-                waitSettings,
-                _logger
-            ).ConfigureAwait( false );
+            await WaitHelper.WaitUntilAsync(
+                async _ => await clusterHelper.BucketExistsAsync( bucketName ).ConfigureAwait( false ),
+                TimeSpan.Zero,
+                new PauseRetryStrategy(),
+                cancellationToken
+            );
 
             // we created the bucket and it exists but couchbase my not have reported it yet.
             // wait for the bucket to be ready.
+
             await Task.Delay( 1000, cancellationToken ).ConfigureAwait( false );
             var bucket = await cluster.BucketAsync( bucketName ).ConfigureAwait( false );
             await bucket.WaitUntilReadyAsync( _options.ClusterReadyTimeout ).ConfigureAwait( false );
@@ -91,10 +94,11 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             _logger.LogInformation( "Creating ledger scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName );
             await clusterHelper.CreateScopeAsync( bucketName, scopeName ).ConfigureAwait( false );
 
-            await clusterHelper.WaitUntilAsync(
-                async () => await clusterHelper.ScopeExistsAsync( bucketName, scopeName ).ConfigureAwait( false ),
-                waitSettings,
-                _logger
+            await WaitHelper.WaitUntilAsync( 
+                async _ => await clusterHelper.ScopeExistsAsync( bucketName, scopeName ).ConfigureAwait( false ), 
+                TimeSpan.Zero, 
+                new PauseRetryStrategy(), 
+                cancellationToken 
             );
         }
 
@@ -106,10 +110,11 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
             await clusterHelper.CreateCollectionAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false );
 
-            await clusterHelper.WaitUntilAsync(
-                async () => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
-                waitSettings,
-                _logger
+            await WaitHelper.WaitUntilAsync(
+                async _ => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
+                TimeSpan.Zero,
+                new PauseRetryStrategy(),
+                cancellationToken
             );
         }
 
@@ -121,10 +126,11 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
             await clusterHelper.CreatePrimaryCollectionIndexAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false );
 
-            await clusterHelper.WaitUntilAsync(
-                async () => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
-                waitSettings,
-                _logger
+            await WaitHelper.WaitUntilAsync(
+                async _ => await clusterHelper.PrimaryCollectionIndexExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
+                TimeSpan.Zero,
+                new PauseRetryStrategy(),
+                cancellationToken
             );
         }
     }

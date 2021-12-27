@@ -142,7 +142,7 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
                         // the server version is < 6.5. this results in calls to `WaitUntilReadyAsync`
                         // failing.
                         //
-                        // try and remedy by adding a delay until we can find a better solution.
+                        // try to remedy by adding a delay until we can find a better solution.
                         
                         await Task.Delay( 5000, timeoutToken );
                         state = WaitForReady;
@@ -166,9 +166,14 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
             catch ( NotSupportedException ex )
             {
                 // the cluster is healthy but WaitUntilReadyAsync failed due to a couchbase
-                // bootstrap initialization problem.
+                // bootstrap initialization problem or invalid credentials.
 
-                throw new SystemException( "Couchbase is incorrectly reporting the system version as < 6.5.", ex );
+                _logger?.LogCritical( 
+                    "Couchbase incorrectly reported the system version as < 6.5. " +
+                    "This is caused by invalid credentials or is the result of an internal couchbase bootstrap error. " +
+                    "The system will exit with error." );
+
+                throw new SystemException( "Couchbase incorrectly reported the system version as < 6.5.", ex );
             }
 
             _logger?.LogInformation( "Wait..." );
