@@ -31,7 +31,7 @@ public class MigrationRunner
 
         try
         {
-            await _recordStore.InitializeAsync();
+            await _recordStore.InitializeAsync( cancellationToken );
 
             if ( _options.LockingEnabled )
                 syncLock = await _recordStore.CreateLockAsync().ConfigureAwait( false );

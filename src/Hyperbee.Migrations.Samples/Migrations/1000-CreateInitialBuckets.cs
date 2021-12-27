@@ -1,5 +1,4 @@
-﻿using Hyperbee.Migrations.Couchbase;
-using Hyperbee.Migrations.Couchbase.Resources;
+﻿using Hyperbee.Migrations.Couchbase.Resources;
 
 namespace Hyperbee.Migrations.Samples.Migrations;
 
@@ -18,22 +17,27 @@ public class CreateInitialBuckets : Migration
         // run a `resource` migration to create initial buckets and state.
         // resource migrations are atypical; prefer `n1ql` migrations.
 
-        _resourceRunner.WaitSettings = new WaitSettings( TimeSpan.FromSeconds( 3 ), 20 );
-
-        await _resourceRunner.CreateBucketsFromAsync(
-            "buckets.json"
+        await _resourceRunner.CreateBucketsFromAsync( 
+            "buckets.json",
+            cancellationToken
         );
 
-        await _resourceRunner.CreateStatementsFromAsync(
-            "cloudc/statements.json",
-            "wagglebee/statements.json",
-            "wagglebeecache/statements.json"
+        await _resourceRunner.CreateStatementsFromAsync( new[]
+            {
+                "cloudc/statements.json",
+                "wagglebee/statements.json",
+                "wagglebeecache/statements.json"
+            },
+            cancellationToken
         );
 
-        await _resourceRunner.CreateDocumentsFromAsync(
-            "cloudc/_default",
-            "wagglebee/_default",
-            "wagglebeecache/_default"
+        await _resourceRunner.CreateDocumentsFromAsync( new []
+            {
+                "cloudc/_default",
+                "wagglebee/_default",
+                "wagglebeecache/_default"
+            },
+            cancellationToken
         );
     }
 }

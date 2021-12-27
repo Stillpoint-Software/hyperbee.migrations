@@ -25,7 +25,7 @@ public class MainService: BackgroundService
         var provider = scope.ServiceProvider;
         var lifetime = provider.GetRequiredService<ICouchbaseLifetimeService>();
 
-        await Task.Delay( 1000, stoppingToken ); // small delay to let for startup logging finish
+        await Task.Yield(); // yield to allow startup logs to write to console
 
         try
         {

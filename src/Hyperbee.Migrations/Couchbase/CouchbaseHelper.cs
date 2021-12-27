@@ -14,7 +14,10 @@ using Newtonsoft.Json.Linq;
 namespace Hyperbee.Migrations.Couchbase;
 
 public sealed record IndexItem( string BucketName, string IndexName, string Statement, bool IsPrimary );
-public sealed record WaitSettings( TimeSpan WaitInterval, int MaxAttempts );
+public sealed record WaitSettings( TimeSpan WaitInterval, int MaxAttempts )
+{
+    public int TotalSeconds => WaitInterval.TotalSeconds <= 0 ? 0 : (int) (WaitInterval.TotalSeconds * MaxAttempts);
+}
 
 public sealed record ClusterHelper( ICluster Cluster );
 

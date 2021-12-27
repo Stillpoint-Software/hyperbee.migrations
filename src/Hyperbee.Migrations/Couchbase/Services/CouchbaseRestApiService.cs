@@ -6,7 +6,6 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Couchbase;
-using Couchbase.Core.Exceptions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -15,14 +14,18 @@ namespace Hyperbee.Migrations.Couchbase.Services
     // https://docs.couchbase.com/server/current/rest-api/rest-endpoints-all.html
     //
     // rest-api service is used to get configuration information that is currently 
-    // unavailable (or broken) through the `standard` net client sdk
+    // unavailable through the `standard` net client sdk
 
     internal interface ICouchbaseRestApiService
     {
+        Task<bool> ClusterHealthyAsync( CancellationToken cancellationToken = default );
         Task<JsonNode> GetClusterInfoAsync( CancellationToken cancellationToken = default );
         Task<JsonNode> GetClusterDetailsAsync( CancellationToken cancellationToken = default );
+
+        Task<bool> BucketHealthyAsync( string bucketName, CancellationToken cancellationToken = default );
         Task<JsonNode> GetBucketDetailsAsync( string bucketName, CancellationToken cancellationToken = default );
-        Task WaitUntilManagementReadyAsync( TimeSpan timeout );
+
+        Task<bool> ManagementReadyAsync( CancellationToken cancellationToken = default );
     }
 
     internal class CouchbaseRestApiService : ICouchbaseRestApiService
@@ -33,7 +36,6 @@ namespace Hyperbee.Migrations.Couchbase.Services
         {
             public static string GetClusterInfo() => "pools";
             public static string GetClusterDetails() => "pools/default";
-
             public static string GetBucketDetails( string bucketName ) => $"pools/default/buckets/{bucketName}";
         }
 
@@ -63,7 +65,7 @@ namespace Hyperbee.Migrations.Couchbase.Services
                 ? "https"
                 : "http";
 
-            var (host, _) = match.Groups["hosts"].Value.Split( ',' ) // taking the first one. this could be smarter/randomized.
+            var (host, _) = match.Groups["hosts"].Value.Split( ',' ) // taking the first host. this could be smarter/randomized.
                 .Select( value => HostEndpoint.Parse( value.Trim() ) )
                 .FirstOrDefault();
 
@@ -77,6 +79,12 @@ namespace Hyperbee.Migrations.Couchbase.Services
         private static Uri GetUri( string path )
         {
             return new Uri( path, UriKind.Relative );
+        }
+
+        public async Task<bool> ClusterHealthyAsync( CancellationToken cancellationToken = default )
+        {
+            var result = await GetClusterDetailsAsync( cancellationToken ).ConfigureAwait( false );
+            return NodesAreHealthy( result );
         }
 
         public async Task<JsonNode> GetClusterInfoAsync( CancellationToken cancellationToken = default )
@@ -110,9 +118,13 @@ namespace Hyperbee.Migrations.Couchbase.Services
             var responseBody = await response.Content.ReadAsStreamAsync( cancellationToken )
                 .ConfigureAwait( false );
 
-            var node = JsonNode.Parse( responseBody );
+            return JsonNode.Parse( responseBody );
+        }
 
-            return node;
+        public async Task<bool> BucketHealthyAsync( string bucketName, CancellationToken cancellationToken = default )
+        {
+            var result = await GetBucketDetailsAsync( bucketName, cancellationToken ).ConfigureAwait( false );
+            return NodesAreHealthy( result );
         }
 
         public async Task<JsonNode> GetBucketDetailsAsync( string bucketName, CancellationToken cancellationToken = default )
@@ -128,55 +140,43 @@ namespace Hyperbee.Migrations.Couchbase.Services
             var responseBody = await response.Content.ReadAsStreamAsync( cancellationToken )
                 .ConfigureAwait( false );
 
-            var node = JsonNode.Parse( responseBody );
-
-            return node; // nodes[].clusterMembership 'active', .status 'healthy'
+            return JsonNode.Parse( responseBody );
         }
 
-        public async Task WaitUntilManagementReadyAsync( TimeSpan timeout )
+        public async Task<bool> ManagementReadyAsync( CancellationToken cancellationToken = default )
         {
-            // we will `ping` the top-level uri
+            // `ping` by calling the top-level uri
 
             var uri = GetUri( RestApi.GetClusterInfo() );
 
-            using var tokenSource = new CancellationTokenSource();
-            tokenSource.CancelAfter( timeout );
-            var cancellationToken = tokenSource.Token;
-
-            var count = 0;
-
-            while ( true )
+            try
             {
-                try
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
+                var response = await Client.GetAsync( uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken )
+                    .ConfigureAwait( false );
 
-                    if ( count++ > 0 )
-                        await Task.Delay( 1000, cancellationToken ).ConfigureAwait( false ); // inside the try catch
-
-                    var response = await Client.GetAsync( uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken )
-                        .ConfigureAwait( false );
-
-                    response.EnsureSuccessStatusCode();
-                    return;
-                }
-                catch ( HttpRequestException ex )
-                {
-                    if ( ex.StatusCode != null )
-                        throw;
-
-                    // connection failure - site not ready - etc
-
-                }
-                catch ( OperationCanceledException ex )
-                {
-                    throw new UnambiguousTimeoutException( $"Timed out after {timeout}.", ex );
-                }
-                catch ( Exception ex )
-                {
-                    throw new CouchbaseException( "An error has occurred, see the inner exception for details.", ex );
-                }
+                response.EnsureSuccessStatusCode();
+                return true;
             }
+            catch ( HttpRequestException ex )
+            {
+                if ( ex.StatusCode != null )
+                    throw;
+
+                // connection failure - site not ready - etc
+            }
+ 
+            return false;
+        }
+
+        private static bool NodesAreHealthy( JsonNode result )
+        {
+            var status = result!["nodes"]!.AsArray()
+                .Where( x => x["clusterMembership"]?.ToString() == "active" )
+                .Select( x => x["status"]?.ToString() )
+                .Where( x => x != null )
+                .ToList();
+
+            return status.All( x => x == "healthy" ); // states: warmup, healthy, ??
         }
     }
 }
