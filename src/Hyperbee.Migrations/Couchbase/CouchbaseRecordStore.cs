@@ -1,9 +1,11 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
+using Hyperbee.Migrations.Couchbase.Wait;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Couchbase;
@@ -12,14 +14,14 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 {
     private readonly IClusterProvider _clusterProvider;
     private readonly CouchbaseMigrationOptions _options;
-    private readonly ICouchbaseStartupWaiter _startupWaiter;
+    private readonly ICouchbaseBootstrapper _bootstrapper;
     private readonly ILogger<CouchbaseRecordStore> _logger;
 
-    public CouchbaseRecordStore( IClusterProvider clusterProvider, CouchbaseMigrationOptions options, ICouchbaseStartupWaiter startupWaiter, ILogger<CouchbaseRecordStore> logger )
+    public CouchbaseRecordStore( IClusterProvider clusterProvider, CouchbaseMigrationOptions options, ICouchbaseBootstrapper bootstrapper, ILogger<CouchbaseRecordStore> logger )
     {
         _clusterProvider = clusterProvider;
         _options = options;
-        _startupWaiter = startupWaiter;
+        _bootstrapper = bootstrapper;
         _logger = logger;
     }
 
@@ -33,11 +35,11 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         return collection;
     }
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync( CancellationToken cancellationToken = default )
     {
         // wait for system ready
 
-        await _startupWaiter.WaitForSystemReadyAsync( _options.ClusterReadyTimeout )
+        await _bootstrapper.WaitForSystemReadyAsync( _options.ClusterReadyTimeout, cancellationToken )
             .ConfigureAwait( false );
 
         // get the cluster
@@ -48,7 +50,6 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         var cluster = clusterHelper.Cluster;
 
         var (bucketName, scopeName, collectionName) = _options;
-        var waitSettings = new WaitSettings( _options.ProvisionRetryInterval, _options.ProvisionAttempts );
 
         // check for bucket
 
@@ -64,19 +65,25 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
                 } )
                 .ConfigureAwait( false );
 
-            await clusterHelper.WaitUntilAsync(
-                async () => await clusterHelper.BucketExistsAsync( bucketName ),
-                waitSettings,
-                _logger
-            ).ConfigureAwait( false );
+            await WaitHelper.WaitUntilAsync(
+                async _ => await clusterHelper.BucketExistsAsync( bucketName ).ConfigureAwait( false ),
+                TimeSpan.Zero,
+                new PauseRetryStrategy(),
+                cancellationToken
+            );
 
+            // we created the bucket and it exists but couchbase my not have reported it yet.
+            // wait for the bucket to be ready.
+
+            await Task.Delay( 1000, cancellationToken ).ConfigureAwait( false );
+            var bucket = await cluster.BucketAsync( bucketName ).ConfigureAwait( false );
+            await bucket.WaitUntilReadyAsync( _options.ClusterReadyTimeout ).ConfigureAwait( false );
+
+            // now it is safe to create the indexes
             _logger.LogInformation( "Creating ledger bucket indexes." );
 
             await cluster.QueryIndexes.CreatePrimaryIndexAsync( bucketName ).ConfigureAwait( false );
             await cluster.QueryIndexes.CreateIndexAsync( bucketName, "ix_type", new [] { "type" } ).ConfigureAwait( false );
-
-            var bucket = await cluster.BucketAsync( bucketName ).ConfigureAwait( false );
-            await bucket.WaitUntilReadyAsync( _options.ClusterReadyTimeout ).ConfigureAwait( false );
         }
 
         // check for scope
@@ -86,10 +93,11 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             _logger.LogInformation( "Creating ledger scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName );
             await clusterHelper.CreateScopeAsync( bucketName, scopeName ).ConfigureAwait( false );
 
-            await clusterHelper.WaitUntilAsync(
-                async () => await clusterHelper.ScopeExistsAsync( bucketName, scopeName ).ConfigureAwait( false ),
-                waitSettings,
-                _logger
+            await WaitHelper.WaitUntilAsync( 
+                async _ => await clusterHelper.ScopeExistsAsync( bucketName, scopeName ).ConfigureAwait( false ), 
+                TimeSpan.Zero, 
+                new PauseRetryStrategy(), 
+                cancellationToken 
             );
         }
 
@@ -101,10 +109,11 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
             await clusterHelper.CreateCollectionAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false );
 
-            await clusterHelper.WaitUntilAsync(
-                async () => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
-                waitSettings,
-                _logger
+            await WaitHelper.WaitUntilAsync(
+                async _ => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
+                TimeSpan.Zero,
+                new PauseRetryStrategy(),
+                cancellationToken
             );
         }
 
@@ -116,10 +125,11 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
             await clusterHelper.CreatePrimaryCollectionIndexAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false );
 
-            await clusterHelper.WaitUntilAsync(
-                async () => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
-                waitSettings,
-                _logger
+            await WaitHelper.WaitUntilAsync(
+                async _ => await clusterHelper.PrimaryCollectionIndexExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
+                TimeSpan.Zero,
+                new PauseRetryStrategy(),
+                cancellationToken
             );
         }
     }

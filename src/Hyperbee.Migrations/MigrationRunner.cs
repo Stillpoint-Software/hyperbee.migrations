@@ -31,7 +31,7 @@ public class MigrationRunner
 
         try
         {
-            await _recordStore.InitializeAsync();
+            await _recordStore.InitializeAsync( cancellationToken );
 
             if ( _options.LockingEnabled )
                 syncLock = await _recordStore.CreateLockAsync().ConfigureAwait( false );
@@ -41,6 +41,10 @@ public class MigrationRunner
         catch ( MigrationLockUnavailableException )
         {
             _logger.LogWarning( "The migration lock is unavailable. Skipping migrations." );
+        }
+        catch ( OperationCanceledException )
+        {
+            _logger.LogError( "The migration operation has been canceled. Application will stop." );
         }
         finally
         {

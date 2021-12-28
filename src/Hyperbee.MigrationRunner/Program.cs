@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using System.Text.RegularExpressions;
 using Couchbase;
 using Couchbase.Core.Exceptions;
 using Microsoft.Extensions.Configuration;
@@ -6,7 +7,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
-using Serilog.Filters;
 using Serilog.Formatting.Compact;
 
 namespace Hyperbee.MigrationRunner;
@@ -72,7 +72,7 @@ internal class Program
             .MinimumLevel.Debug()
             .ReadFrom.Configuration( config )
             .Enrich.FromLogContext()
-            .Filter.ByExcluding( x => x.Exception is CouchbaseException { Context: ManagementErrorContext { HttpStatus: HttpStatusCode.OK } } ) // For GetAllScopesAsync false exceptions
+            .AddCouchbaseFilters()
             .WriteTo.File( jsonFormatter, pathFormat, rollingInterval: RollingInterval.Day, shared: true )
             .WriteTo.Console( restrictedToMinimumLevel: LogEventLevel.Information )
             .CreateLogger();
@@ -102,5 +102,26 @@ internal class Program
             { "--scope", "ScopeName" },
             { "--collection", "CollectionName" }
         };
+    }
+}
+
+internal static class CouchbaseLogFilters
+{
+    internal static LoggerConfiguration AddCouchbaseFilters( this LoggerConfiguration self )
+    {
+        static TValue WithProperty<TValue>( LogEvent x, string propertyName )
+        {
+            return (TValue)((ScalarValue) x.Properties[propertyName]).Value;
+        }
+
+        // For GetAllScopesAsync false exceptions
+        self.Filter.ByExcluding( x => x.Exception is CouchbaseException { Context: ManagementErrorContext { HttpStatus: HttpStatusCode.OK } } );
+
+        // For GetBucketAsync noise caused by resolving buckets
+        var pattern = new Regex( @"^The Bucket \[.+\] could not be selected." ); // log noise cause by couchbase net client
+
+        self.Filter.ByExcluding( x => WithProperty<string>( x, "SourceContext" ) == "Couchbase.Core.ClusterNode" && pattern.IsMatch( x.MessageTemplate.Text ) );
+
+        return self;
     }
 }

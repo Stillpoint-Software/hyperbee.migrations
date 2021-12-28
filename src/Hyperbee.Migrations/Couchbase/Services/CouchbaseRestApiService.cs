@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json.Nodes;
@@ -6,7 +7,6 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Couchbase;
-using Couchbase.Core.Exceptions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -15,36 +15,44 @@ namespace Hyperbee.Migrations.Couchbase.Services
     // https://docs.couchbase.com/server/current/rest-api/rest-endpoints-all.html
     //
     // rest-api service is used to get configuration information that is currently 
-    // unavailable (or broken) through the `standard` net client sdk
+    // unavailable through the `standard` net client sdk
 
     internal interface ICouchbaseRestApiService
     {
+        Task<bool> ClusterHealthyAsync( CancellationToken cancellationToken = default );
         Task<JsonNode> GetClusterInfoAsync( CancellationToken cancellationToken = default );
         Task<JsonNode> GetClusterDetailsAsync( CancellationToken cancellationToken = default );
+
+        Task<bool> BucketHealthyAsync( string bucketName, CancellationToken cancellationToken = default );
         Task<JsonNode> GetBucketDetailsAsync( string bucketName, CancellationToken cancellationToken = default );
-        Task WaitUntilManagementReadyAsync( TimeSpan timeout );
+        Task<JsonNode> GetNodeStatusesAsync( CancellationToken cancellationToken = default );
+
+        Task<bool> ManagementReadyAsync( CancellationToken cancellationToken = default );
     }
 
     internal class CouchbaseRestApiService : ICouchbaseRestApiService
     {
         public HttpClient Client { get; }
+        private IList<Uri> ConnectionStringUris { get; set; } = new List<Uri>();
 
         public static class RestApi
         {
             public static string GetClusterInfo() => "pools";
             public static string GetClusterDetails() => "pools/default";
-
             public static string GetBucketDetails( string bucketName ) => $"pools/default/buckets/{bucketName}";
+            public static string GetNodeStatuses() => "nodeStatuses";
+
+            // uris of interest
+            // http://localhost:8091/pools/default/nodeServices lists services and ports
         }
 
         public CouchbaseRestApiService( HttpClient httpClient, IOptions<ClusterOptions> options, ILogger<CouchbaseRestApiService> logger )
         {
-             
             Client = httpClient;
-            httpClient.BaseAddress = GetManagementUri( options.Value );
+            GetConnectionStringUris( options.Value );
         }
 
-        private static Uri GetManagementUri( ClusterOptions options )
+        private void GetConnectionStringUris( ClusterOptions options )
         {
             var connectionStringRegex = new Regex(
                 "^((?<scheme>[^://]+)://)?((?<username>[^\n@]+)@)?(?<hosts>[^\n?]+)?(\\?(?<params>(.+)))?",
@@ -63,20 +71,31 @@ namespace Hyperbee.Migrations.Couchbase.Services
                 ? "https"
                 : "http";
 
-            var (host, _) = match.Groups["hosts"].Value.Split( ',' ) // taking the first one. this could be smarter/randomized.
-                .Select( value => HostEndpoint.Parse( value.Trim() ) )
-                .FirstOrDefault();
-
-            var port = options.EnableTls.GetValueOrDefault( false )
+            var defaultPort = options.EnableTls.GetValueOrDefault( false )
                 ? options.BootstrapHttpPortTls // expected 18091
                 : options.BootstrapHttpPort; // expected 8091
 
-            return new Uri( $"{scheme}://{host}:{port}" );
+            ConnectionStringUris = match.Groups["hosts"].Value.Split( ',' ) 
+                .Select( value =>
+                {
+                    var (host, port) = HostEndpoint.Parse( value.Trim() );
+                    return new Uri( $"{scheme}://{host}:{port.GetValueOrDefault(defaultPort)}" );
+                } )
+                .ToList();
         }
 
-        private static Uri GetUri( string path )
+        private Uri GetUri( string path )
         {
-            return new Uri( path, UriKind.Relative );
+            var baseUri = ConnectionStringUris.First();
+            var relativeUri = new Uri( path, UriKind.Relative );
+
+            return new Uri( baseUri, relativeUri );
+        }
+
+        public async Task<bool> ClusterHealthyAsync( CancellationToken cancellationToken = default )
+        {
+            var result = await GetClusterDetailsAsync( cancellationToken ).ConfigureAwait( false );
+            return NodesAreHealthy( result );
         }
 
         public async Task<JsonNode> GetClusterInfoAsync( CancellationToken cancellationToken = default )
@@ -110,9 +129,13 @@ namespace Hyperbee.Migrations.Couchbase.Services
             var responseBody = await response.Content.ReadAsStreamAsync( cancellationToken )
                 .ConfigureAwait( false );
 
-            var node = JsonNode.Parse( responseBody );
+            return JsonNode.Parse( responseBody );
+        }
 
-            return node;
+        public async Task<bool> BucketHealthyAsync( string bucketName, CancellationToken cancellationToken = default )
+        {
+            var result = await GetBucketDetailsAsync( bucketName, cancellationToken ).ConfigureAwait( false );
+            return NodesAreHealthy( result );
         }
 
         public async Task<JsonNode> GetBucketDetailsAsync( string bucketName, CancellationToken cancellationToken = default )
@@ -128,55 +151,59 @@ namespace Hyperbee.Migrations.Couchbase.Services
             var responseBody = await response.Content.ReadAsStreamAsync( cancellationToken )
                 .ConfigureAwait( false );
 
-            var node = JsonNode.Parse( responseBody );
-
-            return node; // nodes[].clusterMembership 'active', .status 'healthy'
+            return JsonNode.Parse( responseBody );
         }
 
-        public async Task WaitUntilManagementReadyAsync( TimeSpan timeout )
+        public async Task<JsonNode> GetNodeStatusesAsync( CancellationToken cancellationToken = default )
         {
-            // we will `ping` the top-level uri
+            // retrieve node statuses
+            var uri = GetUri( RestApi.GetNodeStatuses() );
+
+            var response = await Client.GetAsync( uri, cancellationToken )
+                .ConfigureAwait( false );
+
+            response.EnsureSuccessStatusCode();
+
+            var responseBody = await response.Content.ReadAsStreamAsync( cancellationToken )
+                .ConfigureAwait( false );
+
+            return JsonNode.Parse( responseBody );
+        }
+
+        public async Task<bool> ManagementReadyAsync( CancellationToken cancellationToken = default )
+        {
+            // `ping` by calling the top-level uri
 
             var uri = GetUri( RestApi.GetClusterInfo() );
 
-            using var tokenSource = new CancellationTokenSource();
-            tokenSource.CancelAfter( timeout );
-            var cancellationToken = tokenSource.Token;
-
-            var count = 0;
-
-            while ( true )
+            try
             {
-                try
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
+                var response = await Client.GetAsync( uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken )
+                    .ConfigureAwait( false );
 
-                    if ( count++ > 0 )
-                        await Task.Delay( 1000, cancellationToken ).ConfigureAwait( false ); // inside the try catch
-
-                    var response = await Client.GetAsync( uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken )
-                        .ConfigureAwait( false );
-
-                    response.EnsureSuccessStatusCode();
-                    return;
-                }
-                catch ( HttpRequestException ex )
-                {
-                    if ( ex.StatusCode != null )
-                        throw;
-
-                    // connection failure - site not ready - etc
-
-                }
-                catch ( OperationCanceledException ex )
-                {
-                    throw new UnambiguousTimeoutException( $"Timed out after {timeout}.", ex );
-                }
-                catch ( Exception ex )
-                {
-                    throw new CouchbaseException( "An error has occurred, see the inner exception for details.", ex );
-                }
+                response.EnsureSuccessStatusCode();
+                return true;
             }
+            catch ( HttpRequestException ex )
+            {
+                if ( ex.StatusCode != null )
+                    throw;
+
+                // connection failure - site not ready - etc
+            }
+ 
+            return false;
+        }
+
+        private static bool NodesAreHealthy( JsonNode result )
+        {
+            var status = result!["nodes"]!.AsArray()
+                .Where( x => x["clusterMembership"]?.ToString() == "active" )
+                .Select( x => x["status"]?.ToString() )
+                .Where( x => x != null )
+                .ToList();
+
+            return status.All( x => x == "healthy" ); // states: warmup, healthy, ??
         }
     }
 }

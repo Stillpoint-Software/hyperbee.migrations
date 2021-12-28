@@ -4,12 +4,10 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
-using Couchbase;
 using Hyperbee.Migrations.Couchbase.Resources;
 using Hyperbee.Migrations.Couchbase.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace Hyperbee.Migrations.Couchbase;
 
@@ -72,7 +70,7 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<ICouchbaseRestApiService, CouchbaseRestApiService>()
             .AddHttpMessageHandler<CouchbaseAuthenticationHandler>();
 
-        services.AddTransient<ICouchbaseStartupWaiter,CouchbaseStartupWaiter>();
+        services.AddTransient<ICouchbaseBootstrapper,CouchbaseBootstrapper>();
 
         return services;
     }

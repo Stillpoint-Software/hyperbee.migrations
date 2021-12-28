@@ -1,11 +1,12 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Hyperbee.Migrations;
 
 public interface IMigrationRecordStore
 {
-    Task InitializeAsync();
+    Task InitializeAsync( CancellationToken cancellationToken = default );
     Task<IDisposable> CreateLockAsync();
 
     Task<bool> ExistsAsync( string recordId );
