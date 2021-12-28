@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Text.Json.Nodes;
@@ -24,6 +25,7 @@ namespace Hyperbee.Migrations.Couchbase.Services
 
         Task<bool> BucketHealthyAsync( string bucketName, CancellationToken cancellationToken = default );
         Task<JsonNode> GetBucketDetailsAsync( string bucketName, CancellationToken cancellationToken = default );
+        Task<JsonNode> GetNodeStatusesAsync( CancellationToken cancellationToken = default );
 
         Task<bool> ManagementReadyAsync( CancellationToken cancellationToken = default );
     }
@@ -31,22 +33,26 @@ namespace Hyperbee.Migrations.Couchbase.Services
     internal class CouchbaseRestApiService : ICouchbaseRestApiService
     {
         public HttpClient Client { get; }
+        private IList<Uri> ConnectionStringUris { get; set; } = new List<Uri>();
 
         public static class RestApi
         {
             public static string GetClusterInfo() => "pools";
             public static string GetClusterDetails() => "pools/default";
             public static string GetBucketDetails( string bucketName ) => $"pools/default/buckets/{bucketName}";
+            public static string GetNodeStatuses() => "nodeStatuses";
+
+            // uris of interest
+            // http://localhost:8091/pools/default/nodeServices lists services and ports
         }
 
         public CouchbaseRestApiService( HttpClient httpClient, IOptions<ClusterOptions> options, ILogger<CouchbaseRestApiService> logger )
         {
-             
             Client = httpClient;
-            httpClient.BaseAddress = GetManagementUri( options.Value );
+            GetConnectionStringUris( options.Value );
         }
 
-        private static Uri GetManagementUri( ClusterOptions options )
+        private void GetConnectionStringUris( ClusterOptions options )
         {
             var connectionStringRegex = new Regex(
                 "^((?<scheme>[^://]+)://)?((?<username>[^\n@]+)@)?(?<hosts>[^\n?]+)?(\\?(?<params>(.+)))?",
@@ -65,20 +71,25 @@ namespace Hyperbee.Migrations.Couchbase.Services
                 ? "https"
                 : "http";
 
-            var (host, _) = match.Groups["hosts"].Value.Split( ',' ) // taking the first host. this could be smarter/randomized.
-                .Select( value => HostEndpoint.Parse( value.Trim() ) )
-                .FirstOrDefault();
-
-            var port = options.EnableTls.GetValueOrDefault( false )
+            var defaultPort = options.EnableTls.GetValueOrDefault( false )
                 ? options.BootstrapHttpPortTls // expected 18091
                 : options.BootstrapHttpPort; // expected 8091
 
-            return new Uri( $"{scheme}://{host}:{port}" );
+            ConnectionStringUris = match.Groups["hosts"].Value.Split( ',' ) 
+                .Select( value =>
+                {
+                    var (host, port) = HostEndpoint.Parse( value.Trim() );
+                    return new Uri( $"{scheme}://{host}:{port.GetValueOrDefault(defaultPort)}" );
+                } )
+                .ToList();
         }
 
-        private static Uri GetUri( string path )
+        private Uri GetUri( string path )
         {
-            return new Uri( path, UriKind.Relative );
+            var baseUri = ConnectionStringUris.First();
+            var relativeUri = new Uri( path, UriKind.Relative );
+
+            return new Uri( baseUri, relativeUri );
         }
 
         public async Task<bool> ClusterHealthyAsync( CancellationToken cancellationToken = default )
@@ -131,6 +142,22 @@ namespace Hyperbee.Migrations.Couchbase.Services
         {
             // retrieve bucket details
             var uri = GetUri( RestApi.GetBucketDetails( bucketName ) );
+
+            var response = await Client.GetAsync( uri, cancellationToken )
+                .ConfigureAwait( false );
+
+            response.EnsureSuccessStatusCode();
+
+            var responseBody = await response.Content.ReadAsStreamAsync( cancellationToken )
+                .ConfigureAwait( false );
+
+            return JsonNode.Parse( responseBody );
+        }
+
+        public async Task<JsonNode> GetNodeStatusesAsync( CancellationToken cancellationToken = default )
+        {
+            // retrieve node statuses
+            var uri = GetUri( RestApi.GetNodeStatuses() );
 
             var response = await Client.GetAsync( uri, cancellationToken )
                 .ConfigureAwait( false );

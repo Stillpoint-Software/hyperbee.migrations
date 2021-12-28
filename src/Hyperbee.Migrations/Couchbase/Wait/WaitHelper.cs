@@ -17,10 +17,11 @@ public static class WaitHelper
     {
         backoff ??= new BackoffRetryStrategy();
 
-        using var tokenProvider = new TimeoutTokenProvider( timeout, cancellationToken );
-
-        var operationCancelToken = tokenProvider.Token;
-        var timeoutToken = tokenProvider.TimeoutToken;
+        using var tts = TimeoutTokenSource.CreateTokenSource( timeout );
+        using var lts = CancellationTokenSource.CreateLinkedTokenSource( tts.Token, cancellationToken );
+        
+        var operationCancelToken = lts.Token;
+        var timeoutToken = tts.Token;
 
         while ( true )
         {

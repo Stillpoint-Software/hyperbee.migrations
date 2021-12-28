@@ -42,6 +42,10 @@ public class MigrationRunner
         {
             _logger.LogWarning( "The migration lock is unavailable. Skipping migrations." );
         }
+        catch ( OperationCanceledException )
+        {
+            _logger.LogError( "The migration operation has been canceled. Application will stop." );
+        }
         finally
         {
             syncLock?.Dispose();

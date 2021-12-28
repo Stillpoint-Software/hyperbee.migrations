@@ -39,18 +39,16 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
 
     public async Task WaitForSystemReadyAsync( TimeSpan? timeout, CancellationToken cancellationToken = default )
     {
-        _logger?.LogInformation( "Waiting for system ready..." );
+        _logger?.LogInformation( "Waiting for system ready ..." );
 
-        var tokenProvider = new TimeoutTokenProvider( timeout, cancellationToken );
-        var operationCancelToken = tokenProvider.Token;
+        using var tts = TimeoutTokenSource.CreateTokenSource( timeout );
+        using var lts = CancellationTokenSource.CreateLinkedTokenSource( tts.Token, cancellationToken );
+        var operationCancelToken = lts.Token;
+
         var notifyInterval = GetNotifyInterval( timeout, 10 );
 
         try
         {
-            // wait for management uri
-            await WaitForManagementUriAsync( notifyInterval, operationCancelToken )
-                .ConfigureAwait( false );
-
             // wait for cluster
             await WaitForClusterAsync( notifyInterval, operationCancelToken )
                 .ConfigureAwait( false );
@@ -65,58 +63,43 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
         }
         catch ( OperationCanceledException ex )
         {
-            if ( ex.CancellationToken == tokenProvider.TimeoutToken )
+            if ( ex.CancellationToken == tts.Token )
                 throw new UnambiguousTimeoutException( $"Timed out after {timeout!.Value.TotalSeconds}.", ex );
 
             throw;
         }
     }
 
-    private async Task WaitForManagementUriAsync( TimeSpan notifyInterval, CancellationToken operationCancelToken )
-    {
-        _logger?.LogInformation( "Waiting for management Uri..." );
-
-        while ( true )
-        {
-            operationCancelToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                await _restApiService.WaitUntilManagementReadyAsync( notifyInterval, operationCancelToken )
-                    .ConfigureAwait( false );
-
-                _logger?.LogInformation( "Management Uri is ready." );
-                return;
-            }
-            catch ( UnambiguousTimeoutException )
-            {
-                // wait interval timeout
-            }
-
-            _logger?.LogInformation( "Wait..." );
-        }
-    }
-
     private async Task WaitForClusterAsync( TimeSpan notifyInterval, CancellationToken operationCancelToken )
     {
-        // calling the client `cluster.WaitUntilReadyAsync()` is not sufficient because
-        // the cluster is considered ready as soon as it is ping-able. cluster buckets
-        // may not be ready.
+        // Calling GetClusterAsync() and WaitUntilReadyAsync() too early in the Couchbase
+        // server initialization process results in unrecoverable client errors during
+        // application initialization.
         //
-        // calling the client `bucket.WaitUntilReadyAsync()` is also problematic because 
-        // you must first call `cluster.BucketAsync( name )` which does not take a timeout
-        // or a cancellation token and will block indefinitely if the cluster is not ready.
+        // This method addresses the following bootstrap issues:
         //
-        // a simpler strategy is to wait for the cluster status to transition to `healthy`
-        // for all active nodes. we can get this status from the rest api.
+        // * GetClusterAsync() will fail if the management uri is not available
+        //
+        // * If the cluster is not in the `healthy` state GetClusterAsync() will
+        //   initialize incorrectly as a pre-6.5 client. This will cause 
+        //   WaitUntilReadyAsync() to fail with a NotSupportedException.
+        //
+        // * If you call WaitUntilReadyAsync immediately after the cluster reports
+        //   itself as healthy, you will occasionally receive the 6.5
+        //   NotSupportedException.
+        //
+        // When the 6.5 NotSupportedException is thrown the net client, and its internal
+        // initialization are in an incorrect, and un-recoverable, state. There is no way
+        // that we are aware of to reset the client without restarting the application.
 
-        _logger?.LogInformation( "Waiting for cluster..." );
+        const int Start = 0;
+        const int WaitForUri = 1;
+        const int StateUriReady = 2;
+        const int WaitForHealthy = 3;
+        const int StateHealthy = 4;
+        const int WaitForReady = 5;
 
-        const int WaitForHealthy = 0;
-        const int WaitForMoment = 1;
-        const int WaitForReady = 2;
-
-        var state = WaitForHealthy;
+        var state = Start;
 
         while ( true )
         {
@@ -126,24 +109,45 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
             {
                 switch ( state )
                 {
-                    case WaitForHealthy:
+                    case Start:
                     {
-                        await _restApiService.WaitUntilClusterHealthyAsync( notifyInterval, operationCancelToken ).ConfigureAwait( false );
-                        state = WaitForMoment;
-                        _logger?.LogInformation( "Cluster is healthy." );
+                        _logger?.LogInformation( "Waiting for admin api ..." );
+                        state = WaitForUri;
                         break;
                     }
 
-                    case WaitForMoment:
+                    case WaitForUri:
+                    {
+                        await _restApiService.WaitUntilManagementReadyAsync( notifyInterval, operationCancelToken ).ConfigureAwait( false );
+                        _logger?.LogInformation( "Admin api is ready." );
+                        state = StateUriReady;
+                        break;
+                    }
+
+                    case StateUriReady:
+                    {
+                        _logger?.LogInformation( "Waiting for cluster ready ..." );
+                        state = WaitForHealthy;
+                        break;
+                    }
+
+                    case WaitForHealthy:
+                    {
+                        await _restApiService.WaitUntilClusterHealthyAsync( notifyInterval, operationCancelToken ).ConfigureAwait( false );
+                        _logger?.LogInformation( "Cluster is healthy." );
+                        state = StateHealthy;
+                        break;
+                    }
+
+                    case StateHealthy:
                     {
                         // the cluster is healthy but calling `GetClusterAsync` too quickly results in
                         // an intermittent internal bootstrap error. when this happens, couchbase will
-                        // incorrectly throw `NotSupportedException`s with an incorrect complaint that
-                        // the server version is < 6.5. this results in calls to `WaitUntilReadyAsync`
-                        // failing.
+                        // throw a `NotSupportedException` with an incorrect complaint that the server
+                        // version is < 6.5. this results in calls to WaitUntilReadyAsync() failing.
                         //
                         // try to remedy by adding a delay until we can find a better solution.
-                        
+
                         await Task.Delay( 5000, operationCancelToken );
                         state = WaitForReady;
                         break;
@@ -161,7 +165,8 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
             }
             catch ( UnambiguousTimeoutException )
             {
-                // wait interval timeout
+                // notify interval timeout
+                _logger?.LogInformation( "Wait..." );
             }
             catch ( NotSupportedException ex )
             {
@@ -175,20 +180,21 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
 
                 throw new SystemException( "Couchbase incorrectly reported the system version as < 6.5.", ex );
             }
-
-            _logger?.LogInformation( "Wait..." );
         }
     }
 
     private async Task WaitForBucketsAsync( TimeSpan notifyInterval, CancellationToken operationCancelToken )
     {
+        // the cluster is ready but the buckets may not be.
+        // wait for the buckets to initialize.
+
         _logger?.LogInformation( "Waiting for buckets..." );
 
         var cluster = await _clusterProvider.GetClusterAsync();
 
         foreach( var (bucketName, _) in await cluster.Buckets.GetAllBucketsAsync() )
         {
-            _logger?.LogInformation( "Waiting for bucket {bucketName}...", bucketName );
+            _logger?.LogInformation( "Waiting for bucket {bucketName} ...", bucketName );
 
             var bucket = await cluster.BucketAsync( bucketName );
 
@@ -198,15 +204,13 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
 
                 try
                 {
-                    await bucket.WaitUntilReadyAsync( notifyInterval )
-                        .ConfigureAwait( false );
-
+                    await bucket.WaitUntilReadyAsync( notifyInterval ).ConfigureAwait( false );
                     _logger?.LogInformation( "Bucket {bucketName} is ready.", bucketName );
                     return;
                 }
                 catch ( UnambiguousTimeoutException )
                 {
-                    // wait interval timeout
+                    // notify interval timeout
                 }
 
                 _logger?.LogInformation( "Wait..." );
@@ -219,8 +223,8 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
         operationCancelToken.ThrowIfCancellationRequested();
 
         // the first select against `system:*` returns unpredictable results
-        // after hard shutdown. this is spooky but a sacrificial query seems
-        // to fix it.
+        // after a hard shutdown. this is spooky but a sacrificial query
+        // seems to fix it.
 
         var clusterHelper = await _clusterProvider.GetClusterHelperAsync()
             .ConfigureAwait( false );
