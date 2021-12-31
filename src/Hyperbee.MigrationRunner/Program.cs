@@ -118,9 +118,13 @@ internal static class CouchbaseLogFilters
         self.Filter.ByExcluding( x => x.Exception is CouchbaseException { Context: ManagementErrorContext { HttpStatus: HttpStatusCode.OK } } );
 
         // For GetBucketAsync noise caused by resolving buckets
-        var pattern = new Regex( @"^The Bucket \[.+\] could not be selected." ); // log noise cause by couchbase net client
+        var pattern1 = new Regex( @"^The Bucket \[.+\] could not be selected." ); // log noise cause by couchbase net client
+        self.Filter.ByExcluding( x => WithProperty<string>( x, "SourceContext" ) == "Couchbase.Core.ClusterNode" && pattern1.IsMatch( x.MessageTemplate.Text ) );
 
-        self.Filter.ByExcluding( x => WithProperty<string>( x, "SourceContext" ) == "Couchbase.Core.ClusterNode" && pattern.IsMatch( x.MessageTemplate.Text ) );
+        // For internal couchbase timeouts waiting for bucket creation
+        // For GetBucketAsync noise caused by resolving buckets
+        var pattern2 = new Regex( @"^Issue getting Cluster Map on server {server}!" ); // log noise cause by couchbase net client
+        self.Filter.ByExcluding( x => WithProperty<string>( x, "SourceContext" ) == "Couchbase.Core.Configuration.Server.ConfigHandler" && pattern2.IsMatch( x.MessageTemplate.Text ) && x.Exception is UnambiguousTimeoutException );
 
         return self;
     }
