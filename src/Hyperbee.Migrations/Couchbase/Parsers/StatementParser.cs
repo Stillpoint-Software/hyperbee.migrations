@@ -89,7 +89,12 @@ public class StatementParser
 
     private void SplitExpression( ReadOnlySpan<char> expr, out KeyspaceRef keyspace, out ReadOnlySpan<char> expr1, bool partial = false )
     {
-        keyspace = _keyspaceParser.ParseExpression( expr, out var count, partial );
+        var options = new KeySpaceParserOptions
+        {
+            Partial = partial
+        };
+
+        keyspace = _keyspaceParser.ParseExpression( expr, out var count, options );
         expr1 = expr[count..].Trim();
     }
 }

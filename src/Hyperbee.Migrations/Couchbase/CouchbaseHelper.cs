@@ -1,13 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Threading.Tasks;
 using Couchbase;
-using Couchbase.Core.Exceptions;
 using Couchbase.Extensions.DependencyInjection;
-using Couchbase.Management.Collections;
-using Newtonsoft.Json.Linq;
 
 namespace Hyperbee.Migrations.Couchbase;
 
@@ -97,8 +92,7 @@ public static class CouchbaseHelper
         var bucket = await cluster.BucketAsync( bucketName )
             .ConfigureAwait( false );
 
-        //var scopes = await bucket.Collections.GetAllScopesAsync().ConfigureAwait( false );
-        var scopes = await Fixes.GetAllScopesAsync( bucket.Collections ).ConfigureAwait( false );
+        var scopes = await bucket.Collections.GetAllScopesAsync().ConfigureAwait( false );
 
         scopeName = Unquote( scopeName );
         return scopes.Any( x => x.Name == scopeName );
@@ -127,8 +121,7 @@ public static class CouchbaseHelper
         var bucket = await cluster.BucketAsync( bucketName )
             .ConfigureAwait( false );
 
-        //var scopes = await bucket.Collections.GetAllScopesAsync();
-        var scopes = await Fixes.GetAllScopesAsync( bucket.Collections ).ConfigureAwait( false );
+        var scopes = await bucket.Collections.GetAllScopesAsync().ConfigureAwait( false );
 
         scopeName = Unquote( scopeName );
         collectionName = Unquote( collectionName );
@@ -176,6 +169,8 @@ public static class CouchbaseHelper
 
     private static class Fixes
     {
+        /* fixed in 3.2.6.0
+         
         internal static async Task<IEnumerable<ScopeSpec>> GetAllScopesAsync( ICouchbaseCollectionManager collections )
         {
             // Couchbase.NetClient 3.2.5.0 is throwing exceptions on success.
@@ -205,5 +200,6 @@ public static class CouchbaseHelper
                 } ).ToList();
             }
         }
+        */
     }
 }
