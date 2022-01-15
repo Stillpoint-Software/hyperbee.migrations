@@ -1,11 +1,31 @@
 ﻿{
   "statements": [
     {
+      "statement": "CREATE BUCKET `mybucket`",
+      "args": null
+    },
+    {
+      "statement": "CREATE BUCKET `mybucket` TYPE Ephemeral RAMQUOTA 512 FLUSH",
+      "args": null
+    },
+    {
+      "statement": "DROP BUCKET `mybucket`",
+      "args": null
+    },
+    {
       "statement": "CREATE SCOPE `mybucket`.`myscope`",
       "args": null
     },
     {
+      "statement": "DROP SCOPE `mybucket`.`myscope`",
+      "args": null
+    },
+    {
       "statement": "CREATE COLLECTION `mybucket`.`myscope`.`mycollection`",
+      "args": null
+    },
+    {
+      "statement": "DROP COLLECTION `mybucket`.`myscope`.`mycollection`",
       "args": null
     },
     {

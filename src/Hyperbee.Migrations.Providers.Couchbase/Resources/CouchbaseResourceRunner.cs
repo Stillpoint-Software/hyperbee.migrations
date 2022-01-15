@@ -124,17 +124,33 @@ public class CouchbaseResourceRunner<TMigration>
 
             switch ( statementItem.StatementType )
             {
-                case StatementType.Index:
-                case StatementType.PrimaryIndex:
-                    await CreateIndexAsync( clusterHelper, statementItem ).ConfigureAwait( false );
+                case StatementType.CreateBucket:
+                    await CreateBucketAsync( clusterHelper, statementItem ).ConfigureAwait( false );
                     break;
 
-                case StatementType.Scope:
+                case StatementType.CreateScope:
                     await CreateScopeAsync( clusterHelper, statementItem ).ConfigureAwait( false );
                     break;
 
-                case StatementType.Collection:
+                case StatementType.CreateCollection:
                     await CreateCollectionAsync( clusterHelper, statementItem );
+                    break;
+
+                case StatementType.DropBucket:
+                    await DropBucketAsync( clusterHelper, statementItem ).ConfigureAwait( false );
+                    break;
+
+                case StatementType.DropScope:
+                    await DropScopeAsync( clusterHelper, statementItem ).ConfigureAwait( false );
+                    break;
+
+                case StatementType.DropCollection:
+                    await DropCollectionAsync( clusterHelper, statementItem );
+                    break;
+
+                case StatementType.CreateIndex:
+                case StatementType.CreatePrimaryIndex:
+                    await CreateIndexAsync( clusterHelper, statementItem ).ConfigureAwait( false );
                     break;
 
                 case StatementType.Build:
@@ -260,7 +276,7 @@ public class CouchbaseResourceRunner<TMigration>
 
     private async Task CreateBucketAsync( ClusterHelper clusterHelper, BucketSettings bucketSettings, CancellationToken operationCancelToken )
     {
-        if ( await clusterHelper.BucketExistsAsync( bucketSettings.Name ) )
+        if ( await clusterHelper.BucketExistsAsync( bucketSettings.Name ).ConfigureAwait( false ) )
             return;
 
         _logger?.LogInformation( "CREATE BUCKET `{bucketName}`", bucketSettings.Name );
@@ -304,32 +320,58 @@ public class CouchbaseResourceRunner<TMigration>
         }
     }
 
-    private async Task CreateIndexAsync( ClusterHelper clusterHelper, StatementItem item )
+    private async Task CreateBucketAsync( ClusterHelper clusterHelper, StatementItem item )
     {
-        if ( item.Name != null && await clusterHelper.IndexExistsAsync( item.Keyspace.BucketName, item.Name ).ConfigureAwait( false ) )
+        await CreateBucketAsync( clusterHelper, item.BucketSettings, CancellationToken.None );
+    }
+
+    private async Task DropBucketAsync( ClusterHelper clusterHelper, StatementItem item )
+    {
+        if ( await clusterHelper.BucketExistsAsync( item.Keyspace.BucketName ).ConfigureAwait( false ) )
             return;
 
-        var kind = item.StatementType == StatementType.PrimaryIndex ? "PRIMARY INDEX" : "INDEX";
-
-        _logger?.LogInformation( "CREATE {kind} {indexName} ON {keyspace}", kind, item.Name, item.Keyspace );
-        await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
+        _logger?.LogInformation( "DROP BUCKET {keyspace}", item.Keyspace );
+        await clusterHelper.Cluster.Buckets.DropBucketAsync( item.Keyspace.BucketName ).ConfigureAwait( false );
     }
 
     private async Task CreateScopeAsync( ClusterHelper clusterHelper, StatementItem item )
     {
-        _logger?.LogInformation( "CREATE SCOPE {indexName} ON {keyspace}", item.Name, item.Keyspace );
+        _logger?.LogInformation( "CREATE SCOPE {keyspace}", item.Keyspace );
+        await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
+    }
+
+    private async Task DropScopeAsync( ClusterHelper clusterHelper, StatementItem item )
+    {
+        _logger?.LogInformation( "DROP SCOPE {keyspace}", item.Keyspace );
         await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
     }
 
     private async Task CreateCollectionAsync( ClusterHelper clusterHelper, StatementItem item )
     {
-        _logger?.LogInformation( "CREATE COLLECTION {indexName} ON {keyspace}", item.Name, item.Keyspace );
+        _logger?.LogInformation( "CREATE COLLECTION {keyspace}", item.Keyspace );
+        await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
+    }
+
+    private async Task DropCollectionAsync( ClusterHelper clusterHelper, StatementItem item )
+    {
+        _logger?.LogInformation( "DROP COLLECTION {keyspace}", item.Keyspace );
         await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
     }
 
     private async Task BuildIndexesAsync( ClusterHelper clusterHelper, StatementItem item )
     {
         _logger?.LogInformation( "BUILD INDEX ON {keyspace}", item.Keyspace );
+        await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
+    }
+
+    private async Task CreateIndexAsync( ClusterHelper clusterHelper, StatementItem item )
+    {
+        if ( item.Name != null && await clusterHelper.IndexExistsAsync( item.Keyspace.BucketName, item.Name ).ConfigureAwait( false ) )
+            return;
+
+        var kind = item.StatementType == StatementType.CreatePrimaryIndex ? "PRIMARY INDEX" : "INDEX";
+
+        _logger?.LogInformation( "CREATE {kind} {indexName} ON {keyspace}", kind, item.Name, item.Keyspace );
         await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
     }
 

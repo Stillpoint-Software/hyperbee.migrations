@@ -11,6 +11,11 @@ public record KeyspaceRef
     public string ScopeName { get; }
     public string CollectionName { get; }
 
+    public bool HasNamespace => !string.IsNullOrWhiteSpace( Namespace );
+    public bool HasBucketName => !string.IsNullOrWhiteSpace( BucketName );
+    public bool HasScopeName => !string.IsNullOrWhiteSpace( ScopeName );
+    public bool HasCollectionName => !string.IsNullOrWhiteSpace( CollectionName );
+
     public KeyspaceRef( string ns, string bucketName, string scopeName, string collectionName )
     {
         Namespace = Unquote( ns );
