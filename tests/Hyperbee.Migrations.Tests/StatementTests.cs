@@ -20,7 +20,7 @@ public class StatementTests
 
         var parser = new StatementParser();
 
-        var results = statements.Select( parser.ParseStatement ).ToList();
+        var _ = statements.Select( parser.ParseStatement ).ToList();
 
         // TODO how can we validate results?
     }
