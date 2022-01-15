@@ -1,12 +1,12 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+﻿using Hyperbee.Migrations.Providers.Couchbase;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using Hyperbee.Migrations.Couchbase;
-using Hyperbee.Migrations.Couchbase.Parsers;
+using Hyperbee.Migrations.Providers.Couchbase.Parsers;
 
 // ReSharper disable UnusedMember.Global
 // ReSharper disable InconsistentNaming

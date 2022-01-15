@@ -4,12 +4,12 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
-using Hyperbee.Migrations.Couchbase.Resources;
-using Hyperbee.Migrations.Couchbase.Services;
+using Hyperbee.Migrations.Providers.Couchbase.Resources;
+using Hyperbee.Migrations.Providers.Couchbase.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Hyperbee.Migrations.Couchbase;
+namespace Hyperbee.Migrations.Providers.Couchbase;
 
 public static class ServiceCollectionExtensions
 {

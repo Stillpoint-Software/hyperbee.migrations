@@ -1,4 +1,4 @@
-﻿using Hyperbee.Migrations.Couchbase.Resources;
+﻿using Hyperbee.Migrations.Providers.Couchbase.Resources;
 
 namespace Hyperbee.Migrations.Samples.Migrations;
 

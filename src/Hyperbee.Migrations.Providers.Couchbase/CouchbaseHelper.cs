@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using Couchbase;
 using Couchbase.Extensions.DependencyInjection;
 
-namespace Hyperbee.Migrations.Couchbase;
+namespace Hyperbee.Migrations.Providers.Couchbase;
 
 public sealed record IndexItem( string BucketName, string IndexName, string Statement, bool IsPrimary );
 

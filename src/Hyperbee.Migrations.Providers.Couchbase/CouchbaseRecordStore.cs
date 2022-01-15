@@ -5,10 +5,10 @@ using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
-using Hyperbee.Migrations.Couchbase.Wait;
+using Hyperbee.Migrations.Providers.Couchbase.Wait;
 using Microsoft.Extensions.Logging;
 
-namespace Hyperbee.Migrations.Couchbase;
+namespace Hyperbee.Migrations.Providers.Couchbase;
 
 internal class CouchbaseRecordStore : IMigrationRecordStore
 {

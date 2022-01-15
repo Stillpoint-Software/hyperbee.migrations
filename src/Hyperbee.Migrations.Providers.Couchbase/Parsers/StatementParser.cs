@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Text.RegularExpressions;
 
-namespace Hyperbee.Migrations.Couchbase.Parsers;
+namespace Hyperbee.Migrations.Providers.Couchbase.Parsers;
 
 public record StatementItem( StatementType StatementType, string Statement, KeyspaceRef Keyspace, string Name, string Expression );
 

@@ -1,7 +1,7 @@
 ﻿using System;
 using Couchbase.Core.Exceptions;
 
-namespace Hyperbee.Migrations.Couchbase.Parsers;
+namespace Hyperbee.Migrations.Providers.Couchbase.Parsers;
 
 public class KeySpaceParserOptions
 {

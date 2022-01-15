@@ -11,11 +11,11 @@ using Couchbase.Diagnostics;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
-using Hyperbee.Migrations.Couchbase.Parsers;
-using Hyperbee.Migrations.Couchbase.Wait;
+using Hyperbee.Migrations.Providers.Couchbase.Parsers;
+using Hyperbee.Migrations.Providers.Couchbase.Wait;
 using Microsoft.Extensions.Logging;
 
-namespace Hyperbee.Migrations.Couchbase.Resources;
+namespace Hyperbee.Migrations.Providers.Couchbase.Resources;
 
 public class CouchbaseResourceRunner<TMigration>
     where TMigration : Migration

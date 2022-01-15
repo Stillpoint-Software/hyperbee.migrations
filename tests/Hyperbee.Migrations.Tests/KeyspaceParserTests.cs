@@ -1,4 +1,4 @@
-﻿using Hyperbee.Migrations.Couchbase.Parsers;
+﻿using Hyperbee.Migrations.Providers.Couchbase.Parsers;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Hyperbee.Migrations.Tests

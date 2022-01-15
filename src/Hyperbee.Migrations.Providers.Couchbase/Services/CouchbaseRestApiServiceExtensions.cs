@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Hyperbee.Migrations.Couchbase.Wait;
+using Hyperbee.Migrations.Providers.Couchbase.Wait;
 
-namespace Hyperbee.Migrations.Couchbase.Services;
+namespace Hyperbee.Migrations.Providers.Couchbase.Services;
 
 internal static class CouchbaseRestApiServiceExtensions
 {

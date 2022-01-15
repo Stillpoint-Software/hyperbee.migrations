@@ -3,19 +3,28 @@
 	<PropertyGroup>
 		<TargetFramework>net6.0</TargetFramework>
 		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-		<PackageId>Hyperbee.Migrations</PackageId>
+		<PackageId>Hyperbee.Migrations.Providers.Coucbase</PackageId>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
-			<_Parameter1>$(AssemblyName).Tests</_Parameter1>
+			<_Parameter1>Hyperbee.Migrations.Tests</_Parameter1>
 		</AssemblyAttribute>
 	</ItemGroup>
 
 	<ItemGroup>
+		<PackageReference Include="Couchbase.Extensions.DependencyInjection" Version="3.2.5" />
+		<PackageReference Include="Couchbase.Extensions.Locks" Version="2.0.0" />
+		<PackageReference Include="CouchbaseNetClient" Version="3.2.6" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="6.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="6.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Http" Version="6.0.0" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="6.0.0" />
 		<PackageReference Include="Microsoft.SourceLink.Bitbucket.Git" Version="1.1.1" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
 	</ItemGroup>
 
 </Project>

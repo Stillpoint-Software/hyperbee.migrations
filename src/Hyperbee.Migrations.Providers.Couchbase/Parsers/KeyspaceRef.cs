@@ -2,7 +2,7 @@
 using System.Linq;
 using System.Text;
 
-namespace Hyperbee.Migrations.Couchbase.Parsers;
+namespace Hyperbee.Migrations.Providers.Couchbase.Parsers;
 
 public record KeyspaceRef
 {
