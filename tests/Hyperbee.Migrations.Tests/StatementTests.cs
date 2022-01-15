@@ -14,13 +14,15 @@ namespace Hyperbee.Migrations.Tests;
 public class StatementTests
 {
     [TestMethod]
-    public void Evaluate_statements()
+    public void Evaluate_statements_does_not_throw()
     {
         var statements = GetStatements( "Hyperbee.Migrations.Tests.Resources.statements.json" );
 
         var parser = new StatementParser();
 
         var results = statements.Select( parser.ParseStatement ).ToList();
+
+        // TODO how can we validate results?
     }
 
     public static IEnumerable<string> GetStatements( string resourceName )
