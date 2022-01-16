@@ -156,10 +156,28 @@ public static class CouchbaseHelper
 
         var scopes = await bucket.Collections.GetAllScopesAsync().ConfigureAwait( false );
 
+        var scopes0 = scopes.ToArray();
+
         scopeName = Unquote( scopeName );
         collectionName = Unquote( collectionName );
 
-        return scopes.Any( x => x.Name == scopeName && x.Collections.Any( y => y.Name == collectionName ) );
+        return scopes0.Any( x => x.Name == scopeName && x.Collections.Any( y => y.Name == collectionName ) );
+    }
+
+    internal static async Task<bool> CollectionExistsN1QlAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
+    {
+        // N1Ql is returning incomplete results when previously shutdown ungracefully
+        //      this can be fixed by querying for "select * from system:indexes" first - spooky
+        await QueryExecuteAsync( 
+            clusterHelper,
+            "SELECT RAW count(*) FROM system:indexes"
+        );
+
+        // N1Ql query the keyspace for the scope and collection
+        return await QueryExistsAsync(
+            clusterHelper,
+            $"SELECT RAW count(*) FROM system:keyspaces WHERE `bucket` = '{Unquote(bucketName)}' AND `scope` = '{Unquote(scopeName)}' AND name = '{Unquote(collectionName)}'"
+        );
     }
 
     public static async Task CreatePrimaryCollectionIndexAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )

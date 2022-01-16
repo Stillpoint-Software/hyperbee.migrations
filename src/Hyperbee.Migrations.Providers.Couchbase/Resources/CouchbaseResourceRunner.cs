@@ -31,61 +31,24 @@ public class CouchbaseResourceRunner<TMigration>
         _logger = logger;
     }
 
-    public Task CreateBucketsFromAsync( string resourceName, CancellationToken cancellationToken = default )
+    // statements
+
+    public Task StatementsFromAsync( string resourceName, CancellationToken cancellationToken = default )
     {
-        return CreateBucketsFromAsync( resourceName, default, cancellationToken );
+        return StatementsFromAsync( new[] { resourceName }, default, cancellationToken );
     }
 
-    public async Task CreateBucketsFromAsync( string resourceName, TimeSpan? timeout, CancellationToken cancellationToken = default )
+    public Task StatementsFromAsync( string resourceName, TimeSpan? timeout, CancellationToken cancellationToken = default )
     {
-        // resourceName => name/bucket-resource.json
-
-        static IEnumerable<BucketSettings> ReadResources( string migrationName, string resourceName )
-        {
-            var json = ResourceHelper.GetResource<TMigration>( $"{migrationName}.{resourceName}" );
-
-            var options = new JsonSerializerOptions
-            {
-                AllowTrailingCommas = true,
-                PropertyNameCaseInsensitive = true,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            };
-
-            return JsonSerializer.Deserialize<IList<BucketSettings>>( json, options );
-        }
-
-        ThrowIfNoResourceLocationFor();
-
-        var migrationName = Migration.VersionedName<TMigration>();
-        var clusterHelper = await _clusterProvider.GetClusterHelperAsync();
-
-        using var tts = TimeoutTokenSource.CreateTokenSource( timeout );
-        using var lts = CancellationTokenSource.CreateLinkedTokenSource( tts.Token, cancellationToken );
-        var operationCancelToken = lts.Token;
-
-        foreach ( var bucketSettings in ReadResources( migrationName, resourceName ) )
-        {
-            operationCancelToken.ThrowIfCancellationRequested();
-            await CreateBucketAsync( clusterHelper, bucketSettings, operationCancelToken ).ConfigureAwait( false );
-        }
+        return StatementsFromAsync( new[] { resourceName }, timeout, cancellationToken );
     }
 
-    public Task CreateStatementsFromAsync( string resourceName, CancellationToken cancellationToken = default )
+    public Task StatementsFromAsync( string[] resourceNames, CancellationToken cancellationToken = default )
     {
-        return CreateStatementsFromAsync( new[] { resourceName }, default, cancellationToken );
+        return StatementsFromAsync( resourceNames, default, cancellationToken );
     }
 
-    public Task CreateStatementsFromAsync( string resourceName, TimeSpan? timeout, CancellationToken cancellationToken = default )
-    {
-        return CreateStatementsFromAsync( new[] { resourceName }, timeout, cancellationToken );
-    }
-
-    public Task CreateStatementsFromAsync( string[] resourceNames, CancellationToken cancellationToken = default )
-    {
-        return CreateStatementsFromAsync( resourceNames, default, cancellationToken );
-    }
-
-    public async Task CreateStatementsFromAsync( string[] resourceNames, TimeSpan? timeout, CancellationToken cancellationToken = default )
+    public async Task StatementsFromAsync( string[] resourceNames, TimeSpan? timeout, CancellationToken cancellationToken = default )
     {
         // resourceName => name/bucket/statement-resource.json
 
@@ -125,7 +88,7 @@ public class CouchbaseResourceRunner<TMigration>
             switch ( statementItem.StatementType )
             {
                 case StatementType.CreateBucket:
-                    await CreateBucketAsync( clusterHelper, statementItem ).ConfigureAwait( false );
+                    await CreateBucketAsync( clusterHelper, statementItem, operationCancelToken ).ConfigureAwait( false );
                     break;
 
                 case StatementType.CreateScope:
@@ -163,24 +126,26 @@ public class CouchbaseResourceRunner<TMigration>
         }
     }
 
+    // documents
+
     private record DocumentItem( KeyspaceRef Keyspace, string Id, string Content );
 
-    public Task CreateDocumentsFromAsync( string resourcePath, CancellationToken cancellationToken = default )
+    public Task DocumentsFromAsync( string resourcePath, CancellationToken cancellationToken = default )
     {
-        return CreateDocumentsFromAsync( new[] { resourcePath }, default, cancellationToken );
+        return DocumentsFromAsync( new[] { resourcePath }, default, cancellationToken );
     }
 
-    public Task CreateDocumentsFromAsync( string resourcePath, TimeSpan? timeout, CancellationToken cancellationToken = default )
+    public Task DocumentsFromAsync( string resourcePath, TimeSpan? timeout, CancellationToken cancellationToken = default )
     {
-        return CreateDocumentsFromAsync( new[] { resourcePath }, timeout, cancellationToken );
+        return DocumentsFromAsync( new[] { resourcePath }, timeout, cancellationToken );
     }
 
-    public Task CreateDocumentsFromAsync( string[] resourcePaths, CancellationToken cancellationToken = default )
+    public Task DocumentsFromAsync( string[] resourcePaths, CancellationToken cancellationToken = default )
     {
-        return CreateDocumentsFromAsync( resourcePaths, default, cancellationToken );
+        return DocumentsFromAsync( resourcePaths, default, cancellationToken );
     }
 
-    public async Task CreateDocumentsFromAsync( string[] resourcePaths, TimeSpan? timeout, CancellationToken cancellationToken = default )
+    public async Task DocumentsFromAsync( string[] resourcePaths, TimeSpan? timeout, CancellationToken cancellationToken = default )
     {
         // resourcePath => name/bucket[/scope]/collection
 
@@ -262,67 +227,11 @@ public class CouchbaseResourceRunner<TMigration>
         }
     }
 
-    private static void ThrowIfNoResourceLocationFor()
+    // operations
+
+    private async Task CreateBucketAsync( ClusterHelper clusterHelper, StatementItem item, CancellationToken operationCancellationToken = default )
     {
-        var exists = typeof( TMigration )
-            .Assembly
-            .GetCustomAttributes( typeof( ResourceLocationAttribute ), false )
-            .Cast<ResourceLocationAttribute>()
-            .Any();
-
-        if ( !exists )
-            throw new NotSupportedException( $"Missing required assembly attribute: {nameof( ResourceLocationAttribute )}." );
-    }
-
-    private async Task CreateBucketAsync( ClusterHelper clusterHelper, BucketSettings bucketSettings, CancellationToken operationCancelToken )
-    {
-        if ( await clusterHelper.BucketExistsAsync( bucketSettings.Name ).ConfigureAwait( false ) )
-            return;
-
-        _logger?.LogInformation( "CREATE BUCKET `{bucketName}`", bucketSettings.Name );
-
-        await clusterHelper.Cluster.Buckets.CreateBucketAsync( bucketSettings )
-            .ConfigureAwait( false );
-
-        // wait for the bucket
-        //
-        const int WaitForExists = 0;
-        const int WaitForReady = 1;
-
-        var state = WaitForExists;
-
-        while ( true )
-        {
-            operationCancelToken.ThrowIfCancellationRequested();
-
-            switch ( state )
-            {
-                case WaitForExists:
-                {
-                    if ( !await clusterHelper.BucketExistsAsync( bucketSettings.Name ).ConfigureAwait( false ) )
-                    {
-                        await Task.Delay( 100, operationCancelToken );
-                        continue;
-                    }
-
-                    state = WaitForReady;
-                    break;
-                }
-
-                case WaitForReady:
-                {
-                    var bucket = await clusterHelper.Cluster.BucketAsync( bucketSettings.Name ).ConfigureAwait( false );
-                    var waitOptions = new WaitUntilReadyOptions().CancellationToken( operationCancelToken );
-                    await bucket.WaitUntilReadyAsync( TimeSpan.Zero, waitOptions ).ConfigureAwait( false ); // timeout param ignored when cancellation provided
-                    return;
-                }
-            }
-        }
-    }
-
-    private async Task CreateBucketAsync( ClusterHelper clusterHelper, StatementItem item )
-    {
-        await CreateBucketAsync( clusterHelper, item.BucketSettings, CancellationToken.None );
+        await CreateBucketAndWaitForReadyAsync( clusterHelper, item.BucketSettings, operationCancellationToken );
     }
 
     private async Task DropBucketAsync( ClusterHelper clusterHelper, StatementItem item )
@@ -383,5 +292,65 @@ public class CouchbaseResourceRunner<TMigration>
         var scope = await bucket.ScopeAsync( keyspace.ScopeName ).ConfigureAwait( false );
         var collection = await scope.CollectionAsync( keyspace.CollectionName ).ConfigureAwait( false );
         await collection.UpsertAsync( id, content, x => x.Transcoder( new RawStringTranscoder() ) ).ConfigureAwait( false );
+    }
+
+    // helpers
+
+    private async Task CreateBucketAndWaitForReadyAsync( ClusterHelper clusterHelper, BucketSettings bucketSettings, CancellationToken operationCancelToken )
+    {
+        if ( await clusterHelper.BucketExistsAsync( bucketSettings.Name ).ConfigureAwait( false ) )
+            return;
+
+        _logger?.LogInformation( "CREATE BUCKET `{bucketName}`", bucketSettings.Name );
+
+        await clusterHelper.Cluster.Buckets.CreateBucketAsync( bucketSettings )
+            .ConfigureAwait( false );
+
+        // wait for the bucket
+        //
+        const int WaitForExists = 0;
+        const int WaitForReady = 1;
+
+        var state = WaitForExists;
+
+        while ( true )
+        {
+            operationCancelToken.ThrowIfCancellationRequested();
+
+            switch ( state )
+            {
+                case WaitForExists:
+                    {
+                        if ( !await clusterHelper.BucketExistsAsync( bucketSettings.Name ).ConfigureAwait( false ) )
+                        {
+                            await Task.Delay( 100, operationCancelToken );
+                            continue;
+                        }
+
+                        state = WaitForReady;
+                        break;
+                    }
+
+                case WaitForReady:
+                    {
+                        var bucket = await clusterHelper.Cluster.BucketAsync( bucketSettings.Name ).ConfigureAwait( false );
+                        var waitOptions = new WaitUntilReadyOptions().CancellationToken( operationCancelToken );
+                        await bucket.WaitUntilReadyAsync( TimeSpan.Zero, waitOptions ).ConfigureAwait( false ); // timeout param ignored when cancellation provided
+                        return;
+                    }
+            }
+        }
+    }
+
+    private static void ThrowIfNoResourceLocationFor()
+    {
+        var exists = typeof(TMigration)
+            .Assembly
+            .GetCustomAttributes( typeof(ResourceLocationAttribute), false )
+            .Cast<ResourceLocationAttribute>()
+            .Any();
+
+        if ( !exists )
+            throw new NotSupportedException( $"Missing required assembly attribute: {nameof(ResourceLocationAttribute)}." );
     }
 }

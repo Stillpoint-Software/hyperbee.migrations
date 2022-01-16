@@ -5,7 +5,7 @@
       "args": null
     },
     {
-      "statement": "CREATE BUCKET `mybucket` TYPE Ephemeral RAMQUOTA 512 FLUSH",
+      "statement": "CREATE BUCKET `mybucket` TYPE Ephemeral RAMQUOTA 512 FLUSH ENABLED",
       "args": null
     },
     {

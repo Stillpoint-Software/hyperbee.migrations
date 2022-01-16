@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using Couchbase.Management.Buckets;
@@ -60,7 +59,7 @@ public class StatementParser
             return new StatementItem( StatementType.CreatePrimaryIndex, statement, k, name, e.ToString() );
         }
 
-        // create-bucket-extension ::= CREATE BUCKET [ namespace ':' ] bucket [TYPE Couchbase|Memcached|Ephemeral] [RAMQUOTA 256] [FLUSH]
+        // create-bucket-extension ::= CREATE BUCKET [ namespace ':' ] bucket [TYPE Couchbase|Memcached|Ephemeral] [RAMQUOTA 256] [FLUSH ENABLED]
         // pseudo n1ql statement
 
         match = Regex.Match( statement, @"^\s*CREATE\s+BUCKET\s+(?<keyspace>.+)", RegexOptions.IgnoreCase );
@@ -166,7 +165,7 @@ public class StatementParser
         ["Memcached"] = BucketType.Memcached
     };
 
-    private BucketSettings ParseBucketSettings( KeyspaceRef keyspace, ReadOnlySpan<char> expr )
+    private static BucketSettings ParseBucketSettings( KeyspaceRef keyspace, ReadOnlySpan<char> expr )
     {
         var settings = new BucketSettings
         {
@@ -179,7 +178,7 @@ public class StatementParser
         if ( expr.IsEmpty )
             return settings;
 
-        var match = Regex.Match( expr.ToString(), @"^\s*(?:TYPE\s+\b(?<type>Couchbase|Memcached|Ephemeral)\b)?(?:\s+RAMQUOTA\s+(?<quota>\d+))?(?:\s+(?<flush>FLUSH))?", RegexOptions.IgnoreCase );
+        var match = Regex.Match( expr.ToString(), @"^\s*(?:TYPE\s+\b(?<type>Couchbase|Memcached|Ephemeral)\b)?(?:\s+RAMQUOTA\s+(?<quota>\d+))?(?:\s+(?<flush>FLUSH ENABLED))?", RegexOptions.IgnoreCase );
 
         if ( !match.Success )
             return settings;

@@ -117,6 +117,16 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             );
         }
 
+        // wait for n1ql to `see` the collection and scope
+        // there is a small window after the management commands create a scope or collection before n1ql sees them.
+
+        await WaitHelper.WaitUntilAsync(
+            async _ => await clusterHelper.CollectionExistsN1QlAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
+            TimeSpan.Zero,
+            new PauseRetryStrategy(),
+            cancellationToken
+        );
+
         // check for primary index
 
         if ( !await clusterHelper.PrimaryCollectionIndexExistsAsync( bucketName, scopeName, collectionName ) )
@@ -132,6 +142,10 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
                 cancellationToken
             );
         }
+
+        // ready
+
+        _logger.LogInformation( "Ledger `{bucketName}` is ready.", bucketName );
     }
 
     public async Task<IDisposable> CreateLockAsync()
