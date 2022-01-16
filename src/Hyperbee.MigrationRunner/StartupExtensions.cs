@@ -1,7 +1,7 @@
 ﻿using Couchbase.Extensions.DependencyInjection;
-using Hyperbee.Migrations.Couchbase;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Hyperbee.Migrations.Providers.Couchbase;
 
 namespace Hyperbee.MigrationRunner;
 

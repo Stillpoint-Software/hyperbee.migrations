@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using Couchbase;
 using Microsoft.Extensions.Options;
 
-namespace Hyperbee.Migrations.Couchbase.Services
+namespace Hyperbee.Migrations.Providers.Couchbase.Services
 {
     internal class CouchbaseAuthenticationHandler : DelegatingHandler
     {

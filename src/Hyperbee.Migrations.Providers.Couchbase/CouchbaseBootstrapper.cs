@@ -5,11 +5,11 @@ using System.Threading.Tasks;
 using Couchbase.Core.Exceptions;
 using Couchbase.Diagnostics;
 using Couchbase.Extensions.DependencyInjection;
-using Hyperbee.Migrations.Couchbase.Services;
-using Hyperbee.Migrations.Couchbase.Wait;
+using Hyperbee.Migrations.Providers.Couchbase.Services;
+using Hyperbee.Migrations.Providers.Couchbase.Wait;
 using Microsoft.Extensions.Logging;
 
-namespace Hyperbee.Migrations.Couchbase;
+namespace Hyperbee.Migrations.Providers.Couchbase;
 
 internal interface ICouchbaseBootstrapper
 {

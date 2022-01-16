@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using Couchbase;
 using Couchbase.Core.Exceptions;
 
-namespace Hyperbee.Migrations.Couchbase.Wait;
+namespace Hyperbee.Migrations.Providers.Couchbase.Wait;
 
 public static class WaitHelper
 {

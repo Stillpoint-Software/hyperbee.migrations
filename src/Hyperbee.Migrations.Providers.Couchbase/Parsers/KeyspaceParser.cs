@@ -1,21 +1,13 @@
 ﻿using System;
-using System.Text;
+using Couchbase.Core.Exceptions;
 
-namespace Hyperbee.Migrations.Couchbase.Parsers;
+namespace Hyperbee.Migrations.Providers.Couchbase.Parsers;
 
-public record KeyspaceRef( string Namespace, string BucketName, string ScopeName, string CollectionName )
+public class KeySpaceParserOptions
 {
-    public override string ToString()
-    {
-        var builder = new StringBuilder();
-
-        if ( !string.IsNullOrWhiteSpace( Namespace ) )
-            builder.Append( Namespace + ":" );
-
-        builder.AppendJoin( '.', BucketName, ScopeName, CollectionName );
-
-        return builder.ToString();
-    }
+    public bool Partial { get; set; }
+    public bool PreserveQuotes { get; set; }
+    public bool Strict { get; set; }
 }
 
 public class KeyspaceParser
@@ -29,7 +21,25 @@ public class KeyspaceParser
         Final
     }
 
-    public KeyspaceRef ParseExpression( ReadOnlySpan<char> expr, out int count, bool partial = false )
+    public static KeyspaceRef GetKeyspaceRef( ReadOnlySpan<char> expr )
+    {
+        expr = expr.Trim();
+
+        var parser = new KeyspaceParser();
+        var result = parser.ParseExpression( expr, out var count );
+
+        if ( count != expr.Length )
+            throw new InvalidArgumentException( "The keyspace expression contains invalid extra characters." );
+
+        return result;
+    }
+
+    public KeyspaceRef ParseExpression( ReadOnlySpan<char> expr, KeySpaceParserOptions options = default )
+    {
+        return ParseExpression( expr, out _, options );
+    }
+
+    public KeyspaceRef ParseExpression( ReadOnlySpan<char> expr, out int count, KeySpaceParserOptions options = default )
     {
         // parses a keyspace from the *start* of a span. leading keywords must have been removed.
 
@@ -57,6 +67,7 @@ public class KeyspaceParser
 
         // scan keyspace
         count = 0;
+        options ??= new KeySpaceParserOptions();
 
         const int keylimit = 4;
         var keyspace = new string[keylimit];
@@ -85,7 +96,7 @@ public class KeyspaceParser
                         case '\t':
                             break;
                         case '`':
-                            captureStart = i - 1;
+                            captureStart = i - (options.PreserveQuotes ? 1 : 0); // adjust for backtick capture or discard
                             scanner = Scanner.Escaped;
                             break;
                         default:
@@ -102,7 +113,7 @@ public class KeyspaceParser
                     if ( c != '`' )
                         continue;
 
-                    keyspace[k++] = Capture( expr, captureStart, i );
+                    keyspace[k++] = Capture( expr, captureStart, i - (options.PreserveQuotes ? 0: 1) ); // adjust for backtick capture or discard
                     count = i;
                     scanner = Scanner.Trailing;
                     break;
@@ -113,6 +124,7 @@ public class KeyspaceParser
                     if ( IsValidIdentifierChar( c, false ) )
                         continue;
 
+                    i--; // backup to not capture the '.'
                     keyspace[k++] = Capture( expr, captureStart, i );
                     count = i;
                     scanner = Scanner.Trailing;
@@ -154,7 +166,7 @@ public class KeyspaceParser
 
         if ( captureStart < i && scanner == Scanner.Unescaped )
         {
-            keyspace[k] = Capture( expr, captureStart, i );
+            keyspace[k++] = Capture( expr, captureStart, i );
             count = i;
         }
 
@@ -163,10 +175,11 @@ public class KeyspaceParser
         return k switch
         {
             1 when ns => throw new InvalidOperationException( "A namespace was specified without any related keyspace values." ),
-            1 when partial => new KeyspaceRef( default, default, default, keyspace[0] ),
-            2 when partial && ns => new KeyspaceRef( keyspace[0], default, default, keyspace[1] ),
-            _ when !ns => new KeyspaceRef( default, keyspace[0], keyspace[1], keyspace[2] ),
-            _ => new KeyspaceRef( keyspace[0], keyspace[1], keyspace[2], keyspace[3] )
+            1 when options.Partial => new KeyspaceRef( default, default, default, keyspace[0] ),            // collection
+            2 when options.Partial && ns => new KeyspaceRef( keyspace[0], default, default, keyspace[1] ),  // namespace:collection
+            2 when !options.Strict && !ns => new KeyspaceRef( default, keyspace[0], default, keyspace[1] ), // [!strict] bucket.collection
+            _ when !ns => new KeyspaceRef( default, keyspace[0], keyspace[1], keyspace[2] ),                // bucket.scope.collection
+            _ => new KeyspaceRef( keyspace[0], keyspace[1], keyspace[2], keyspace[3] )                      // namespace:bucket.scope.collection
         };
     }
 }

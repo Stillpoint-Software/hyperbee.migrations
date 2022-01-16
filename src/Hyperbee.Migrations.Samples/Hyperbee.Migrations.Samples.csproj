@@ -13,6 +13,7 @@
     <None Remove="Resources\1000-CreateInitialBuckets\cloudc\_default\c96ff0c6fed249c281e28d17aae65bbf.json" />
     <None Remove="Resources\1000-CreateInitialBuckets\cloudc\_default\c9735a6691dd45b3834f8dd9eae6c2e1.json" />
     <None Remove="Resources\1000-CreateInitialBuckets\cloudc\_default\f90bcd5525b442dda8a5ee83e0987ec3.json" />
+    <None Remove="Resources\1000-CreateInitialBuckets\statements.json" />
     <None Remove="Resources\1000-CreateInitialBuckets\wagglebeecache\statements.json" />
     <None Remove="Resources\1000-CreateInitialBuckets\wagglebeecache\_default\euri-cache-cc0c81e0a030c64b8c80cbd05adf25e522f90bcd5525b442dda8a5ee83e0987ec3.json" />
     <None Remove="Resources\1000-CreateInitialBuckets\wagglebee\statements.json" />
@@ -21,13 +22,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\statements.json" />
     <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\cloudc\_default\0c81e0a030c64b8c80cbd05adf25e522.json" />
     <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\cloudc\_default\1e48bc01e5824ee388259b05a0ddae3e.json" />
     <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\cloudc\_default\8fd267a89d704e9db7671181e6ae726f.json" />
     <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\cloudc\_default\c96ff0c6fed249c281e28d17aae65bbf.json" />
     <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\cloudc\_default\c9735a6691dd45b3834f8dd9eae6c2e1.json" />
     <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\cloudc\_default\f90bcd5525b442dda8a5ee83e0987ec3.json" />
-    <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\buckets.json" />
     <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\cloudc\statements.json" />
     <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\wagglebeecache\_default\euri-cache-cc0c81e0a030c64b8c80cbd05adf25e522f90bcd5525b442dda8a5ee83e0987ec3.json" />
     <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\wagglebeecache\statements.json" />
@@ -37,6 +38,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Hyperbee.Migrations.Providers.Couchbase\Hyperbee.Migrations.Providers.Couchbase.csproj" />
     <ProjectReference Include="..\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
   </ItemGroup>
 

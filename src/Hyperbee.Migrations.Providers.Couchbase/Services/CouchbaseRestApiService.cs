@@ -10,7 +10,7 @@ using Couchbase;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Hyperbee.Migrations.Couchbase.Services
+namespace Hyperbee.Migrations.Providers.Couchbase.Services
 {
     // https://docs.couchbase.com/server/current/rest-api/rest-endpoints-all.html
     //

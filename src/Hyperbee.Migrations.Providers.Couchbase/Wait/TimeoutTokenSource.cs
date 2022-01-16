@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Threading;
 
-namespace Hyperbee.Migrations.Couchbase.Wait;
+namespace Hyperbee.Migrations.Providers.Couchbase.Wait;
 
 public static class TimeoutTokenSource
 {
@@ -10,7 +10,7 @@ public static class TimeoutTokenSource
     {
         var tokenSource = new CancellationTokenSource();
 
-        if ( timeout.HasValue )
+        if ( timeout.HasValue && timeout.Value != TimeSpan.Zero )
             tokenSource.CancelAfter( timeout.Value );
 
         return tokenSource;

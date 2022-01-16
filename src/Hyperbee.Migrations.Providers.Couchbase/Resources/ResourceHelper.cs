@@ -3,7 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
-namespace Hyperbee.Migrations.Couchbase.Resources;
+namespace Hyperbee.Migrations.Providers.Couchbase.Resources;
 
 public static class ResourceHelper
 {

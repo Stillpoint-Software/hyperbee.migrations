@@ -4,7 +4,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Hyperbee.Migrations.Couchbase.Services
+namespace Hyperbee.Migrations.Providers.Couchbase.Services
 {
     internal class BasicAuthenticationHeaderProvider : IAuthenticationHeaderProvider
     {

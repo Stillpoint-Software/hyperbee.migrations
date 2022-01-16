@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Hyperbee.Migrations.Couchbase;
+namespace Hyperbee.Migrations.Providers.Couchbase;
 
 public class CouchbaseMigrationOptions : MigrationOptions
 {

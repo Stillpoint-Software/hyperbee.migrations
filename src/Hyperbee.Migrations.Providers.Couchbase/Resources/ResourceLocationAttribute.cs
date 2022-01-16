@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Hyperbee.Migrations.Couchbase.Resources;
+namespace Hyperbee.Migrations.Providers.Couchbase.Resources;
 
 [AttributeUsage(AttributeTargets.Assembly)]
 public class ResourceLocationAttribute : Attribute

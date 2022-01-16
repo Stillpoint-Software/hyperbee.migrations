@@ -1,15 +1,11 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Threading.Tasks;
 using Couchbase;
-using Couchbase.Core.Exceptions;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Management.Collections;
-using Newtonsoft.Json.Linq;
 
-namespace Hyperbee.Migrations.Couchbase;
+namespace Hyperbee.Migrations.Providers.Couchbase;
 
 public sealed record IndexItem( string BucketName, string IndexName, string Statement, bool IsPrimary );
 
@@ -32,29 +28,7 @@ public static class CouchbaseHelper
 {
     public static string Unquote( ReadOnlySpan<char> value ) => value.Trim().Trim( "`'\"" ).ToString();
 
-    public static async Task CreateScopeAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName )
-    {
-        await QueryExecuteAsync(
-            clusterHelper,
-            $"CREATE SCOPE `{Unquote( bucketName )}`.`{Unquote( scopeName )}`"
-        ).ConfigureAwait( false );
-    }
-
-    public static async Task CreateCollectionAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
-    {
-        await QueryExecuteAsync(
-            clusterHelper,
-            $"CREATE COLLECTION `{Unquote(bucketName)}`.`{Unquote( scopeName )}`.`{Unquote( collectionName )}`"
-        ).ConfigureAwait( false );
-    }
-
-    public static async Task CreatePrimaryCollectionIndexAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
-    {
-        await QueryExecuteAsync(
-            clusterHelper,
-            $"CREATE PRIMARY INDEX ON `default`:`{Unquote(bucketName)}`.`{Unquote(scopeName)}`.`{Unquote(collectionName)}`"
-        ).ConfigureAwait( false );
-    }
+    // bucket
 
     public static async Task<bool> BucketExistsAsync( this ClusterHelper clusterHelper, string bucketName )
     {
@@ -71,7 +45,32 @@ public static class CouchbaseHelper
         var buckets = await cluster.Buckets.GetAllBucketsAsync()
             .ConfigureAwait( false );
 
-        return buckets.ContainsKey( Unquote(bucketName) );
+        return buckets.ContainsKey( Unquote( bucketName ) );
+    }
+
+    // scope
+
+    public static async Task CreateScopeAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName )
+    {
+        var cluster = clusterHelper.Cluster;
+        var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
+            .ConfigureAwait( false );
+
+        await bucket.Collections.CreateScopeAsync( scopeName ).ConfigureAwait( false );
+
+        //await QueryExecuteAsync(
+        //    clusterHelper,
+        //    $"CREATE SCOPE `{Unquote( bucketName )}`.`{Unquote( scopeName )}`"
+        //).ConfigureAwait( false );
+    }
+
+    public static async Task DropScopeAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName )
+    {
+        var cluster = clusterHelper.Cluster;
+        var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
+            .ConfigureAwait( false );
+
+        await bucket.Collections.DropScopeAsync( scopeName ).ConfigureAwait( false );
     }
 
     public static async Task<bool> ScopeExistsAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName )
@@ -97,11 +96,39 @@ public static class CouchbaseHelper
         var bucket = await cluster.BucketAsync( bucketName )
             .ConfigureAwait( false );
 
-        //var scopes = await bucket.Collections.GetAllScopesAsync().ConfigureAwait( false );
-        var scopes = await Fixes.GetAllScopesAsync( bucket.Collections ).ConfigureAwait( false );
+        var scopes = await bucket.Collections.GetAllScopesAsync().ConfigureAwait( false );
 
         scopeName = Unquote( scopeName );
         return scopes.Any( x => x.Name == scopeName );
+    }
+
+    // collection
+
+    public static async Task CreateCollectionAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
+    {
+        var cluster = clusterHelper.Cluster;
+        var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
+            .ConfigureAwait( false );
+
+        var collectionSpec = new CollectionSpec( Unquote( scopeName ), Unquote( collectionName ) );
+
+        await bucket.Collections.CreateCollectionAsync( collectionSpec ).ConfigureAwait( false );
+
+        //await QueryExecuteAsync(
+        //    clusterHelper,
+        //    $"CREATE COLLECTION `{Unquote(bucketName)}`.`{Unquote( scopeName )}`.`{Unquote( collectionName )}`"
+        //).ConfigureAwait( false );
+    }
+
+    public static async Task DropCollectionAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
+    {
+        var cluster = clusterHelper.Cluster;
+        var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
+            .ConfigureAwait( false );
+
+        var collectionSpec = new CollectionSpec( Unquote( scopeName ), Unquote( collectionName ) );
+
+        await bucket.Collections.DropCollectionAsync( collectionSpec ).ConfigureAwait( false );
     }
 
     public static async Task<bool> CollectionExistsAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
@@ -127,13 +154,38 @@ public static class CouchbaseHelper
         var bucket = await cluster.BucketAsync( bucketName )
             .ConfigureAwait( false );
 
-        //var scopes = await bucket.Collections.GetAllScopesAsync();
-        var scopes = await Fixes.GetAllScopesAsync( bucket.Collections ).ConfigureAwait( false );
+        var scopes = await bucket.Collections.GetAllScopesAsync().ConfigureAwait( false );
+
+        var scopes0 = scopes.ToArray();
 
         scopeName = Unquote( scopeName );
         collectionName = Unquote( collectionName );
 
-        return scopes.Any( x => x.Name == scopeName && x.Collections.Any( y => y.Name == collectionName ) );
+        return scopes0.Any( x => x.Name == scopeName && x.Collections.Any( y => y.Name == collectionName ) );
+    }
+
+    internal static async Task<bool> CollectionExistsN1QlAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
+    {
+        // N1Ql is returning incomplete results when previously shutdown ungracefully
+        //      this can be fixed by querying for "select * from system:indexes" first - spooky
+        await QueryExecuteAsync( 
+            clusterHelper,
+            "SELECT RAW count(*) FROM system:indexes"
+        );
+
+        // N1Ql query the keyspace for the scope and collection
+        return await QueryExistsAsync(
+            clusterHelper,
+            $"SELECT RAW count(*) FROM system:keyspaces WHERE `bucket` = '{Unquote(bucketName)}' AND `scope` = '{Unquote(scopeName)}' AND name = '{Unquote(collectionName)}'"
+        );
+    }
+
+    public static async Task CreatePrimaryCollectionIndexAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
+    {
+        await QueryExecuteAsync(
+            clusterHelper,
+            $"CREATE PRIMARY INDEX ON `default`:`{Unquote(bucketName)}`.`{Unquote(scopeName)}`.`{Unquote(collectionName)}`"
+        ).ConfigureAwait( false );
     }
 
     public static async Task<bool> PrimaryCollectionIndexExistsAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
@@ -143,6 +195,8 @@ public static class CouchbaseHelper
             $"SELECT RAW count(*) FROM system:indexes WHERE bucket_id = '{Unquote( bucketName )}' AND scope_id = '{Unquote( scopeName )}' AND keyspace_id = '{Unquote( collectionName )}' AND is_primary"
         ).ConfigureAwait( false );
     }
+
+    // index
 
     public static async Task<bool> IndexExistsAsync( this ClusterHelper clusterHelper, string bucketName, string indexName )
     {
@@ -160,6 +214,8 @@ public static class CouchbaseHelper
         ).ConfigureAwait( false );
     }
 
+    // query
+
     internal static async Task QueryExecuteAsync( this ClusterHelper clusterHelper, string statement )
     {
         await clusterHelper.Cluster.QueryAsync<dynamic>( statement )
@@ -176,6 +232,8 @@ public static class CouchbaseHelper
 
     private static class Fixes
     {
+        /* fixed in 3.2.6.0
+         
         internal static async Task<IEnumerable<ScopeSpec>> GetAllScopesAsync( ICouchbaseCollectionManager collections )
         {
             // Couchbase.NetClient 3.2.5.0 is throwing exceptions on success.
@@ -205,5 +263,6 @@ public static class CouchbaseHelper
                 } ).ToList();
             }
         }
+        */
     }
 }
