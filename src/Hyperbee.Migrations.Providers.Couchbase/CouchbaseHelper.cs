@@ -32,20 +32,31 @@ public static class CouchbaseHelper
 
     public static async Task<bool> BucketExistsAsync( this ClusterHelper clusterHelper, string bucketName )
     {
-        // N1Ql is returning incomplete results when previously shutdown ungracefully
-        //      this can be fixed by querying for "select * from system:indexes" first
-        //      but it is spooky. let's use an alternative method.
-        //
-        //return await QueryExistsAsync(
-        //    clusterHelper,
-        //    $"SELECT RAW count(*) FROM system:buckets WHERE name = '{Unquote(bucketName)}'"
-        //);
-
         var cluster = clusterHelper.Cluster;
         var buckets = await cluster.Buckets.GetAllBucketsAsync()
             .ConfigureAwait( false );
 
         return buckets.ContainsKey( Unquote( bucketName ) );
+    }
+
+    public static async Task<bool> BucketExistsQueryAsync( this ClusterHelper clusterHelper, string bucketName )
+    {
+        // Query N1QL for the bucket, collection, or scope.
+        //
+        // There is a small window after management api creation where an item exists
+        // but isn't available to N1QL. This method provides a mechanism for waiting
+        // until N1QL is ready to process queries.
+
+        // N1Ql is returning incomplete results when previously shutdown ungracefully
+        // this can be fixed by querying for "select * from system:indexes" first.
+
+        await Fixes.SystemQueriesAsync( clusterHelper ).ConfigureAwait( false );
+
+        // N1Ql query the keyspace for the bucket
+        return await QueryExistsAsync(
+            clusterHelper,
+            $"SELECT RAW count(*) FROM system:buckets WHERE name = '{Unquote( bucketName )}'"
+        ).ConfigureAwait( false );
     }
 
     // scope
@@ -75,15 +86,6 @@ public static class CouchbaseHelper
 
     public static async Task<bool> ScopeExistsAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName )
     {
-        // N1Ql is returning incomplete results when previously shutdown ungracefully
-        //      this can be fixed by querying for "select * from system:indexes" first
-        //      but it is spooky. let's use an alternative method.
-        //
-        //return await QueryExistsAsync(
-        //    clusterHelper,
-        //    $"SELECT RAW count(*) FROM system:scopes WHERE `bucket` = '{Unquote(bucketName)}' AND name = '{Unquote(scopeName)}'"
-        //);
-
         var cluster = clusterHelper.Cluster;
         var buckets = await cluster.Buckets.GetAllBucketsAsync()
             .ConfigureAwait( false );
@@ -100,6 +102,26 @@ public static class CouchbaseHelper
 
         scopeName = Unquote( scopeName );
         return scopes.Any( x => x.Name == scopeName );
+    }
+
+    public static async Task<bool> ScopeExistsQueryAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName )
+    {
+        // Query N1QL for the bucket, collection, or scope.
+        //
+        // There is a small window after management api creation where an item exists
+        // but isn't available to N1QL. This method provides a mechanism for waiting
+        // until N1QL is ready to process queries.
+        
+        // N1Ql is returning incomplete results when previously shutdown ungracefully
+        // this can be fixed by querying for "select * from system:indexes" first.
+
+        await Fixes.SystemQueriesAsync( clusterHelper ).ConfigureAwait( false );
+
+        // N1Ql query the keyspace for the scope
+        return await QueryExistsAsync(
+            clusterHelper,
+            $"SELECT RAW count(*) FROM system:scopes WHERE `bucket` = '{Unquote( bucketName )}' AND name = '{Unquote( scopeName )}'"
+        ).ConfigureAwait( false );
     }
 
     // collection
@@ -133,15 +155,6 @@ public static class CouchbaseHelper
 
     public static async Task<bool> CollectionExistsAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
     {
-        // N1Ql is returning incomplete results when previously shutdown ungracefully
-        //      this can be fixed by querying for "select * from system:indexes" first
-        //      but it is spooky. let's use an alternative method.
-        //
-        //return await QueryExistsAsync(
-        //    clusterHelper,
-        //    $"SELECT RAW count(*) FROM system:keyspaces WHERE `bucket` = '{Unquote(bucketName)}' AND `scope` = '{Unquote(scopeName)}' AND name = '{Unquote(collectionName)}'"
-        //);
-
         var cluster = clusterHelper.Cluster;
         var buckets = await cluster.Buckets.GetAllBucketsAsync()
             .ConfigureAwait( false );
@@ -156,28 +169,30 @@ public static class CouchbaseHelper
 
         var scopes = await bucket.Collections.GetAllScopesAsync().ConfigureAwait( false );
 
-        var scopes0 = scopes.ToArray();
-
         scopeName = Unquote( scopeName );
         collectionName = Unquote( collectionName );
 
-        return scopes0.Any( x => x.Name == scopeName && x.Collections.Any( y => y.Name == collectionName ) );
+        return scopes.Any( x => x.Name == scopeName && x.Collections.Any( y => y.Name == collectionName ) );
     }
 
-    internal static async Task<bool> CollectionExistsN1QlAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
+    public static async Task<bool> CollectionExistsQueryAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
     {
+        // Query N1QL for the bucket, collection, or scope.
+        //
+        // There is a small window after management api creation where an item exists
+        // but isn't available to N1QL. This method provides a mechanism for waiting
+        // until N1QL is ready to process queries.
+
         // N1Ql is returning incomplete results when previously shutdown ungracefully
-        //      this can be fixed by querying for "select * from system:indexes" first - spooky
-        await QueryExecuteAsync( 
-            clusterHelper,
-            "SELECT RAW count(*) FROM system:indexes"
-        );
+        // this can be fixed by querying for "select * from system:indexes" first.
+        
+        await Fixes.SystemQueriesAsync( clusterHelper ).ConfigureAwait( false );
 
         // N1Ql query the keyspace for the scope and collection
         return await QueryExistsAsync(
             clusterHelper,
             $"SELECT RAW count(*) FROM system:keyspaces WHERE `bucket` = '{Unquote(bucketName)}' AND `scope` = '{Unquote(scopeName)}' AND name = '{Unquote(collectionName)}'"
-        );
+        ).ConfigureAwait( false );
     }
 
     public static async Task CreatePrimaryCollectionIndexAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
@@ -232,6 +247,26 @@ public static class CouchbaseHelper
 
     private static class Fixes
     {
+        private static bool __systemQueriesFixed;
+
+        internal static async ValueTask SystemQueriesAsync( ClusterHelper clusterHelper )
+        {
+            // Couchbase 7.0.2.6703
+            //
+            // N1Ql is returning incomplete results after an ungraceful shutdown.
+            // this can be fixed by querying for "select * from system:indexes" first - spooky
+
+            if ( __systemQueriesFixed )
+                return;
+
+            await QueryExecuteAsync(
+                clusterHelper,
+                "SELECT RAW count(*) FROM system:indexes"
+            );
+
+            __systemQueriesFixed = true;
+        }
+
         /* fixed in 3.2.6.0
          
         internal static async Task<IEnumerable<ScopeSpec>> GetAllScopesAsync( ICouchbaseCollectionManager collections )
