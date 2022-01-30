@@ -9,16 +9,33 @@
 #>
 
 function Publish-Packages() {
+    Param(
+        [Parameter(Position = 0)]
+        [Alias("c")]
+        [string] $Configuration = 'Debug',
+
+        [Alias("t")]
+        [string] $Tag = 'local'
+    )
 
 	try {
-		Write-Host "Building and publishing packages"
-        $timestamp = [System.DateTime]::UtcNow.ToString( "yyMMddHHmmss" )
-        msbuild -v:m -t:pack -p:PushAfterPack=true -p:VersionSuffix="local$timestamp"
+        $Tag = ($Tag -replace '\s+', '').ToLower()
+		Write-Host "Building and publishing packages for '$Configuration' with tag '$Tag'."
+
+        $timestamp = [System.DateTime]::UtcNow.ToString( 'yyMMddHHmmss' )
+
+        if ( !$Tag ) {
+            Write-Error "Non-semver publication is not supported."
+            throw
+        }
+
+        dotnet pack --no-build --configuration $Configuration --version-suffix "$Tag$timestamp" -p:PushAfterPack=true
 	}
 	catch {
 		Write-Error "Publish-Packages failed. Make sure you are executing from a `Developer PowerShell` session."
 	}
 }
+
 
 function Remove-Packages() {
     Param(

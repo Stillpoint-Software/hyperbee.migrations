@@ -1,24 +1,31 @@
 ﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 	<!--
 	Push the target package to nuget
-    If `defaultPushSource` is not defined in the nuget.config use the -s parameter to specify a push target
     -->
 	<Target Name="PushPackage" AfterTargets="Pack"
-	        Condition="$([MSBuild]::ValueOrDefault('$(PushAfterPack)', false)) AND $([MSBuild]::ValueOrDefault('$(IsPackage)', false))">
-		<Exec Command="dotnet nuget push $(TargetDir)..\$(TargetName).$(PackageVersion).nupkg "></Exec>
+	        Condition="'$(PushAfterPack)'=='true' AND '$(IsPackage)'=='true'">
+		<Exec Command="dotnet nuget push $(TargetDir)..\$(TargetName).$(PackageVersion).nupkg $(PackageSourceParam)"></Exec>
 	</Target>
 
 	<!--
-	Set the package version before Pack
+	Set the package version and source before Pack
 	https://github.com/NuGet/NuGet.Client/blob/4.3.0.4202/src/NuGet.Core/NuGet.Build.Tasks.Pack.Library/Pack.targets
 	Must run before target "GenerateNuspec" ("Pack") for the version to be applied as expected
 	-->
 	<Target Name="SetPackageVersion" BeforeTargets="GenerateNuspec"
-	        Condition="$([MSBuild]::ValueOrDefault('$(IsPackage)', false))">
+	        Condition="'$(IsPackage)'=='true'">
 		<PropertyGroup>
 			<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
 			<PackageVersion Condition="'$(VersionSuffix)'==''">$(VersionPrefix)</PackageVersion>
 			<PackageVersion Condition="'$(VersionSuffix)'!=''">$(VersionPrefix)-$(VersionSuffix)</PackageVersion>
 		</PropertyGroup>
 	</Target>
+
+	<Target Name="SetPackageSource" BeforeTargets="GenerateNuspec"
+	        Condition="'$(PushAfterPack)'=='true'">
+		<PropertyGroup>
+			<PackageSourceParam Condition="'$(PackageSource)'!=''">--source $(PackageSource)</PackageSourceParam>
+		</PropertyGroup>
+	</Target>
+
 </Project>
