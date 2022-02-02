@@ -2,7 +2,7 @@
 
 	<PropertyGroup>
 		<TargetFramework>net6.0</TargetFramework>
-		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+		<IsPackage>true</IsPackage>
 		<PackageId>Hyperbee.Migrations</PackageId>
 	</PropertyGroup>
 
