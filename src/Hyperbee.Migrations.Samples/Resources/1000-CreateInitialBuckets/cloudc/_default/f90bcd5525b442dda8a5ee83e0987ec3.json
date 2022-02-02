@@ -12,7 +12,7 @@
       "idPUserId": "auth0|6070436c213d5100759c8b85",
       "interests": null,
       "lastSeen": "0001-01-01T00:00:00",
-      "location": null,
+      "location": [0,0],
       "movedToIdP": true,
       "movedToS3": false,
       "name": "Wagglebee Administrator",

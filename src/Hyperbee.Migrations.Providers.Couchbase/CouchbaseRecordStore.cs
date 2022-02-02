@@ -121,7 +121,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         // there is a small window after the management commands create a scope or collection before n1ql sees them.
 
         await WaitHelper.WaitUntilAsync(
-            async _ => await clusterHelper.CollectionExistsN1QlAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
+            async _ => await clusterHelper.CollectionExistsQueryAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
             TimeSpan.Zero,
             new PauseRetryStrategy(),
             cancellationToken
