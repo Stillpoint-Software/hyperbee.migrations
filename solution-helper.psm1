@@ -29,58 +29,44 @@ function Publish-Packages() {
             throw
         }
 
-        dotnet pack --no-build --configuration $Configuration --version-suffix "$Tag$timestamp" -p:PushAfterPack=true
+        dotnet pack --no-build --configuration $Configuration --output ./output --version-suffix "$Tag$timestamp" -p:PushAfterPack=true
 	}
 	catch {
 		Write-Error "Publish-Packages failed. Make sure you are executing from a `Developer PowerShell` session."
 	}
 }
 
-
-function Remove-Packages() {
+function Clear-Packages() {
     Param(
-        [string] $Name = 'hyperbee.',
-        [int] $Keep = 10,
-        [string] $ToolsFolder = "C:\Development\Tools",
-        [string] $Source = 'proget'
+        [string] $Name = '*',
+        [int] $Keep = 5,
+        [string] $Source = 'local'
     )
 
-	Write-Host "Collecting outdated packages from $source ..."
-
-    # get the nuget cli
-    $exePath = "$ToolsFolder/Nuget.exe"
-
-    if ( !(Test-Path $ToolsFolder) ) {
-        Write-Host "Creating tools folder '$ToolsFolder'"
-        mkdir $toolsFolder | Out-Null
-    }
-    
-    if ( !(Test-Path $exePath) ) {
-        Write-Host 'Downloading nuget.exe'
-        Invoke-WebRequest https://dist.nuget.org/win-x86-commandline/latest/nuget.exe -OutFile $exePath
-    }
+	Write-Host "Collecting package versions from $source ..."
 
     # get unique packages
-    $packages = & $exePath list -source $Source -prerelease $Name
+    $packages = Find-Package $Name -source $Source
 
     foreach( $package in $packages ) {
-        $packageName = $package.split()[0]  # format is "packagename latestversion"
+        $packageName = $package.Name
 
         # get all versions for this package
-        $items = & $exePath list -source $Source -prerelease -allversions $packageName | Sort-Object
-        Write-Host "Cleaning '$packageName'. $($items.Count) Packages."
+
+        $versions = Find-Package $packageName -source $source -allversions | Sort-Object
+
+        Write-Host "Clearing '$packageName'. $($versions.Count) Packages."
         
-        if ( $items.Count -gt $Keep ) {
-            $removeCount = $items.Count - $Keep
+        if ( $versions.Count -gt $Keep ) {
+            $removeCount = $versions.Count - $Keep
             Write-Host "$removeCount Packages will be removed."
 
-            foreach( $p in ($items | Select-Object -Skip $Keep ) ) {
-                $pi = $p.split()
-                & $exePath delete $pi[0] $pi[1] -source $Source -noninteractive
+            foreach( $p in ($versions | Select-Object -Skip $Keep ) ) {
+                dotnet nuget delete $p.Name $p.Version --source $Source --non-interactive
             }
         }
     }
 }
 
 Export-ModuleMember -Function 'Publish-Packages'
-Export-ModuleMember -Function 'Remove-Packages'
+Export-ModuleMember -Function 'Clear-Packages'
