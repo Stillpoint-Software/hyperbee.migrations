@@ -36,7 +36,7 @@ function Publish-Packages() {
 	}
 }
 
-function Clear-Packages() {
+function Resize-Feed() {
     Param(
         [string] $Name = '*',
         [int] $Keep = 5,
@@ -55,7 +55,7 @@ function Clear-Packages() {
 
         $versions = Find-Package $packageName -source $source -allversions | Sort-Object
 
-        Write-Host "Clearing '$packageName'. $($versions.Count) Packages."
+        Write-Host "Found '$packageName'. $($versions.Count) Packages."
         
         if ( $versions.Count -gt $Keep ) {
             $removeCount = $versions.Count - $Keep
@@ -69,4 +69,4 @@ function Clear-Packages() {
 }
 
 Export-ModuleMember -Function 'Publish-Packages'
-Export-ModuleMember -Function 'Clear-Packages'
+Export-ModuleMember -Function 'Resize-Feed'
