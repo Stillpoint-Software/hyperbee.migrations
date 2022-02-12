@@ -41,11 +41,9 @@ pipelines:
               #
               - export SOLUTION_NAME=Hyperbee.Migrations
               - export CONFIGURATION=Debug
-              - export DUMP=$NUGET_SOURCE_LPOINT
 
-              - echo "'$DUMP'"
               - echo 'before restore'
-              - dotnet restore ${SOLUTION_NAME}.sln --source https://www.MYGET.org/F/lpoint/auth/01429c3b-aacd-4dba-8fba-74cc294ed537/api/v3/index.json
+              - dotnet restore ${SOLUTION_NAME}.sln --source ${NUGET_SOURCE_LPOINT}
               - echo 'after restore'
               - echo 'before build'
               - dotnet build --no-restore ${SOLUTION_NAME}.sln --configuration ${CONFIGURATION}
