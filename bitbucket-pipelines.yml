@@ -50,7 +50,7 @@ pipelines:
               # Pack and Publish
               # Auto publishes projects with PublishAfterPack property
               #
-              - export VERSION_SUFFIX="develop"$(date +%y%m%d%H%M%S)
+              - export VERSION_SUFFIX="develop."$(date +%y%m%d%H%M%S)
               - dotnet pack --no-build --configuration ${CONFIGURATION} --output ./output --version-suffix ${VERSION_SUFFIX} -p:PackageSource='$NUGET_SOURCE_LPOINT' -p:PushAfterPack=true
           after-script:
               # Unit Test Post-Processing
