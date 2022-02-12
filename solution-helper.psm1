@@ -29,7 +29,7 @@ function Publish-Packages() {
             throw
         }
 
-        dotnet pack --no-build --configuration $Configuration --output ./output --version-suffix "$Tag$timestamp" -p:PushAfterPack=true
+        dotnet pack --no-build --configuration $Configuration --output ./output --version-suffix "$Tag.$timestamp" -p:PushAfterPack=true
 	}
 	catch {
 		Write-Error "Publish-Packages failed. Make sure you are executing from a `Developer PowerShell` session."
