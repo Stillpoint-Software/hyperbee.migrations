@@ -30,6 +30,7 @@ pipelines:
               # Convert trx result format to junit
               - export PATH="$PATH:/root/.dotnet/tools"
               - trx2junit ./TestResults/*.trx
+
     build-test-publish:
       - step:
           name: Publish Packages
@@ -40,8 +41,12 @@ pipelines:
               #
               - export SOLUTION_NAME=Hyperbee.Migrations
               - export CONFIGURATION=Debug
+              - echo 'before restore'
               - dotnet restore ${SOLUTION_NAME}.sln --source https://www.myget.org/F/lpoint/auth/01429c3b-aacd-4dba-8fba-74cc294ed537/api/v3/index.json
+              - echo 'after restore'
+              - echo 'before build'
               - dotnet build --no-restore ${SOLUTION_NAME}.sln --configuration ${CONFIGURATION}
+              - echo 'after build'
               # Run Unit Tests
               #
               - REPORTS_PATH=./test-reports/build_${BITBUCKET_BUILD_NUMBER}
