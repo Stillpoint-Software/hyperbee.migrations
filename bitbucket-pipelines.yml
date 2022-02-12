@@ -18,7 +18,7 @@ pipelines:
               #
               - export SOLUTION_NAME=Hyperbee.Migrations
               - export CONFIGURATION=Debug
-              - dotnet restore ${SOLUTION_NAME}.sln --source ${NUGET_SOURCE_LPOINT}
+              - dotnet restore ${SOLUTION_NAME}.sln --source ${NUGET_SOURCE_LPOINT} --source https://www.nuget.org/api/v2/
               - dotnet build --no-restore ${SOLUTION_NAME}.sln --configuration ${CONFIGURATION}
               # Run Unit Tests
               #
@@ -41,13 +41,8 @@ pipelines:
               #
               - export SOLUTION_NAME=Hyperbee.Migrations
               - export CONFIGURATION=Debug
-
-              - echo 'before restore'
-              - dotnet restore ${SOLUTION_NAME}.sln --source ${NUGET_SOURCE_LPOINT}
-              - echo 'after restore'
-              - echo 'before build'
+              - dotnet restore ${SOLUTION_NAME}.sln --source ${NUGET_SOURCE_LPOINT} --source https://www.nuget.org/api/v2/
               - dotnet build --no-restore ${SOLUTION_NAME}.sln --configuration ${CONFIGURATION}
-              - echo 'after build'
               # Run Unit Tests
               #
               - REPORTS_PATH=./test-reports/build_${BITBUCKET_BUILD_NUMBER}
