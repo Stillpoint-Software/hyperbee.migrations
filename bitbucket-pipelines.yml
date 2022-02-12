@@ -40,7 +40,7 @@ pipelines:
               #
               - export SOLUTION_NAME=Hyperbee.Migrations
               - export CONFIGURATION=Debug
-              - dotnet restore ${SOLUTION_NAME}.sln --source ${NUGET_SOURCE_LPOINT}
+              - dotnet restore ${SOLUTION_NAME}.sln --source https://www.myget.org/F/lpoint/auth/01429c3b-aacd-4dba-8fba-74cc294ed537/api/v3/index.json
               - dotnet build --no-restore ${SOLUTION_NAME}.sln --configuration ${CONFIGURATION}
               # Run Unit Tests
               #
