@@ -1,8 +1,4 @@
-#  Template publish .NET Core package to nuget.org
-
-#  This template allows you to publish your .NET Core package to nuget.org.
-#  The workflow allows running tests, code linting and security scans on feature branches (as well as master).
-#  The .NET Core package will be validated and published after the code is merged to master.
+#  Build and publish .NET Core package
 
 image: mcr.microsoft.com/dotnet/sdk:6.0
 
@@ -11,20 +7,31 @@ pipelines:
     build-test:
       - step:
           name: Build and Unit Test
+          deployment: Staging
           caches:
               - dotnetcore
           script:
+              # Find the solution file
+              #
+              - SOLUTION_FILES=$(find *.sln)
+              - if [ ${#SOLUTION_FILES[@]} -ne 1 ]; then echo "INDETERMINATE TARGET SOLUTION." ; exit 1 ; else SOLUTION_NAME=${SOLUTION_FILES[0]%.sln}
+              - echo "SOLUTION_NAME is $SOLUTION_NAME"
+
+              # Select Configuration
+              #
+              - if [ $BITBUCKET_BRANCH == 'master' ]; then BUILD_CONFIGURATION='Release' ; else BUILD_CONFIGURATION='Debug' ; fi
+              - echo "BITBUCKET_BRANCH is $BITBUCKET_BRANCH"
+              - echo "BUILD_CONFIGURATION is $BUILD_CONFIGURATION"
+
               # Build Solution
               #
-              - export SOLUTION_NAME=Hyperbee.Migrations
-              - export CONFIGURATION=Debug
-              - dotnet restore ${SOLUTION_NAME}.sln --source ${NUGET_SOURCE_LPOINT}
-              - dotnet build --no-restore ${SOLUTION_NAME}.sln --configuration ${CONFIGURATION}
+              - dotnet restore ${SOLUTION_NAME}.sln --source ${NUGET_SOURCE_LPOINT} --source https://www.nuget.org/api/v2/
+              - dotnet build --no-restore ${SOLUTION_NAME}.sln --configuration ${BUILD_CONFIGURATION}
               # Run Unit Tests
               #
               - REPORTS_PATH=./test-reports/build_${BITBUCKET_BUILD_NUMBER}
               - dotnet tool install -g trx2junit
-              - dotnet test --no-build --logger:trx --results-directory:./TestResults
+              - dotnet test --no-build --configuration ${BUILD_CONFIGURATION} --logger:trx --results-directory:./TestResults
           after-script:
               # Unit Test Post-Processing
               # Convert trx result format to junit
@@ -33,25 +40,36 @@ pipelines:
     build-test-publish:
       - step:
           name: Publish Packages
+          deployment: Staging
           caches:
               - dotnetcore
           script:
+              # Find the solution file
+              #
+              - SOLUTION_FILES=$(find *.sln)
+              - if [ ${#SOLUTION_FILES[@]} -ne 1 ]; then echo "INDETERMINATE TARGET SOLUTION." ; exit 1 ; else SOLUTION_NAME=${SOLUTION_FILES[0]%.sln}
+              - echo "SOLUTION_NAME is $SOLUTION_NAME"
+
+              # Select Configuration
+              #
+              - if [ $BITBUCKET_BRANCH == 'master' ]; then BUILD_CONFIGURATION='Release' ; else BUILD_CONFIGURATION='Debug' ; fi
+              - if [ $BITBUCKET_BRANCH == 'master' ]; then VERSION_SUFFIX='' ; else VERSION_SUFFIX="develop."$(date +%y%m%d%H%M%S) ; fi
+              - echo "BITBUCKET_BRANCH is $BITBUCKET_BRANCH"
+              - echo "BUILD_CONFIGURATION is $BUILD_CONFIGURATION"
+
               # Build Solution
               #
-              - export SOLUTION_NAME=Hyperbee.Migrations
-              - export CONFIGURATION=Debug
-              - dotnet restore ${SOLUTION_NAME}.sln --source ${NUGET_SOURCE_LPOINT}
-              - dotnet build --no-restore ${SOLUTION_NAME}.sln --configuration ${CONFIGURATION}
+              - dotnet restore ${SOLUTION_NAME}.sln --source ${NUGET_SOURCE_LPOINT} --source https://www.nuget.org/api/v2/
+              - dotnet build --no-restore ${SOLUTION_NAME}.sln --configuration ${BUILD_CONFIGURATION}
               # Run Unit Tests
               #
               - REPORTS_PATH=./test-reports/build_${BITBUCKET_BUILD_NUMBER}
               - dotnet tool install -g trx2junit
-              - dotnet test --no-build --logger:trx --results-directory:./TestResults
+              - dotnet test --no-build --configuration ${BUILD_CONFIGURATION} --logger:trx --results-directory:./TestResults
               # Pack and Publish
               # Auto publishes projects with PublishAfterPack property
               #
-              - export VERSION_SUFFIX="develop"$(date +%y%m%d%H%M%S)
-              - dotnet pack --no-build --configuration ${CONFIGURATION} --version-suffix ${VERSION_SUFFIX} -p:PackageSource='$NUGET_SOURCE_LPOINT' -p:PushAfterPack=true
+              - dotnet pack --no-build --configuration ${BUILD_CONFIGURATION} --output ./output --version-suffix "${VERSION_SUFFIX}" -p:PackageSource='${NUGET_SOURCE_LPOINT}' -p:PushAfterPack=true
           after-script:
               # Unit Test Post-Processing
               # Convert trx result format to junit
