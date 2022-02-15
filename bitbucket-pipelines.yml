@@ -37,6 +37,7 @@ pipelines:
               # Convert trx result format to junit
               - export PATH="$PATH:/root/.dotnet/tools"
               - trx2junit ./TestResults/*.trx
+
     build-test-publish:
       - step:
           name: Publish Packages
@@ -67,7 +68,6 @@ pipelines:
               - dotnet tool install -g trx2junit
               - dotnet test --no-build --configuration ${BUILD_CONFIGURATION} --logger:trx --results-directory:./TestResults
               # Pack and Publish
-              # Auto publishes projects with PublishAfterPack property
               #
               - dotnet pack --no-build --configuration ${BUILD_CONFIGURATION} --output ./output --version-suffix "${VERSION_SUFFIX}" -p:PackageSource='${NUGET_SOURCE_LPOINT}' -p:PushAfterPack=true
           after-script:
