@@ -14,7 +14,7 @@ pipelines:
               # Find the solution file
               #
               - SOLUTION_FILES=$(find *.sln)
-              - if [ ${#SOLUTION_FILES[@]} -ne 1 ]; then echo "INDETERMINATE TARGET SOLUTION." ; exit 1 ; else SOLUTION_NAME=${SOLUTION_FILES[0]%.sln}
+              - if [ ${#SOLUTION_FILES[@]} -ne 1 ]; then echo "INDETERMINATE TARGET SOLUTION." ; exit 1 ; else SOLUTION_NAME=${SOLUTION_FILES[0]%.sln} ; fi
               - echo "SOLUTION_NAME is $SOLUTION_NAME"
 
               # Select Configuration
@@ -47,7 +47,7 @@ pipelines:
               # Find the solution file
               #
               - SOLUTION_FILES=$(find *.sln)
-              - if [ ${#SOLUTION_FILES[@]} -ne 1 ]; then echo "INDETERMINATE TARGET SOLUTION." ; exit 1 ; else SOLUTION_NAME=${SOLUTION_FILES[0]%.sln}
+              - if [ ${#SOLUTION_FILES[@]} -ne 1 ]; then echo "INDETERMINATE TARGET SOLUTION." ; exit 1 ; else SOLUTION_NAME=${SOLUTION_FILES[0]%.sln} ; fi
               - echo "SOLUTION_NAME is $SOLUTION_NAME"
 
               # Select Configuration
