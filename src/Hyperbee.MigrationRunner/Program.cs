@@ -21,6 +21,7 @@ internal class Program
         try
         {
             logger.Information( "Starting host..." );
+            logger.Information( $"Using environment settings '{ConfigurationHelper.EnvironmentAppSettingsName}'." );
 
             await Host
                 .CreateDefaultBuilder()
