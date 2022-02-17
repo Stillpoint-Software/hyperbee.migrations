@@ -68,12 +68,10 @@ definitions:
 
 pipelines:
   custom:
-    build-staging:
+    build:
       - step:
           <<: *build-test
-          deployment: Staging
 
-    publish-staging:
+    publish:
       - step:
           <<: *build-test-publish
-          deployment: Staging
