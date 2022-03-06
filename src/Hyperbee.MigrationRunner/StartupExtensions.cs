@@ -16,7 +16,7 @@ internal static class StartupExtensions
     internal static IConfigurationBuilder AddAppSettingsEnvironmentFile( this IConfigurationBuilder builder )
     {
         return builder
-            .AddJsonFile( $"appsettings.{Environment.GetEnvironmentVariable( "NETCORE_ENVIRONMENT" ) ?? "Development"}.json", optional: true );
+            .AddJsonFile( ConfigurationHelper.EnvironmentAppSettingsName, optional: true );
     }
 
     public static IServiceCollection AddCouchbase( this IServiceCollection services, IConfiguration config )
@@ -73,4 +73,9 @@ internal static class StartupExtensions
 
         return services;
     }
+}
+
+internal static class ConfigurationHelper
+{
+    internal static string EnvironmentAppSettingsName => $"appsettings.{Environment.GetEnvironmentVariable( "ASPNETCORE_ENVIRONMENT" ) ?? "Development"}.json";
 }

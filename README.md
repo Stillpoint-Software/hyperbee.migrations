@@ -263,3 +263,24 @@ The steps are:
 
 See the Couchbase implementation for reference.
 
+
+## Configure Local Solution
+
+To run the migration solution you will need to add some local configuration.
+
+`appsettings.developer.json`
+```json
+{
+  "Couchbase": {
+    "ConnectionString": "couchbase://localhost"
+  }
+}
+```
+
+`Manage User Secrets`
+```json
+{
+  "Couchbase:UserName": "Administrator", 
+  "Couchbase:Password": "_YOUR_PASSWORD_"
+}
+```
