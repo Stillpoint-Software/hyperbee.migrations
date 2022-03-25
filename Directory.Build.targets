@@ -3,7 +3,7 @@
 	Push the target package to nuget
     -->
 	<Target Name="PushPackage" AfterTargets="Pack"
-	        Condition="'$(PushAfterPack)'=='true' AND '$(IsPackage)'=='true'">
+	        Condition="'$(PushAfterPack)'=='true' AND ('$(IsPackage)'=='true' OR '$(PackAsTool)'=='true')">
 		<Exec Command="dotnet nuget push $(SolutionDir)output/$(TargetName).$(PackageVersion).nupkg $(PackageSourceParam)"></Exec>
 	</Target>
 
