@@ -1,15 +1,7 @@
 ﻿{
   "statements": [
     {
-      "statement": "CREATE BUCKET `cloudc` TYPE Couchbase RAMQUOTA 256 FLUSH ENABLED",
-      "args": null
-    },
-    {
-      "statement": "CREATE BUCKET `wagglebee` TYPE Couchbase RAMQUOTA 512 FLUSH ENABLED",
-      "args": null
-    },
-    {
-      "statement": "CREATE BUCKET `wagglebeecache` TYPE Couchbase RAMQUOTA 100 FLUSH ENABLED",
+      "statement": "CREATE BUCKET `migrationbucket` TYPE Couchbase RAMQUOTA 100 FLUSH ENABLED",
       "args": null
     }
   ]
