@@ -20,18 +20,14 @@ public class CreateInitialBuckets : Migration
         await _resourceRunner.StatementsFromAsync( new[]
             {
                 "statements.json",
-                "cloudc/statements.json",
-                "wagglebee/statements.json",
-                "wagglebeecache/statements.json"
+                "migrationbucket/statements.json"
             },
             cancellationToken
         );
 
         await _resourceRunner.DocumentsFromAsync( new []
             {
-                "cloudc/_default",
-                "wagglebee/_default",
-                "wagglebeecache/_default"
+                "migrationbucket/_default"
             },
             cancellationToken
         );

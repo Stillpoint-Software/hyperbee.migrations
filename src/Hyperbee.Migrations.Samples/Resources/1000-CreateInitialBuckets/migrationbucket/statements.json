@@ -1,0 +1,16 @@
+﻿{
+  "statements": [
+    {
+      "statement": "CREATE PRIMARY INDEX `idx_migrationbucket_primary` ON `migrationbucket` WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "CREATE INDEX `idx_migrationbucket_typeName` ON `migrationbucket`(`typeName`) USING GSI WITH {'defer_build':true}",
+      "args": null
+    },
+    {
+      "statement": "BUILD INDEX ON `migrationbucket` ( ( SELECT RAW name FROM system:indexes WHERE keyspace_id = 'migrationbucket' AND state = 'deferred' ));",
+      "args": null
+    }
+  ]
+}
