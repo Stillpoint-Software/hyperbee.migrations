@@ -68,5 +68,40 @@ function Resize-Feed() {
     }
 }
 
+function Update-Version() {
+   Param(
+        [Parameter(Position = 0,Mandatory=$true)]
+        [ValidateSet('Major','Minor','Patch', IgnoreCase = $true)]
+        [string] $Type,
+        [string] $Path = 'Directory.Build.Props'
+    )
+
+    try {
+        if (!(Test-Path $Path)) {
+            Write-Error "The version file '$Path' was not found in the current directory."
+            throw
+        }
+
+        $Type = (Get-Culture).TextInfo.ToTitleCase($Type) # e.g. convert 'major' to 'Major'
+        $propName = $Type + "Version"
+
+        $xml = [xml](Get-Content $Path)
+        $ns = New-Object System.Xml.XmlNamespaceManager($xml.NameTable)
+        $ns.AddNamespace("ns", $xml.DocumentElement.NamespaceURI)
+
+        $node = $xml.SelectSingleNode("//ns:Project/ns:PropertyGroup[ns:$propName]", $ns)
+        $version = $node.$propName -as [Int]
+        $node.$propName = ($version + 1) -as [String]
+
+        Write-Host "$propName is now '$($node.$PropName)'."
+
+        $xml.Save($Path)
+    }
+    catch {
+		Write-Error "Update-Version failed. Make sure you are executing from a `Developer PowerShell`."
+	}
+}
+
 Export-ModuleMember -Function 'Publish-Packages'
 Export-ModuleMember -Function 'Resize-Feed'
+Export-ModuleMember -Function 'Update-Version'
