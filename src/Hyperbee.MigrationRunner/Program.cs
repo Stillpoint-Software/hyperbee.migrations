@@ -83,7 +83,7 @@ internal class Program
 
     private static IDictionary<string,string> SwitchMappings()
     {
-        // pass array of FromAssemblies: --n:0 AssemblyName1 --n:1 AssemblyName2
+        // pass array of FromAssemblies: --a:0 AssemblyName1 --a:1 AssemblyName2
 
         return new Dictionary<string, string>()
         {

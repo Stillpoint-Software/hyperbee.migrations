@@ -289,23 +289,39 @@ To run the migration solution you will need to add some local configuration.
 }
 ```
 
-## Installing Global MigrationRunner
+## Installing The MigrationRunner
 
-To install the Runner as a global tool:
+The runner can be installed as a dotnet tool.
 
 ```powershell
-dotnet tool install Hyperbee.MigrationRunner --global --add-source {NUGET_SOURCE_LPOINT}
+# install the runner from nuget
+dotnet tool install Hyperbee.MigrationRunner --global --add-source {NUGET_SOURCE}
 ```
 
-To install a local copy
-
 ```powershell
+# install the runner from a local copy
 dotnet tool install Hyperbee.MigrationRunner --global --version 1.0.0-local.{version}
 ```
 
-To uninstall:
-
 ```powershell
+# uninstall the runner
 dotnet tool list -g
 dotnet tool uninstall Hyperbee.MigrationRunner --global
+```
+
+### Runner Command line arguments
+
+| Switch | Alias        | Description     |
+| ------ | ------------ | --------------- |
+| -n     | --names      | From Paths      |
+| -a     | --assemblies | From Assemblies |
+| -p     | --profiles   | Profiles        |
+| -b     | --bucket     | Bucket Name     |
+| -s     | --scope      | Scope Name      |
+| -c     | --collection | Collection Name |
+
+
+```powershell
+# example: pass multiple migration assemblies to the runner
+dotnet tool run hyperbee.migrationrunner --a:0 AssemblyName1 --a:1 AssemblyName2 
 ```
