@@ -4,7 +4,7 @@
 	Push the target package to nuget
     -->
 	<Target Name="PushPackage" AfterTargets="Pack"
-	        Condition="'$(PushAfterPack)'=='true' AND ('$(IsPackage)'=='true' OR '$(PackAsTool)'=='true')">
+	        Condition="'$(PushAfterPack)'=='true' AND ('$(IsPackable)'=='true' OR '$(PackAsTool)'=='true')">
 		<Exec Command="dotnet nuget push $(SolutionDir)output/$(TargetName).$(PackageVersion).nupkg $(PackageSourceParam)"></Exec>
 	</Target>
 
@@ -14,7 +14,7 @@
 	Must run before target "GenerateNuspec" ("Pack") for the version to be applied as expected
 	-->
 	<Target Name="SetPackageVersion" BeforeTargets="GenerateNuspec"
-	        Condition="'$(IsPackage)'=='true'">
+	        Condition="'$(IsPackable)'=='true'">
 		<PropertyGroup>
 			<VersionPrefix>$(MajorVersion).$(MinorVersion).$(PatchVersion)</VersionPrefix>
 			<PackageVersion Condition="'$(VersionSuffix)'==''">$(VersionPrefix)</PackageVersion>
