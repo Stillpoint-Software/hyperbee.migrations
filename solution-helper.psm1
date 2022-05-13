@@ -73,7 +73,8 @@ function Update-Version() {
         [Parameter(Position = 0,Mandatory=$true)]
         [ValidateSet('Major','Minor','Patch', IgnoreCase = $true)]
         [string] $Type,
-        [string] $Path = 'Directory.Build.Props'
+        [string] $Path = 'Directory.Build.props',
+        [switch] $Commit
     )
 
     try {
@@ -96,6 +97,11 @@ function Update-Version() {
         Write-Host "$propName is now '$($node.$PropName)'."
 
         $xml.Save($Path)
+
+        if ( $Commit ) {
+            git add $path
+            git commit -m "bump $($Type.ToLower())" -q -o $Path
+        }
     }
     catch {
 		Write-Error "Update-Version failed. Make sure you are executing from a `Developer PowerShell`."
