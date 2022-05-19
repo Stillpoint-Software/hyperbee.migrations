@@ -94,7 +94,16 @@ function Update-Version() {
         $version = $node.$propName -as [Int]
         $node.$propName = ($version + 1) -as [String]
 
-        Write-Host "$propName is now '$($node.$PropName)'."
+        if ( $Type -eq 'major' ) {
+            $node.MinorVersion = '0'
+            $node.PatchVersion = '0'
+        }
+
+        if ( $Type -eq 'minor' ) {
+            $node.PatchVersion = '0'
+        }
+
+        Write-Host "Version now '$($node.MajorVersion).$($node.MinorVersion).$($node.PatchVersion)'."
 
         $xml.Save($Path)
 
@@ -107,6 +116,7 @@ function Update-Version() {
 		Write-Error "Update-Version failed. Make sure you are executing from a `Developer PowerShell`."
 	}
 }
+
 
 Export-ModuleMember -Function 'Publish-Packages'
 Export-ModuleMember -Function 'Resize-Feed'
