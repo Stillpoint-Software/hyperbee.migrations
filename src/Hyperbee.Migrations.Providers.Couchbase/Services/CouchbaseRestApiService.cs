@@ -33,6 +33,7 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
     internal class CouchbaseRestApiService : ICouchbaseRestApiService
     {
         public HttpClient Client { get; }
+        public ILogger<CouchbaseRestApiService> Logger { get; }
         private IList<Uri> ConnectionStringUris { get; set; } = new List<Uri>();
 
         public static class RestApi
@@ -49,6 +50,7 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
         public CouchbaseRestApiService( HttpClient httpClient, IOptions<ClusterOptions> options, ILogger<CouchbaseRestApiService> logger )
         {
             Client = httpClient;
+            Logger = logger;
             GetConnectionStringUris( options.Value );
         }
 
@@ -189,9 +191,11 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
                 if ( ex.StatusCode != null )
                     throw;
 
+                Logger.LogWarning( "{message}", ex.Message );
+
                 // connection failure - site not ready - etc
             }
- 
+
             return false;
         }
 

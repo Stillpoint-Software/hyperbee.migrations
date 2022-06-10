@@ -76,5 +76,6 @@ public static class ServiceCollectionExtensions
     }
 
     private static IEnumerable<T> GetEnumerable<T>( this IConfiguration config, string key ) 
-        => config.GetSection( key ).Get<IEnumerable<T>>() ?? Enumerable.Empty<T>();
+        => config.GetSection( key )
+            .Get<IEnumerable<T>>() ?? Enumerable.Empty<T>();
 }
