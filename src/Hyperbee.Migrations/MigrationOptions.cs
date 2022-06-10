@@ -15,7 +15,6 @@ public class MigrationOptions
         Direction = Direction.Up;
         Assemblies = new List<Assembly>();
         Profiles = new List<string>();
-        Assemblies = new List<Assembly>();
         ToVersion = 0;
         LockingEnabled = false;
         MigrationActivator = migrationActivator;

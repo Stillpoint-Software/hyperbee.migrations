@@ -32,12 +32,12 @@ internal class Program
                         .AddAppSettingsEnvironmentFile()
                         .AddUserSecrets<Program>()
                         .AddEnvironmentVariables()
-                        .AddCommandLine( args, SwitchMappings() ); 
+                        .AddCommandLineEx( args, SwitchMappings() );
                 } )
                 .ConfigureServices( ( context, services ) =>
                 {
                     services
-                        .AddCouchbase( context.Configuration )
+                        .AddCouchbase( context.Configuration, logger )
                         .AddCouchbaseMigrations( context.Configuration )
                         .AddHostedService<MainService>();
                 } )
@@ -83,25 +83,33 @@ internal class Program
 
     private static IDictionary<string,string> SwitchMappings()
     {
-        // pass array of FromAssemblies: --a:0 AssemblyName1 --a:1 AssemblyName2
+        // pass array of FromAssemblies: -a AssemblyName1 -a AssemblyName2
 
         return new Dictionary<string, string>()
         {
             // short names
-            { "-n", "FromPaths" },
-            { "-a", "FromAssemblies" },
-            { "-p", "Profiles" },
-            { "-b", "BucketName" },
-            { "-s", "ScopeName" },
-            { "-c", "CollectionName" },
+            { "-f", "[Migrations:FromPaths]" },
+            { "-a", "[Migrations:FromAssemblies]" },
+            { "-p", "[Migrations:Profiles]" },
+            { "-b", "Migrations:BucketName" },
+            { "-s", "Migrations:ScopeName" },
+            { "-c", "Migrations:CollectionName" },
+            
+            { "-usr", "Couchbase:UserName" },
+            { "-pwd", "Couchbase:Password" },
+            { "-cs", "Couchbase:ConnectionString" },
 
             // aliases
-            { "--names", "FromPaths" },
-            { "--assemblies", "FromAssemblies" },
-            { "--profiles", "Profiles" },
-            { "--bucket", "BucketName" },
-            { "--scope", "ScopeName" },
-            { "--collection", "CollectionName" }
+            { "--file", "[Migrations:FromPaths]" },
+            { "--assembly", "[Migrations:FromAssemblies]" },
+            { "--profile", "[Migrations:Profiles]" },
+            { "--bucket", "Migrations:BucketName" },
+            { "--scope", "Migrations:ScopeName" },
+            { "--collection", "Migrations:CollectionName" },
+
+            { "--user", "Couchbase:UserName" },
+            { "--password", "Couchbase:Password" },
+            { "--connection", "Couchbase:ConnectionString" }
         };
     }
 }

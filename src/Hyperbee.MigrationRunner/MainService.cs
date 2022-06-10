@@ -1,4 +1,5 @@
 ﻿using Couchbase.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -18,6 +19,9 @@ public class MainService: BackgroundService
         _serviceProvider = serviceProvider;
     }
 
+    private static IEnumerable<T> GetEnumerable<T>( IConfiguration config, string key )
+        => config.GetSection( key ).Get<IEnumerable<T>>() ?? Enumerable.Empty<T>();
+
     protected override async Task ExecuteAsync( CancellationToken stoppingToken )
     {
         using var scope = _serviceProvider.CreateScope();
@@ -29,6 +33,12 @@ public class MainService: BackgroundService
 
         try
         {
+            var config = provider.GetRequiredService<IConfiguration>();
+            
+            var nameAssembliesX =
+                GetEnumerable<string>( config, "Migrations:FromAssemblies" )
+                .ToList();
+
             var runner = provider.GetRequiredService<Migrations.MigrationRunner>();
             await runner.RunAsync( stoppingToken );
         }

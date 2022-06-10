@@ -309,19 +309,80 @@ dotnet tool list -g
 dotnet tool uninstall Hyperbee.MigrationRunner --global
 ```
 
-### Runner Command line arguments
+### Running From The Command Line
 
-| Switch | Alias        | Description     |
-| ------ | ------------ | --------------- |
-| -n     | --names      | From Paths      |
-| -a     | --assemblies | From Assemblies |
-| -p     | --profiles   | Profiles        |
-| -b     | --bucket     | Bucket Name     |
-| -s     | --scope      | Scope Name      |
-| -c     | --collection | Collection Name |
+Once installed as a dotnet tool, the runner can be run from the command line. The runner expects, and will use settings
+from the `appSettings.json` in the execution folder. Arguments can also be provided from the command line.
 
+#### Command Line Options
+
+| Switch | Alias        | Description           |
+| ------ | ------------ | --------------------- |
+| -f     | --file       | From Paths Array      |
+| -a     | --assembly   | From Assemblies Array |
+| -p     | --profile    | Profiles Array        |
+| -b     | --bucket     | Bucket Name           |
+| -s     | --scope      | Scope Name            |
+| -c     | --collection | Collection Name       |
+| -usr   | --user       | Database User         |
+| -pwd   | --password   | Database Password     |
+| -cs    | --connection | Database Connection String |
+
+#### Runtime Configuration
+
+```json
+{
+  "Couchbase": {
+    "ConnectionString": "__CONNECTION_STRING_HERE__",
+    "UserName": "__SECRET_HERE__",
+    "Password": "__SECRET_HERE__",
+    "MaxConnectionLimit": 20
+  },
+  "Migrations": {
+    "BucketName": "hyperbee",
+    "ScopeName": "migrations",
+    "CollectionName": "ledger",
+    "Lock": {
+      "Enabled": false,
+      "Name": "migration-runner-mutex",
+      "MaxLifetime": 3600,
+      "ExpireInterval": 300,
+      "RenewInterval": 120
+    },
+    "FromPaths": [
+      "c:\\my-migration-assembly.dll"
+    ],
+    "FromAssemblies": [
+    ]
+  },
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "Debug",
+      "Override": {
+        "Couchbase": "Warning",
+        "Microsoft": "Warning",
+        "Microsoft.Hosting.Lifetime": "Information",
+        "System": "Warning"
+      }
+    }
+  }
+}
+```
+
+
+#### Examples
 
 ```powershell
+# example: run using values in settings file (default)
+hyperbee.migrationrunner
+
 # example: pass multiple migration assemblies to the runner
-dotnet tool run hyperbee.migrationrunner --a:0 AssemblyName1 --a:1 AssemblyName2 
+hyperbee.migrationrunner -a AssemblyName1 -a AssemblyName2 
+
+# example: pass multiple migration assemblies by path to the runner
+hyperbee.migrationrunner -f "c:\folder\AssemblyName1.dll" -f "c:\folder\AssemblyName2.dll" 
+
+# example: pass multiple migration assemblies by path to the runner
+hyperbee.migrationrunner -f "c:\folder\AssemblyName1.dll" -f "c:\folder\AssemblyName2.dll" 
+
 ```

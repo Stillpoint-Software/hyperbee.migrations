@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Hyperbee.Migrations.Providers.Couchbase;
+using Serilog;
 
 namespace Hyperbee.MigrationRunner;
 
@@ -19,7 +20,7 @@ internal static class StartupExtensions
             .AddJsonFile( ConfigurationHelper.EnvironmentAppSettingsName, optional: true );
     }
 
-    public static IServiceCollection AddCouchbase( this IServiceCollection services, IConfiguration config )
+    public static IServiceCollection AddCouchbase( this IServiceCollection services, IConfiguration config, ILogger logger = null )
     {
         var connectionString = config["Couchbase:ConnectionString"]; // from appsettings.<ENV>.json couchbase://localhost
         var userName = config["Couchbase:UserName"]; // from secrets.json or aws:secrets
@@ -30,6 +31,8 @@ internal static class StartupExtensions
 
         if ( maxHttpConnections <= 0 )
             maxHttpConnections = 10;
+
+        logger?.Information( $"User `{userName}` connecting to `{connectionString}`." );
 
         services.AddCouchbase( c =>
         {
@@ -55,8 +58,14 @@ internal static class StartupExtensions
         var lockExpireInterval = TimeSpan.FromSeconds( config.GetValue( "Migrations:Lock:ExpireInterval", 30 ) );
         var lockRenewInterval = TimeSpan.FromSeconds( config.GetValue( "Migrations:Lock:RenewInterval", 15 ) );
 
+        var profiles = (IList<string>) config.GetSection( "Migrations:Profiles" )
+            .Get<IEnumerable<string>>() ?? Enumerable.Empty<string>()
+            .ToList();
+
         services.AddCouchbaseMigrations( c =>
         {
+            c.Profiles = profiles;
+
             c.BucketName = bucketName;
             c.ScopeName = scopeName;
             c.CollectionName = collectionName;

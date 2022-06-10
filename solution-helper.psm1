@@ -73,7 +73,8 @@ function Update-Version() {
         [Parameter(Position = 0,Mandatory=$true)]
         [ValidateSet('Major','Minor','Patch', IgnoreCase = $true)]
         [string] $Type,
-        [string] $Path = 'Directory.Build.Props'
+        [string] $Path = 'Directory.Build.props',
+        [switch] $Commit
     )
 
     try {
@@ -93,14 +94,29 @@ function Update-Version() {
         $version = $node.$propName -as [Int]
         $node.$propName = ($version + 1) -as [String]
 
-        Write-Host "$propName is now '$($node.$PropName)'."
+        if ( $Type -eq 'major' ) {
+            $node.MinorVersion = '0'
+            $node.PatchVersion = '0'
+        }
+
+        if ( $Type -eq 'minor' ) {
+            $node.PatchVersion = '0'
+        }
+
+        Write-Host "Version now '$($node.MajorVersion).$($node.MinorVersion).$($node.PatchVersion)'."
 
         $xml.Save($Path)
+
+        if ( $Commit ) {
+            git add $path
+            git commit -m "bump $($Type.ToLower())" -q -o $Path
+        }
     }
     catch {
 		Write-Error "Update-Version failed. Make sure you are executing from a `Developer PowerShell`."
 	}
 }
+
 
 Export-ModuleMember -Function 'Publish-Packages'
 Export-ModuleMember -Function 'Resize-Feed'
