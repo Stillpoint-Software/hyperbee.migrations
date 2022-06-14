@@ -116,6 +116,10 @@ public class CouchbaseResourceRunner<TMigration>
                     await CreateIndexAsync( clusterHelper, statementItem ).ConfigureAwait( false );
                     break;
 
+                case StatementType.Update:
+                    await UpdateStatementAsync( clusterHelper, statementItem ).ConfigureAwait( false );
+                    break;
+
                 case StatementType.Build:
                     await BuildIndexesAsync( clusterHelper, statementItem ).ConfigureAwait( false );
                     break;
@@ -281,6 +285,12 @@ public class CouchbaseResourceRunner<TMigration>
         var kind = item.StatementType == StatementType.CreatePrimaryIndex ? "PRIMARY INDEX" : "INDEX";
 
         _logger?.LogInformation( "CREATE {kind} {indexName} ON {keyspace}", kind, item.Name, item.Keyspace );
+        await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
+    }
+
+    private async Task UpdateStatementAsync( ClusterHelper clusterHelper, StatementItem item )
+    {
+        _logger?.LogInformation( "UPDATE STATEMENT ON {keyspace}", item.Keyspace );
         await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
     }
 

@@ -20,6 +20,7 @@ public enum StatementType
     DropBucket,
     DropScope,
     DropCollection,
+    Update,
     Build
 }
 
@@ -140,6 +141,17 @@ public class StatementParser
             var on = match.Groups["on"].ValueSpan;
             ParseKeyspace( on, out var k, out var e );
             return new StatementItem( StatementType.Build, statement, k, default, e.ToString() );
+        }
+
+        // update ::= UPDATE keyspace-ref [[AS] alias] SET ...
+
+        match = Regex.Match( statement, @"^\s*UPDATE\s+(?<keyspace>.+)", RegexOptions.IgnoreCase );
+
+        if ( match.Success )
+        {
+            var keyspace = match.Groups["keyspace"].ValueSpan;
+            ParseKeyspace( keyspace, out var k, out var e );
+            return new StatementItem( StatementType.Update, statement, k, default, e.ToString() );
         }
 
         // Ruh-Rough
