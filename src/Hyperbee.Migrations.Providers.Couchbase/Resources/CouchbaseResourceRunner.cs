@@ -12,6 +12,7 @@ using Couchbase.Extensions.DependencyInjection;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
 using Hyperbee.Migrations.Providers.Couchbase.Parsers;
+using Hyperbee.Migrations.Providers.Couchbase.Services;
 using Hyperbee.Migrations.Providers.Couchbase.Wait;
 using Microsoft.Extensions.Logging;
 
@@ -23,11 +24,13 @@ public class CouchbaseResourceRunner<TMigration>
     private const string DefaultName = "_default";
 
     private readonly IClusterProvider _clusterProvider;
+    private readonly ICouchbaseRestApiService _restApiService;
     private readonly ILogger _logger;
 
-    public CouchbaseResourceRunner( IClusterProvider clusterProvider, ILogger<TMigration> logger )
+    public CouchbaseResourceRunner( IClusterProvider clusterProvider, ICouchbaseRestApiService restApiService, ILogger<TMigration> logger )
     {
         _clusterProvider = clusterProvider;
+        _restApiService = restApiService;
         _logger = logger;
     }
 
@@ -336,16 +339,21 @@ public class CouchbaseResourceRunner<TMigration>
                             await Task.Delay( 100, operationCancelToken );
                             continue;
                         }
-
                         state = WaitForReady;
                         break;
                     }
 
                 case WaitForReady:
                     {
-                        var bucket = await clusterHelper.Cluster.BucketAsync( bucketSettings.Name ).ConfigureAwait( false );
-                        var waitOptions = new WaitUntilReadyOptions().CancellationToken( operationCancelToken );
-                        await bucket.WaitUntilReadyAsync( TimeSpan.Zero, waitOptions ).ConfigureAwait( false ); // timeout param ignored when cancellation provided
+                        // bucket.WaitUntilReadyAsync() will return ready when the bucket is ready but the node is in warmup.
+                        // this will lead to exceptions on n1ql and other operations. we will use the rest api instead of
+                        // the client implementation.
+
+                        //var bucket = await clusterHelper.Cluster.BucketAsync( bucketSettings.Name ).ConfigureAwait( false );
+                        //var waitOptions = new WaitUntilReadyOptions().CancellationToken( operationCancelToken );
+                        //await bucket.WaitUntilReadyAsync( TimeSpan.Zero, waitOptions ).ConfigureAwait( false ); // timeout param ignored when cancellation provided
+
+                        await _restApiService.WaitUntilBucketHealthyAsync( bucketSettings.Name, operationCancelToken ).ConfigureAwait( false );
                         return;
                     }
             }
