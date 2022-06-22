@@ -276,3 +276,6 @@ __pycache__/
 # tools/
 sh.exe.stackdump
 dte.ps1
+
+# Custom
+**/appsettings.Development.json
