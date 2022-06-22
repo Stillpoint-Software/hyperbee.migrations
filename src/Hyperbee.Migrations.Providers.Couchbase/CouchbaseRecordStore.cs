@@ -5,6 +5,7 @@ using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
+using Hyperbee.Migrations.Providers.Couchbase.Services;
 using Hyperbee.Migrations.Providers.Couchbase.Wait;
 using Microsoft.Extensions.Logging;
 
@@ -15,13 +16,15 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
     private readonly IClusterProvider _clusterProvider;
     private readonly CouchbaseMigrationOptions _options;
     private readonly ICouchbaseBootstrapper _bootstrapper;
+    private readonly ICouchbaseRestApiService _restApiService;
     private readonly ILogger<CouchbaseRecordStore> _logger;
 
-    public CouchbaseRecordStore( IClusterProvider clusterProvider, CouchbaseMigrationOptions options, ICouchbaseBootstrapper bootstrapper, ILogger<CouchbaseRecordStore> logger )
+    public CouchbaseRecordStore( IClusterProvider clusterProvider, CouchbaseMigrationOptions options, ICouchbaseBootstrapper bootstrapper, ICouchbaseRestApiService restApiService, ILogger<CouchbaseRecordStore> logger )
     {
         _clusterProvider = clusterProvider;
         _options = options;
         _bootstrapper = bootstrapper;
+        _restApiService = restApiService;
         _logger = logger;
     }
 
@@ -74,10 +77,18 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
             // we created the bucket and it exists but couchbase my not have reported it yet.
             // wait for the bucket to be ready.
+            //
+            // bucket.WaitUntilReadyAsync() will return ready when the bucket is ready but the node is in warmup.
+            // this will lead to exceptions on n1ql and other operations. we will use the rest api instead of
+            // the client implementation.
 
+            //await Task.Delay( 1000, cancellationToken ).ConfigureAwait( false );
+            //var bucket = await cluster.BucketAsync( bucketName ).ConfigureAwait( false );
+            //await bucket.WaitUntilReadyAsync( _options.ClusterReadyTimeout ).ConfigureAwait( false );
+
+            _logger.LogInformation( "Waiting for ledger bucket ready." );
             await Task.Delay( 1000, cancellationToken ).ConfigureAwait( false );
-            var bucket = await cluster.BucketAsync( bucketName ).ConfigureAwait( false );
-            await bucket.WaitUntilReadyAsync( _options.ClusterReadyTimeout ).ConfigureAwait( false );
+            await _restApiService.WaitUntilBucketHealthyAsync( bucketName, _options.ClusterReadyTimeout, cancellationToken ).ConfigureAwait( false );
 
             // now it is safe to create the indexes
             _logger.LogInformation( "Creating ledger bucket indexes." );
