@@ -13,9 +13,9 @@ public static class WaitHelper
         await WaitUntilAsync( function, timeout, default, cancellationToken );
     }
 
-    public static async Task WaitUntilAsync( Func<CancellationToken, Task<bool>> function, TimeSpan? timeout, RetryStrategy backoff, CancellationToken cancellationToken = default )
+    public static async Task WaitUntilAsync( Func<CancellationToken, Task<bool>> function, TimeSpan? timeout, RetryStrategy retryStrategy, CancellationToken cancellationToken = default )
     {
-        backoff ??= new BackoffRetryStrategy();
+        retryStrategy ??= new BackoffRetryStrategy();
 
         using var tts = TimeoutTokenSource.CreateTokenSource( timeout );
         using var lts = CancellationTokenSource.CreateLinkedTokenSource( tts.Token, cancellationToken );
@@ -34,7 +34,7 @@ public static class WaitHelper
                 if ( result )
                     return;
 
-                await backoff.WaitAsync( operationCancelToken );
+                await retryStrategy.WaitAsync( operationCancelToken );
             }
             catch ( OperationCanceledException ex )
             {
