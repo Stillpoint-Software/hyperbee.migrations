@@ -82,13 +82,10 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             // this will lead to exceptions on n1ql and other operations. we will use the rest api instead of
             // the client implementation.
 
-            //await Task.Delay( 1000, cancellationToken ).ConfigureAwait( false );
-            //var bucket = await cluster.BucketAsync( bucketName ).ConfigureAwait( false );
-            //await bucket.WaitUntilReadyAsync( _options.ClusterReadyTimeout ).ConfigureAwait( false );
-
             _logger.LogInformation( "Waiting for ledger bucket ready." );
-            await Task.Delay( 1000, cancellationToken ).ConfigureAwait( false );
+
             await _restApiService.WaitUntilBucketHealthyAsync( bucketName, _options.ClusterReadyTimeout, cancellationToken ).ConfigureAwait( false );
+            await _restApiService.WaitUntilClusterHealthyAsync( _options.ClusterReadyTimeout, cancellationToken ).ConfigureAwait( false );
 
             // now it is safe to create the indexes
             _logger.LogInformation( "Creating ledger bucket indexes." );

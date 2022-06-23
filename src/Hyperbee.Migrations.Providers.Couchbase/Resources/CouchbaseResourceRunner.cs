@@ -318,45 +318,17 @@ public class CouchbaseResourceRunner<TMigration>
         await clusterHelper.Cluster.Buckets.CreateBucketAsync( bucketSettings )
             .ConfigureAwait( false );
 
-        // wait for the bucket
+        // wait for bucket
         //
-        const int WaitForExists = 0;
-        const int WaitForReady = 1;
+        await WaitHelper.WaitUntilAsync(
+            async _ => await clusterHelper.BucketExistsAsync( bucketSettings.Name ).ConfigureAwait( false ),
+            TimeSpan.Zero,
+            new PauseRetryStrategy(),
+            operationCancelToken
+        );
 
-        var state = WaitForExists;
-
-        while ( true )
-        {
-            operationCancelToken.ThrowIfCancellationRequested();
-
-            switch ( state )
-            {
-                case WaitForExists:
-                    {
-                        if ( !await clusterHelper.BucketExistsAsync( bucketSettings.Name ).ConfigureAwait( false ) )
-                        {
-                            await Task.Delay( 100, operationCancelToken );
-                            continue;
-                        }
-                        state = WaitForReady;
-                        break;
-                    }
-
-                case WaitForReady:
-                    {
-                        // bucket.WaitUntilReadyAsync() will return ready when the bucket is ready but the node is in warmup.
-                        // this will lead to exceptions on n1ql and other operations. we will use the rest api instead of
-                        // the client implementation.
-
-                        //var bucket = await clusterHelper.Cluster.BucketAsync( bucketSettings.Name ).ConfigureAwait( false );
-                        //var waitOptions = new WaitUntilReadyOptions().CancellationToken( operationCancelToken );
-                        //await bucket.WaitUntilReadyAsync( TimeSpan.Zero, waitOptions ).ConfigureAwait( false ); // timeout param ignored when cancellation provided
-
-                        await _restApiService.WaitUntilBucketHealthyAsync( bucketSettings.Name, operationCancelToken ).ConfigureAwait( false );
-                        return;
-                    }
-            }
-        }
+        await _restApiService.WaitUntilBucketHealthyAsync( bucketSettings.Name, operationCancelToken ).ConfigureAwait( false );
+        await _restApiService.WaitUntilClusterHealthyAsync( operationCancelToken ).ConfigureAwait( false );
     }
 
     private static void ThrowIfNoResourceLocationFor()
