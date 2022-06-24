@@ -303,7 +303,7 @@ public class CouchbaseResourceRunner<TMigration>
         var bucket = await clusterHelper.Cluster.BucketAsync( keyspace.BucketName ).ConfigureAwait( false );
         var scope = await bucket.ScopeAsync( keyspace.ScopeName ).ConfigureAwait( false );
         var collection = await scope.CollectionAsync( keyspace.CollectionName ).ConfigureAwait( false );
-        await collection.UpsertAsync( id, content, x => x.Transcoder( new RawStringTranscoder() ) ).ConfigureAwait( false );
+        await collection.UpsertAsync( id, content, x => x.Transcoder( new RawJsonTranscoder() ) ).ConfigureAwait( false );
     }
 
     // helpers
