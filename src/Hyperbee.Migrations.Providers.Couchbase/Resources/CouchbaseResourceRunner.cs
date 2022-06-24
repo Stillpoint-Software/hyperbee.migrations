@@ -319,7 +319,7 @@ public class CouchbaseResourceRunner<TMigration>
             .ConfigureAwait( false );
 
         // wait for bucket
-        //
+
         await WaitHelper.WaitUntilAsync(
             async _ => await clusterHelper.BucketExistsAsync( bucketSettings.Name ).ConfigureAwait( false ),
             TimeSpan.Zero,
