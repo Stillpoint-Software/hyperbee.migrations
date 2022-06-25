@@ -322,7 +322,6 @@ public class CouchbaseResourceRunner<TMigration>
 
         await WaitHelper.WaitUntilAsync(
             async _ => await clusterHelper.BucketExistsAsync( bucketSettings.Name ).ConfigureAwait( false ),
-            TimeSpan.Zero,
             new PauseRetryStrategy(),
             operationCancelToken
         );

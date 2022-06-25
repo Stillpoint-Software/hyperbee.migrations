@@ -70,7 +70,6 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
             await WaitHelper.WaitUntilAsync(
                 async _ => await clusterHelper.BucketExistsAsync( bucketName ).ConfigureAwait( false ),
-                TimeSpan.Zero,
                 new PauseRetryStrategy(),
                 cancellationToken
             );
@@ -103,7 +102,6 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
             await WaitHelper.WaitUntilAsync( 
                 async _ => await clusterHelper.ScopeExistsAsync( bucketName, scopeName ).ConfigureAwait( false ), 
-                TimeSpan.Zero, 
                 new PauseRetryStrategy(), 
                 cancellationToken 
             );
@@ -119,7 +117,6 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
             await WaitHelper.WaitUntilAsync(
                 async _ => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
-                TimeSpan.Zero,
                 new PauseRetryStrategy(),
                 cancellationToken
             );
@@ -130,7 +127,6 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
         await WaitHelper.WaitUntilAsync(
             async _ => await clusterHelper.CollectionExistsQueryAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
-            TimeSpan.Zero,
             new PauseRetryStrategy(),
             cancellationToken
         );
@@ -145,7 +141,6 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
             await WaitHelper.WaitUntilAsync(
                 async _ => await clusterHelper.PrimaryCollectionIndexExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
-                TimeSpan.Zero,
                 new PauseRetryStrategy(),
                 cancellationToken
             );

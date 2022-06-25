@@ -8,9 +8,19 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Wait;
 
 public static class WaitHelper
 {
-    public static async Task WaitUntilAsync( Func<CancellationToken, Task<bool>> function, TimeSpan? timeout, CancellationToken cancellationToken = default )
+    public static async Task WaitUntilAsync( Func<CancellationToken, Task<bool>> function, CancellationToken cancellationToken = default )
+    {
+        await WaitUntilAsync( function, default, default, cancellationToken );
+    }
+
+    public static async Task WaitUntilAsync( Func<CancellationToken, Task<bool>> function, TimeSpan timeout, CancellationToken cancellationToken = default )
     {
         await WaitUntilAsync( function, timeout, default, cancellationToken );
+    }
+
+    public static async Task WaitUntilAsync( Func<CancellationToken, Task<bool>> function, RetryStrategy retryStrategy, CancellationToken cancellationToken = default )
+    {
+        await WaitUntilAsync( function, default, retryStrategy, cancellationToken );
     }
 
     public static async Task WaitUntilAsync( Func<CancellationToken, Task<bool>> function, TimeSpan? timeout, RetryStrategy retryStrategy, CancellationToken cancellationToken = default )
