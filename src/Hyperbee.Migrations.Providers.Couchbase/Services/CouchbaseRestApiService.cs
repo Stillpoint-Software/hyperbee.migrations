@@ -17,7 +17,7 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
     // rest-api service is used to get configuration information that is currently 
     // unavailable through the `standard` net client sdk
 
-    internal interface ICouchbaseRestApiService
+    public interface ICouchbaseRestApiService
     {
         Task<bool> ClusterHealthyAsync( CancellationToken cancellationToken = default );
         Task<JsonNode> GetClusterInfoAsync( CancellationToken cancellationToken = default );

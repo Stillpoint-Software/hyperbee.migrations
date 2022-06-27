@@ -7,11 +7,11 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Couchbase.Core.IO.Transcoders;
-using Couchbase.Diagnostics;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
 using Hyperbee.Migrations.Providers.Couchbase.Parsers;
+using Hyperbee.Migrations.Providers.Couchbase.Services;
 using Hyperbee.Migrations.Providers.Couchbase.Wait;
 using Microsoft.Extensions.Logging;
 
@@ -23,11 +23,13 @@ public class CouchbaseResourceRunner<TMigration>
     private const string DefaultName = "_default";
 
     private readonly IClusterProvider _clusterProvider;
+    private readonly ICouchbaseRestApiService _restApiService;
     private readonly ILogger _logger;
 
-    public CouchbaseResourceRunner( IClusterProvider clusterProvider, ILogger<TMigration> logger )
+    public CouchbaseResourceRunner( IClusterProvider clusterProvider, ICouchbaseRestApiService restApiService, ILogger<TMigration> logger )
     {
         _clusterProvider = clusterProvider;
+        _restApiService = restApiService;
         _logger = logger;
     }
 
@@ -114,6 +116,10 @@ public class CouchbaseResourceRunner<TMigration>
                 case StatementType.CreateIndex:
                 case StatementType.CreatePrimaryIndex:
                     await CreateIndexAsync( clusterHelper, statementItem ).ConfigureAwait( false );
+                    break;
+
+                case StatementType.Update:
+                    await UpdateStatementAsync( clusterHelper, statementItem ).ConfigureAwait( false );
                     break;
 
                 case StatementType.Build:
@@ -284,6 +290,12 @@ public class CouchbaseResourceRunner<TMigration>
         await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
     }
 
+    private async Task UpdateStatementAsync( ClusterHelper clusterHelper, StatementItem item )
+    {
+        _logger?.LogInformation( "UPDATE STATEMENT ON {keyspace}", item.Keyspace );
+        await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
+    }
+
     private async Task UpsertDocumentAsync( ClusterHelper clusterHelper, KeyspaceRef keyspace, string id, string content )
     {
         _logger?.LogInformation( "UPSERT `{id}` TO {bucketName} SCOPE {scopeName} COLLECTION {collectionName}", id, keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName );
@@ -291,7 +303,7 @@ public class CouchbaseResourceRunner<TMigration>
         var bucket = await clusterHelper.Cluster.BucketAsync( keyspace.BucketName ).ConfigureAwait( false );
         var scope = await bucket.ScopeAsync( keyspace.ScopeName ).ConfigureAwait( false );
         var collection = await scope.CollectionAsync( keyspace.CollectionName ).ConfigureAwait( false );
-        await collection.UpsertAsync( id, content, x => x.Transcoder( new RawStringTranscoder() ) ).ConfigureAwait( false );
+        await collection.UpsertAsync( id, content, x => x.Transcoder( new RawJsonTranscoder() ) ).ConfigureAwait( false );
     }
 
     // helpers
@@ -306,40 +318,16 @@ public class CouchbaseResourceRunner<TMigration>
         await clusterHelper.Cluster.Buckets.CreateBucketAsync( bucketSettings )
             .ConfigureAwait( false );
 
-        // wait for the bucket
-        //
-        const int WaitForExists = 0;
-        const int WaitForReady = 1;
+        // wait for bucket
 
-        var state = WaitForExists;
+        await WaitHelper.WaitUntilAsync(
+            async _ => await clusterHelper.BucketExistsAsync( bucketSettings.Name ).ConfigureAwait( false ),
+            new PauseRetryStrategy(),
+            operationCancelToken
+        );
 
-        while ( true )
-        {
-            operationCancelToken.ThrowIfCancellationRequested();
-
-            switch ( state )
-            {
-                case WaitForExists:
-                    {
-                        if ( !await clusterHelper.BucketExistsAsync( bucketSettings.Name ).ConfigureAwait( false ) )
-                        {
-                            await Task.Delay( 100, operationCancelToken );
-                            continue;
-                        }
-
-                        state = WaitForReady;
-                        break;
-                    }
-
-                case WaitForReady:
-                    {
-                        var bucket = await clusterHelper.Cluster.BucketAsync( bucketSettings.Name ).ConfigureAwait( false );
-                        var waitOptions = new WaitUntilReadyOptions().CancellationToken( operationCancelToken );
-                        await bucket.WaitUntilReadyAsync( TimeSpan.Zero, waitOptions ).ConfigureAwait( false ); // timeout param ignored when cancellation provided
-                        return;
-                    }
-            }
-        }
+        await _restApiService.WaitUntilBucketHealthyAsync( bucketSettings.Name, operationCancelToken ).ConfigureAwait( false );
+        await _restApiService.WaitUntilClusterHealthyAsync( operationCancelToken ).ConfigureAwait( false );
     }
 
     private static void ThrowIfNoResourceLocationFor()

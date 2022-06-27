@@ -211,9 +211,8 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
                 catch ( UnambiguousTimeoutException )
                 {
                     // notify interval timeout
+                    _logger?.LogInformation( "Wait..." );
                 }
-
-                _logger?.LogInformation( "Wait..." );
             }
         }
     }
