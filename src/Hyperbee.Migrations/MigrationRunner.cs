@@ -127,18 +127,14 @@ public class MigrationRunner
                 var attribute = type.GetCustomAttribute( typeof(MigrationAttribute) ) as MigrationAttribute;
                 return new MigrationDescriptor( type, attribute );
             } )
-            .Where( descriptor => DescriptorInScope( descriptor, options ) );
-
-        // order by id
-        var ordered = (options.Direction == Direction.Up
-                ? descriptors.OrderBy( x => x.Attribute!.Version )
-                : descriptors.OrderByDescending( x => x.Attribute!.Version ))
+            .Where( descriptor => DescriptorInScope( descriptor, options ) )
+            .OrderBy( x => x.Attribute!.Version, options.Direction )
             .ToList();
 
         // throw if any duplicates
         var set = new HashSet<long>();
 
-        var duplicate = ordered
+        var duplicate = descriptors
             .Select( x => x.Attribute!.Version )
             .Where( x => !set.Add( x ) )
             .Select( x => new long?( x ) )
@@ -148,7 +144,7 @@ public class MigrationRunner
             throw new DuplicateMigrationException( $"Migration number conflict detected for version number `{duplicate.Value}`.", duplicate.Value );
 
         // success
-        return ordered;
+        return descriptors;
     }
 
     private static bool DescriptorInScope( MigrationDescriptor descriptor, MigrationOptions options )
