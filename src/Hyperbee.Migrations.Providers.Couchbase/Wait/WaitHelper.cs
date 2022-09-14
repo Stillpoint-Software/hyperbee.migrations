@@ -8,14 +8,24 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Wait;
 
 public static class WaitHelper
 {
-    public static async Task WaitUntilAsync( Func<CancellationToken, Task<bool>> function, TimeSpan? timeout, CancellationToken cancellationToken = default )
+    public static async Task WaitUntilAsync( Func<CancellationToken, Task<bool>> function, CancellationToken cancellationToken = default )
+    {
+        await WaitUntilAsync( function, default, default, cancellationToken );
+    }
+
+    public static async Task WaitUntilAsync( Func<CancellationToken, Task<bool>> function, TimeSpan timeout, CancellationToken cancellationToken = default )
     {
         await WaitUntilAsync( function, timeout, default, cancellationToken );
     }
 
-    public static async Task WaitUntilAsync( Func<CancellationToken, Task<bool>> function, TimeSpan? timeout, RetryStrategy backoff, CancellationToken cancellationToken = default )
+    public static async Task WaitUntilAsync( Func<CancellationToken, Task<bool>> function, RetryStrategy retryStrategy, CancellationToken cancellationToken = default )
     {
-        backoff ??= new BackoffRetryStrategy();
+        await WaitUntilAsync( function, default, retryStrategy, cancellationToken );
+    }
+
+    public static async Task WaitUntilAsync( Func<CancellationToken, Task<bool>> function, TimeSpan? timeout, RetryStrategy retryStrategy, CancellationToken cancellationToken = default )
+    {
+        retryStrategy ??= new BackoffRetryStrategy();
 
         using var tts = TimeoutTokenSource.CreateTokenSource( timeout );
         using var lts = CancellationTokenSource.CreateLinkedTokenSource( tts.Token, cancellationToken );
@@ -34,7 +44,7 @@ public static class WaitHelper
                 if ( result )
                     return;
 
-                await backoff.WaitAsync( operationCancelToken );
+                await retryStrategy.WaitAsync( operationCancelToken );
             }
             catch ( OperationCanceledException ex )
             {

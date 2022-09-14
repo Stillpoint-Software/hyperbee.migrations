@@ -24,12 +24,17 @@ public class RetryStrategy
 public class BackoffRetryStrategy : RetryStrategy
 {
     public BackoffRetryStrategy()
+        : this( TimeSpan.FromMilliseconds( 100 ), TimeSpan.FromSeconds( 120 ) )
     {
-        Delay = TimeSpan.FromMilliseconds( 100 );
+    }
+
+    public BackoffRetryStrategy( TimeSpan firstDelay, TimeSpan maxDelay )
+    {
+        Delay = firstDelay;
         Backoff = current =>
         {
-            var value = current.Add( current );
-            return value > TimeSpan.FromSeconds( 1000 ) ? TimeSpan.FromSeconds( 1000 ) : value;
+            var value = current.Add( current ); // double the wait
+            return value > maxDelay ? maxDelay : value;
         };
     }
 }
@@ -41,5 +46,5 @@ public class PauseRetryStrategy : RetryStrategy
     {
     }
 
-    public PauseRetryStrategy( TimeSpan pause ) => Delay = pause;
+    public PauseRetryStrategy( TimeSpan delay ) => Delay = delay;
 }

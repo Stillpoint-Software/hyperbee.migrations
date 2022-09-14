@@ -20,6 +20,7 @@ public enum StatementType
     DropBucket,
     DropScope,
     DropCollection,
+    Update,
     Build
 }
 
@@ -59,7 +60,7 @@ public class StatementParser
             return new StatementItem( StatementType.CreatePrimaryIndex, statement, k, name, e.ToString() );
         }
 
-        // create-bucket-extension ::= CREATE BUCKET [ namespace ':' ] bucket [TYPE Couchbase|Memcached|Ephemeral] [RAMQUOTA 256] [FLUSH ENABLED]
+        // create-bucket-extension ::= CREATE BUCKET [ namespace ':' ] bucket [TYPE COUCHBASE|MEMCACHED|EPHEMERAL] [RAMQUOTA 256] [FLUSH ENABLED] [REPLICAS 0]
         // pseudo n1ql statement
 
         match = Regex.Match( statement, @"^\s*CREATE\s+BUCKET\s+(?<keyspace>.+)", RegexOptions.IgnoreCase );
@@ -142,6 +143,17 @@ public class StatementParser
             return new StatementItem( StatementType.Build, statement, k, default, e.ToString() );
         }
 
+        // update ::= UPDATE keyspace-ref [[AS] alias] SET ...
+
+        match = Regex.Match( statement, @"^\s*UPDATE\s+(?<keyspace>.+)", RegexOptions.IgnoreCase );
+
+        if ( match.Success )
+        {
+            var keyspace = match.Groups["keyspace"].ValueSpan;
+            ParseKeyspace( keyspace, out var k, out var e );
+            return new StatementItem( StatementType.Update, statement, k, default, e.ToString() );
+        }
+
         // Ruh-Rough
 
         throw new NotSupportedException( $"Unknown statement or syntax error. `{statement}`" );
@@ -178,7 +190,7 @@ public class StatementParser
         if ( expr.IsEmpty )
             return settings;
 
-        var match = Regex.Match( expr.ToString(), @"^\s*(?:TYPE\s+\b(?<type>Couchbase|Memcached|Ephemeral)\b)?(?:\s+RAMQUOTA\s+(?<quota>\d+))?(?:\s+(?<flush>FLUSH ENABLED))?", RegexOptions.IgnoreCase );
+        var match = Regex.Match( expr.ToString(), @"^\s*(?:TYPE\s+\b(?<type>COUCHBASE|MEMCACHED|EPHEMERAL)\b)?(?:\s+RAMQUOTA\s+(?<quota>\d+))?(?:\s+(?<flush>FLUSH ENABLED))?(?:\s+REPLICAS\s+(?<replicas>\d+))?", RegexOptions.IgnoreCase );
 
         if ( !match.Success )
             return settings;
@@ -188,6 +200,9 @@ public class StatementParser
             : 256;
                 
         settings.FlushEnabled = !match.Groups["flush"].ValueSpan.IsEmpty;
+
+        if ( !match.Groups["replicas"].ValueSpan.IsEmpty )
+            settings.NumReplicas = int.Parse( match.Groups["replicas"].ValueSpan );
 
         if ( BucketTypes.TryGetValue( match.Groups["type"].Value, out var bucketType ) )
             settings.BucketType = bucketType;

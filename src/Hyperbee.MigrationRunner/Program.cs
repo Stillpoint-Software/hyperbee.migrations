@@ -15,8 +15,7 @@ internal class Program
 {
     public static async Task Main( string[] args )
     {
-        var config = CreateLocalConfiguration(); // local config without secrets
-        var logger = CreateLogger( config );
+        var logger = CreateLogger();
 
         try
         {
@@ -54,18 +53,15 @@ internal class Program
         }
     }
 
-    private static IConfiguration CreateLocalConfiguration()
+    private static ILogger CreateLogger()
     {
-        return new ConfigurationBuilder()
+        var config = new ConfigurationBuilder()
             .SetBasePath( Directory.GetCurrentDirectory() )
             .AddAppSettingsFile()
             .AddAppSettingsEnvironmentFile()
             .AddEnvironmentVariables()
             .Build();
-    }
 
-    private static ILogger CreateLogger( IConfiguration config )
-    {
         var jsonFormatter = new CompactJsonFormatter();
         var pathFormat = $".{Path.DirectorySeparatorChar}logs{Path.DirectorySeparatorChar}hyperbee-migrations-.json";
 

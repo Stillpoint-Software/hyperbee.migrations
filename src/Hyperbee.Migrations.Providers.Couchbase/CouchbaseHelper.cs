@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Couchbase;
 using Couchbase.Extensions.DependencyInjection;
+using Couchbase.Management.Buckets;
 using Couchbase.Management.Collections;
 
 namespace Hyperbee.Migrations.Providers.Couchbase;
@@ -68,11 +70,6 @@ public static class CouchbaseHelper
             .ConfigureAwait( false );
 
         await bucket.Collections.CreateScopeAsync( scopeName ).ConfigureAwait( false );
-
-        //await QueryExecuteAsync(
-        //    clusterHelper,
-        //    $"CREATE SCOPE `{Unquote( bucketName )}`.`{Unquote( scopeName )}`"
-        //).ConfigureAwait( false );
     }
 
     public static async Task DropScopeAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName )
@@ -135,11 +132,6 @@ public static class CouchbaseHelper
         var collectionSpec = new CollectionSpec( Unquote( scopeName ), Unquote( collectionName ) );
 
         await bucket.Collections.CreateCollectionAsync( collectionSpec ).ConfigureAwait( false );
-
-        //await QueryExecuteAsync(
-        //    clusterHelper,
-        //    $"CREATE COLLECTION `{Unquote(bucketName)}`.`{Unquote( scopeName )}`.`{Unquote( collectionName )}`"
-        //).ConfigureAwait( false );
     }
 
     public static async Task DropCollectionAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
