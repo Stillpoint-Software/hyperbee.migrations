@@ -18,7 +18,7 @@ jobs:
       if: ${{env.BRANCH_NAME =='master' }}
       run: |
           echo "BUILD_CONFIGURATION=Release" >> $GITHUB_ENV
-          echo "VERSION_SUFFIX= ' '" >> $GITHUB_ENV 
+          echo "VERSION_SUFFIX=" >> $GITHUB_ENV 
    
     - name: Debug Configuration
       if: ${{ env.BRANCH_NAME == 'develop'}}
