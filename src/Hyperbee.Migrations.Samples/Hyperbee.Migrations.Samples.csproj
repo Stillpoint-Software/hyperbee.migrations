@@ -13,6 +13,9 @@
   </ItemGroup>
 
   <ItemGroup>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Hyperbee.Migrations.Providers.Couchbase\Hyperbee.Migrations.Providers.Couchbase.csproj" />
     <ProjectReference Include="..\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
   </ItemGroup>
