@@ -62,7 +62,7 @@ public static class ServiceCollectionExtensions
         
         services.AddTransient( typeof(CouchbaseResourceRunner<>) ); // technically singleton works because of the nature of migrations, but even so ..
 
-        // add support for calling couchbase web sdk api (outside of the couchbase net sdk).
+        // add support for calling couchbase web sdk api (outside the couchbase net sdk).
 
         services.AddScoped<CouchbaseAuthenticationHandler>();
 

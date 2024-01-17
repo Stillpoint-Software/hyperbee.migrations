@@ -20,9 +20,4 @@ public class MigrationException : Exception
     : base( message, innerException )
     {
     }
-
-    internal MigrationException( SerializationInfo info, StreamingContext context )
-    : base( info, context )
-    {
-    }
 }

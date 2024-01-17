@@ -21,9 +21,4 @@ public class MigrationTimeoutException : MigrationException
         : base( message, innerException )
     {
     }
-
-    internal MigrationTimeoutException( SerializationInfo info, StreamingContext context )
-        : base( info, context )
-    {
-    }
 }

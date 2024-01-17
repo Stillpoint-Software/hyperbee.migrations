@@ -188,7 +188,7 @@ public class RunnerTests
             store.Remove( record );
             return Task.CompletedTask;
         } );
-        recordStore.StoreAsync( Arg.Any<string>() ).Returns( args =>
+        recordStore.WriteAsync( Arg.Any<string>() ).Returns( args =>
         {
             var id = args.Arg<string>();
             store.Add( (args.Arg<string>(), new MigrationRecord { Id = id }) );

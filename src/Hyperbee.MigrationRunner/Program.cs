@@ -1,8 +1,4 @@
-﻿using System.Net;
-using System.Text.RegularExpressions;
-using Couchbase;
-using Couchbase.Core.Exceptions;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -36,8 +32,8 @@ internal class Program
                 .ConfigureServices( ( context, services ) =>
                 {
                     services
-                        .AddCouchbase( context.Configuration, logger )
-                        .AddCouchbaseMigrations( context.Configuration )
+                        .AddProvider( context.Configuration, logger )
+                        .AddMigrations( context.Configuration )
                         .AddHostedService<MainService>();
                 } )
                 .UseSerilog()
@@ -49,7 +45,7 @@ internal class Program
         }
         finally
         {
-            Log.CloseAndFlush();
+            await Log.CloseAndFlushAsync();
         }
     }
 
@@ -69,7 +65,7 @@ internal class Program
             .MinimumLevel.Debug()
             .ReadFrom.Configuration( config )
             .Enrich.FromLogContext()
-            .AddCouchbaseFilters()
+            .AddProviderLoggerFilters()
             .WriteTo.File( jsonFormatter, pathFormat, rollingInterval: RollingInterval.Day, shared: true )
             .WriteTo.Console( restrictedToMinimumLevel: LogEventLevel.Information )
             .CreateLogger();
@@ -110,27 +106,3 @@ internal class Program
     }
 }
 
-internal static class CouchbaseLogFilters
-{
-    internal static LoggerConfiguration AddCouchbaseFilters( this LoggerConfiguration self )
-    {
-        static TValue WithProperty<TValue>( LogEvent x, string propertyName )
-        {
-            return (TValue)((ScalarValue) x.Properties[propertyName]).Value;
-        }
-
-        // For GetAllScopesAsync false exceptions
-        self.Filter.ByExcluding( x => x.Exception is CouchbaseException { Context: ManagementErrorContext { HttpStatus: HttpStatusCode.OK } } );
-
-        // For GetBucketAsync noise caused by resolving buckets
-        var pattern1 = new Regex( @"^The Bucket \[.+\] could not be selected." ); // log noise cause by couchbase net client
-        self.Filter.ByExcluding( x => WithProperty<string>( x, "SourceContext" ) == "Couchbase.Core.ClusterNode" && pattern1.IsMatch( x.MessageTemplate.Text ) );
-
-        // For internal couchbase timeouts waiting for bucket creation
-        // For GetBucketAsync noise caused by resolving buckets
-        var pattern2 = new Regex( @"^Issue getting Cluster Map on server {server}!" ); // log noise cause by couchbase net client
-        self.Filter.ByExcluding( x => WithProperty<string>( x, "SourceContext" ) == "Couchbase.Core.Configuration.Server.ConfigHandler" && pattern2.IsMatch( x.MessageTemplate.Text ) && x.Exception is UnambiguousTimeoutException );
-
-        return self;
-    }
-}

@@ -1,10 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Couchbase;
 using Couchbase.Extensions.DependencyInjection;
-using Couchbase.Management.Buckets;
 using Couchbase.Management.Collections;
 
 namespace Hyperbee.Migrations.Providers.Couchbase;
@@ -129,9 +127,11 @@ public static class CouchbaseHelper
         var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
             .ConfigureAwait( false );
 
-        var collectionSpec = new CollectionSpec( Unquote( scopeName ), Unquote( collectionName ) );
+//      var collectionSpec = new CollectionSpec( Unquote( scopeName ), Unquote( collectionName ) );
+//      await bucket.Collections.CreateCollectionAsync( collectionSpec ).ConfigureAwait( false );
 
-        await bucket.Collections.CreateCollectionAsync( collectionSpec ).ConfigureAwait( false );
+        var settings = CreateCollectionSettings.Default;
+        await bucket.Collections.CreateCollectionAsync( Unquote( scopeName ), Unquote( collectionName ), settings ).ConfigureAwait( false );
     }
 
     public static async Task DropCollectionAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
@@ -140,9 +140,10 @@ public static class CouchbaseHelper
         var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
             .ConfigureAwait( false );
 
-        var collectionSpec = new CollectionSpec( Unquote( scopeName ), Unquote( collectionName ) );
+//      var collectionSpec = new CollectionSpec( Unquote( scopeName ), Unquote( collectionName ) );
+//      await bucket.Collections.DropCollectionAsync( collectionSpec ).ConfigureAwait( false );
 
-        await bucket.Collections.DropCollectionAsync( collectionSpec ).ConfigureAwait( false );
+        await bucket.Collections.DropCollectionAsync( Unquote( scopeName ), Unquote( collectionName ) ).ConfigureAwait( false );
     }
 
     public static async Task<bool> CollectionExistsAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )

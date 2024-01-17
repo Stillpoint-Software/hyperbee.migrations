@@ -11,5 +11,5 @@ public interface IMigrationRecordStore
 
     Task<bool> ExistsAsync( string recordId );
     Task DeleteAsync( string recordId );
-    Task StoreAsync( string recordId );
+    Task WriteAsync( string recordId );
 }

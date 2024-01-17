@@ -157,7 +157,7 @@ public class CouchbaseResourceRunner<TMigration>
 
         static DocumentItem CreateDocumentItem( string resourcePath, JsonNode node, JsonSerializerOptions options )
         {
-            // validate resource path and split in to bucket, scope and collection parts
+            // validate resource path and split into bucket, scope and collection parts
 
             var resourceParts = resourcePath.Split( '.', '/' );
             var count = resourceParts.Length;

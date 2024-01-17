@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Runtime.Serialization;
 
 namespace Hyperbee.Migrations;
 
@@ -33,10 +32,5 @@ public class DuplicateMigrationException : MigrationException
     : base( message, innerException )
     {
         Id = id;
-    }
-
-    internal DuplicateMigrationException( SerializationInfo info, StreamingContext context )
-    : base( info, context )
-    {
     }
 }

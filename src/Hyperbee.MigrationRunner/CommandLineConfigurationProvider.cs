@@ -85,7 +85,7 @@ public class CommandLineConfigurationProvider : ConfigurationProvider
                 string value;
                 if ( separator < 0 )
                 {
-                    // If there is neither equal sign nor prefix in current arugment, it is an invalid format
+                    // If there is neither equal sign nor prefix in current argument, it is an invalid format
                     if ( keyStartIndex == 0 )
                     {
                         // Ignore invalid formats

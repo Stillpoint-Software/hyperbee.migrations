@@ -100,7 +100,7 @@ public class MigrationRunner
 
                 case Direction.Up:
                     await migration.UpAsync( cancellationToken ).ConfigureAwait( false );
-                    await _recordStore.StoreAsync( recordId ).ConfigureAwait( false );
+                    await _recordStore.WriteAsync( recordId ).ConfigureAwait( false );
                     break;
             }
 

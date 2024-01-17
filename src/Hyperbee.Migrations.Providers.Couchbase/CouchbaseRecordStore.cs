@@ -74,7 +74,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
                 cancellationToken
             );
 
-            // we created the bucket and it exists but couchbase my not have reported it yet.
+            // we created the bucket, and it exists but couchbase my not have reported it yet.
             // wait for the bucket to be ready.
             //
             // bucket.WaitUntilReadyAsync() will return ready when the bucket is ready but the node is in warmup.
@@ -192,7 +192,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             .ConfigureAwait( false );
     }
 
-    public async Task StoreAsync( string recordId )
+    public async Task WriteAsync( string recordId )
     {
         var collection = await GetCollectionAsync()
             .ConfigureAwait( false );
