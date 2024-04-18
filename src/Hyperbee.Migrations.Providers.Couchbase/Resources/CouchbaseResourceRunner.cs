@@ -12,7 +12,8 @@ using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
 using Hyperbee.Migrations.Providers.Couchbase.Parsers;
 using Hyperbee.Migrations.Providers.Couchbase.Services;
-using Hyperbee.Migrations.Providers.Couchbase.Wait;
+using Hyperbee.Migrations.Resources;
+using Hyperbee.Migrations.Wait;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Providers.Couchbase.Resources;
@@ -179,7 +180,7 @@ public class CouchbaseResourceRunner<TMigration>
             return new DocumentItem( keyspace, id, content );
         }
 
-        static IEnumerable<DocumentItem> ReadResources( string migrationName, params string[] resourcePaths )
+        IEnumerable<DocumentItem> ReadResources( string migrationName, params string[] resourcePaths )
         {
             foreach ( var resourcePath in resourcePaths )
             {

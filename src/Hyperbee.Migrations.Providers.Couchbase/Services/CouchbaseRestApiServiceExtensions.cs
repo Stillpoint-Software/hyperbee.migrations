@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Hyperbee.Migrations.Providers.Couchbase.Wait;
+using Hyperbee.Migrations.Wait;
 
 namespace Hyperbee.Migrations.Providers.Couchbase.Services;
 

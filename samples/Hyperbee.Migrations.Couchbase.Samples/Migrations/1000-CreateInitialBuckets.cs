@@ -1,6 +1,6 @@
 ﻿using Hyperbee.Migrations.Providers.Couchbase.Resources;
 
-namespace Hyperbee.Migrations.Samples.Migrations;
+namespace Hyperbee.Migrations.Couchbase.Samples.Migrations;
 
 [Migration(1000)] 
 public class CreateInitialBuckets : Migration

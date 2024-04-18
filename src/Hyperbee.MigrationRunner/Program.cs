@@ -65,7 +65,7 @@ internal class Program
             .MinimumLevel.Debug()
             .ReadFrom.Configuration( config )
             .Enrich.FromLogContext()
-            .AddProviderLoggerFilters()
+            .AddProviderLoggerFilters( config )
             .WriteTo.File( jsonFormatter, pathFormat, rollingInterval: RollingInterval.Day, shared: true )
             .WriteTo.Console( restrictedToMinimumLevel: LogEventLevel.Information )
             .CreateLogger();

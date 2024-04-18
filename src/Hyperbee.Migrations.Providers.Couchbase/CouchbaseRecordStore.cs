@@ -6,7 +6,7 @@ using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
 using Hyperbee.Migrations.Providers.Couchbase.Services;
-using Hyperbee.Migrations.Providers.Couchbase.Wait;
+using Hyperbee.Migrations.Wait;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Providers.Couchbase;

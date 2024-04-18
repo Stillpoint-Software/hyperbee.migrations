@@ -1,24 +1,28 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
-    <IsPackable>false</IsPackable>
+    <!-- <Nullable>enable</Nullable> -->
   </PropertyGroup>
+
   <ItemGroup>
-    <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\statements.json" />
-    <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\migrationbucket\_default\cc0c81e0a030c64b8c80cbd05adf25e522f90bcd5525b442dda8a5ee83e0987ec3.json" />
-    <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\migrationbucket\statements.json" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.1" />
+    <PackageReference Include="Npgsql" Version="8.0.2" />
+    <PackageReference Include="Npgsql.DependencyInjection" Version="8.0.2" />
   </ItemGroup>
+
   <ItemGroup>
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Hyperbee.Migrations.Providers.Couchbase\Hyperbee.Migrations.Providers.Couchbase.csproj" />
     <ProjectReference Include="..\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
   </ItemGroup>
+
   <ItemGroup>
     <PackageReference Update="Microsoft.SourceLink.GitHub" Version="8.0.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
+
 </Project>

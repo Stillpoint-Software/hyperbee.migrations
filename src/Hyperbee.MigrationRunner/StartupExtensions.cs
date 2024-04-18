@@ -20,27 +20,42 @@ internal static class StartupExtensions
 
     //BF TODO we should allow Providers to be dynamically bound
     //        currently we are hard linked to couchbase
-    
+
     public static IServiceCollection AddProvider( this IServiceCollection services, IConfiguration config, ILogger logger = null )
     {
-        //BF TODO currently hard coded for couchbase
-        return services.AddCouchbaseProvider( config, logger );
+        var provider = config["Provider"];
+        return provider switch
+        {
+            "Postgres" => services.AddPostgresProvider( config, logger ),
+            "Couchbase" => services.AddCouchbaseProvider( config, logger ),
+            _ => throw new InvalidOperationException( $"Invalid Provider: {provider}" )
+        };
     }
 
     public static IServiceCollection AddMigrations( this IServiceCollection services, IConfiguration config )
     {
-        //BF TODO currently hard coded for couchbase
-        return services.AddCouchbaseMigrations( config );
+        var provider = config["Provider"];
+        return provider switch
+        {
+            "Postgres" => services.AddPostgresMigrations( config ),
+            "Couchbase" => services.AddCouchbaseMigrations( config ),
+            _ => throw new InvalidOperationException( $"Invalid Provider: {provider}" )
+        };
     }
 
-    internal static LoggerConfiguration AddProviderLoggerFilters( this LoggerConfiguration loggerConfig )
+    internal static LoggerConfiguration AddProviderLoggerFilters( this LoggerConfiguration loggerConfig, IConfiguration config )
     {
-        //BF TODO currently hard coded for couchbase
-        return loggerConfig.AddCouchbaseFilters();
+        var provider = config["Provider"];
+        return provider switch
+        {
+            "Postgres" => loggerConfig.AddPostgresFilters(),
+            "Couchbase" => loggerConfig.AddCouchbaseFilters(),
+            _ => throw new InvalidOperationException( $"Invalid Provider: {provider}" )
+        };
     }
 }
 
 internal static class ConfigurationHelper
 {
-    internal static string EnvironmentAppSettingsName => $"appsettings.{Environment.GetEnvironmentVariable( "ASPNETCORE_ENVIRONMENT" ) ?? "Development"}.json";
+    internal static string EnvironmentAppSettingsName => $"appsettings.{Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Development"}.json";
 }

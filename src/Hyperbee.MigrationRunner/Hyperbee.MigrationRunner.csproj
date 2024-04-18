@@ -6,6 +6,8 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>Hyperbee.MigrationRunner</ToolCommandName>
     <UserSecretsId>14a6aa26-10f4-4883-92f3-969529ef1c37</UserSecretsId>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <DockerfileContext>..\..</DockerfileContext>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="appsettings.json" />
@@ -22,6 +24,7 @@
   <ItemGroup>
     <PackageReference Include="Couchbase.Extensions.DependencyInjection" Version="3.4.13" />
     <PackageReference Include="CouchbaseNetClient" Version="3.4.13" />
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.19.6" />
     <PackageReference Include="Serilog" Version="3.1.1" />
     <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
     <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.0" />
@@ -36,6 +39,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Hyperbee.Migrations.Providers.Couchbase\Hyperbee.Migrations.Providers.Couchbase.csproj" />
+    <ProjectReference Include="..\Hyperbee.Migrations.Providers.Postgres\Hyperbee.Migrations.Providers.Postgres.csproj" />
     <ProjectReference Include="..\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
   </ItemGroup>
   <ItemGroup>

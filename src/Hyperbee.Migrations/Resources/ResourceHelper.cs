@@ -3,7 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
-namespace Hyperbee.Migrations.Providers.Couchbase.Resources;
+namespace Hyperbee.Migrations.Resources;
 
 public static class ResourceHelper
 {
@@ -42,9 +42,10 @@ public static class ResourceHelper
         return typeof(TType).Assembly.GetManifestResourceNames();
     }
 
-    private static readonly char[] InvalidChars = {
+    private static readonly char[] InvalidChars =
+    {
         ' ',
-        '\u00A0' /* non-breaking space */,  ',', ';', '|', '~', '@',
+        '\u00A0' /* non-breaking space */, ',', ';', '|', '~', '@',
         '#', '%', '^', '&', '*', '+', '-', '/', '\\', '<', '>', '?', '[',
         ']', '(', ')', '{', '}', '\"', '\'', '!', '`', '='
     };

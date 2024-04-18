@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Threading;
 
-namespace Hyperbee.Migrations.Providers.Couchbase.Wait;
+namespace Hyperbee.Migrations.Wait;
 
 public static class TimeoutTokenSource
 {

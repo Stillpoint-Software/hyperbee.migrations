@@ -2,7 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Hyperbee.Migrations.Providers.Couchbase.Wait;
+namespace Hyperbee.Migrations.Wait;
 
 public class RetryStrategy
 {

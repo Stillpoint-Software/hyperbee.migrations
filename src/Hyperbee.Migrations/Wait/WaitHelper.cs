@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Couchbase;
-using Couchbase.Core.Exceptions;
 
-namespace Hyperbee.Migrations.Providers.Couchbase.Wait;
+namespace Hyperbee.Migrations.Wait;
 
 public static class WaitHelper
 {
@@ -49,14 +47,26 @@ public static class WaitHelper
             catch ( OperationCanceledException ex )
             {
                 if ( timeoutToken.IsCancellationRequested )
-                    throw new UnambiguousTimeoutException( $"Timed out after {timeout}.", ex );
+                    throw new RetryTimeoutException( $"Timed out after {timeout}.", ex );
 
                 throw new OperationCanceledException( "Operation was cancelled.", cancellationToken );
             }
             catch ( Exception ex )
             {
-                throw new CouchbaseException( "An error has occurred, see the inner exception for details.", ex );
+                throw new RetryStrategyException( "An error has occurred, see the inner exception for details.", ex );
             }
         }
+    }
+}
+
+public class RetryStrategyException : Exception
+{
+    public RetryStrategyException( string message, Exception innerException ) : base( message, innerException) { }
+}
+
+public class RetryTimeoutException : Exception
+{
+    public RetryTimeoutException( string message, Exception innerException ) : base( message, innerException )
+    {
     }
 }

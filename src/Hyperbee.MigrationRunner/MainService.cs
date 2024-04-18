@@ -27,7 +27,9 @@ public class MainService: BackgroundService
         using var scope = _serviceProvider.CreateScope();
 
         var provider = scope.ServiceProvider;
-        var lifetime = provider.GetRequiredService<ICouchbaseLifetimeService>();
+
+        //TODO: MOVE couchbase requirements
+        //var lifetime = provider.GetRequiredService<ICouchbaseLifetimeService>();
 
         await Task.Yield(); // yield to allow startup logs to write to console
 
@@ -48,8 +50,8 @@ public class MainService: BackgroundService
         }
         finally
         {
-            if ( lifetime != null )
-                await lifetime.CloseAsync();
+        //    if ( lifetime != null )
+        //        await lifetime.CloseAsync();
         }
 
         _applicationLifetime.StopApplication();
