@@ -31,7 +31,11 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations.Postgre
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations.Providers.Postgres", "src\Hyperbee.Migrations.Providers.Postgres\Hyperbee.Migrations.Providers.Postgres.csproj", "{ECB3B1C1-BDAB-45EE-B8C0-10D776606917}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Hyperbee.Migrations.Integration.Tests", "tests\Hyperbee.Migrations.Integration.Tests\Hyperbee.Migrations.Integration.Tests.csproj", "{5B3A48F5-C917-46D8-B261-F4A09699DE16}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations.Integration.Tests", "tests\Hyperbee.Migrations.Integration.Tests\Hyperbee.Migrations.Integration.Tests.csproj", "{5B3A48F5-C917-46D8-B261-F4A09699DE16}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations.Providers.MongoDB", "src\Hyperbee.Migrations.Providers.MongoDB\Hyperbee.Migrations.Providers.MongoDB.csproj", "{0CBDCC95-FC40-4B69-AE6B-B32CA225F60A}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations.MongoDB.Samples", "samples\Hyperbee.Migrations.MongoDB.Samples\Hyperbee.Migrations.MongoDB.Samples.csproj", "{8A426713-23C8-4F6D-849C-8BEED43A6BE0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -71,6 +75,14 @@ Global
 		{5B3A48F5-C917-46D8-B261-F4A09699DE16}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5B3A48F5-C917-46D8-B261-F4A09699DE16}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5B3A48F5-C917-46D8-B261-F4A09699DE16}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0CBDCC95-FC40-4B69-AE6B-B32CA225F60A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0CBDCC95-FC40-4B69-AE6B-B32CA225F60A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0CBDCC95-FC40-4B69-AE6B-B32CA225F60A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0CBDCC95-FC40-4B69-AE6B-B32CA225F60A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8A426713-23C8-4F6D-849C-8BEED43A6BE0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8A426713-23C8-4F6D-849C-8BEED43A6BE0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8A426713-23C8-4F6D-849C-8BEED43A6BE0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8A426713-23C8-4F6D-849C-8BEED43A6BE0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -80,6 +92,7 @@ Global
 		{898BD151-B367-4C7C-B179-3E2F9097BA42} = {17F0B438-3EBD-4566-9A22-7A5EC4AEAF3D}
 		{F70642F8-4559-407F-8F7A-A787DA184A40} = {17F0B438-3EBD-4566-9A22-7A5EC4AEAF3D}
 		{5B3A48F5-C917-46D8-B261-F4A09699DE16} = {0A564ABB-7C2D-4F4D-B62A-F8127E0964FA}
+		{8A426713-23C8-4F6D-849C-8BEED43A6BE0} = {17F0B438-3EBD-4566-9A22-7A5EC4AEAF3D}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {97071D77-035B-4126-AD4E-DE150E318714}

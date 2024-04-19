@@ -54,7 +54,7 @@ public class PostgresResourceRunner<TMigration>
             }
             catch ( Exception ex )
             {
-                _logger.LogError( ex, "Error executing statement: [{statement}]", statement );
+                _logger.LogError( ex, "Error executing statement: `{statement}`", statement );
                 throw;
             }
         }
@@ -71,4 +71,46 @@ public class PostgresResourceRunner<TMigration>
         }
     }
 
+    public Task AllSqlFromAsync( CancellationToken cancellationToken = default )
+    {
+        return AllSqlFromAsync( timeout: null, cancellationToken );
+    }
+
+    public async Task AllSqlFromAsync( TimeSpan? timeout = null, CancellationToken cancellationToken = default )
+    {
+        var migrationName = Migration.VersionedName<TMigration>();
+
+        foreach ( var statement in ReadResources( migrationName ) )
+        {
+            await using var command = _dataSource.CreateCommand( statement );
+
+            if ( timeout.HasValue )
+            {
+                command.CommandTimeout = timeout.Value.Seconds;
+            }
+
+            try
+            {
+                await command.ExecuteNonQueryAsync( cancellationToken );
+            }
+            catch ( Exception ex )
+            {
+                _logger.LogError( ex, "Error executing statement: [{statement}]", statement );
+                throw;
+            }
+        }
+
+        return;
+
+        static IEnumerable<string> ReadResources( string migrationName )
+        {
+            var resourceNames = ResourceHelper.GetResourceNames<TMigration>( migrationName );
+
+            foreach ( var resourceName in resourceNames )
+            {
+                var statement = ResourceHelper.GetResource<TMigration>( $"{migrationName}.{resourceName}" );
+                yield return statement;
+            }
+        }
+    }
 }

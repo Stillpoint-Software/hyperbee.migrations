@@ -11,10 +11,8 @@ public static class ResourceHelper
     {
         var fullyQualifiedName = fullyQualified ? name : GetResourceName<TType>( name );
 
-        using var stream = typeof(TType).Assembly.GetManifestResourceStream( fullyQualifiedName );
-
-        if ( stream == null )
-            throw new FileNotFoundException( $"Cannot find '{fullyQualifiedName}'." );
+        using var stream = typeof(TType).Assembly.GetManifestResourceStream( fullyQualifiedName )
+                           ?? throw new FileNotFoundException( $"Cannot find '{fullyQualifiedName}'." );
 
         using var reader = new StreamReader( stream );
         return reader.ReadToEnd();
@@ -22,24 +20,41 @@ public static class ResourceHelper
 
     public static string GetResourceName<TType>( string name )
     {
-        if ( name == null )
-            throw new ArgumentNullException( nameof(name) );
+        ArgumentNullException.ThrowIfNull( name );
 
-        var ns = typeof(TType) // look for assembly attribute
-            .Assembly
-            .GetCustomAttributes( typeof(ResourceLocationAttribute), false )
-            .Cast<ResourceLocationAttribute>()
-            .Select( x => x.RootNamespace )
-            .FirstOrDefault() ?? typeof(TType).Namespace; // default to type namespace
+        var ns = GetNamespace<TType>();
 
         var key = SanitizeName( name );
 
         return $"{ns}.{key}";
     }
 
+    public static string[] GetResourceNames<TType>( string key )
+    {
+        ArgumentNullException.ThrowIfNull( key );
+
+        var ns = GetNamespace<TType>();
+
+        return typeof(TType)
+            .Assembly
+            .GetManifestResourceNames()
+            .Where( x => x.StartsWith( $"{ns}.{key}" ) )
+            .ToArray();
+    }
+
     public static string[] GetResourceNames<TType>()
     {
         return typeof(TType).Assembly.GetManifestResourceNames();
+    }
+
+    private static string GetNamespace<TType>()
+    {
+        return typeof(TType) // look for assembly attribute
+            .Assembly
+            .GetCustomAttributes( typeof(ResourceLocationAttribute), false )
+            .Cast<ResourceLocationAttribute>()
+            .Select( x => x.RootNamespace )
+            .FirstOrDefault() ?? typeof(TType).Namespace; // default to type namespace
     }
 
     private static readonly char[] InvalidChars =

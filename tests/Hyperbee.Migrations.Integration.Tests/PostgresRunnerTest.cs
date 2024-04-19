@@ -1,4 +1,5 @@
 using DotNet.Testcontainers.Networks;
+using Hyperbee.Migrations.Integration.Tests.Container.Postgres;
 using System.Data;
 
 namespace Hyperbee.Migrations.Integration.Tests;
@@ -12,8 +13,8 @@ public class PostgresRunnerTest
     [TestInitialize]
     public void Setup()
     {
-        Connection = InitializeTestContainer.Connection;
-        Network = InitializeTestContainer.Network;
+        Connection = PostgresTestContainer.Connection;
+        Network = PostgresTestContainer.Network;
     }
 
     // [TestMethod]
@@ -25,20 +26,29 @@ public class PostgresRunnerTest
     [TestMethod]
     public async Task Should_Succeed_WhenRunningUpTwice()
     {
-        await MigrationContainer.RunMigrationsAsync( Connection, Network );
+        var migrationContainer = await PostgresMigrationContainer.BuildMigrationsAsync( Connection, Network );
 
-        await MigrationContainer.RunMigrationsAsync( Connection, Network );
+        await migrationContainer.StartAsync( CancellationToken.None );
+        await migrationContainer.StartAsync( CancellationToken.None );
 
         // TODO: Assert no migrations ran on second run
     }
 
-    // [TestMethod]
-    // public async Task Should_Fail_WhenMigrationHasLock()
-    // {
-    //     // TODO: Need a way to verify locks
-    //     var migration1 = MigrationContainer.RunMigrationsAsync( Connection, Network );
-    //     var migration2 = MigrationContainer.RunMigrationsAsync( Connection, Network );
-    //
-    //     await Task.WhenAll( migration1, migration2 );
-    // }
+    [TestMethod]
+    public async Task Should_Fail_WhenMigrationHasLock()
+    {
+        var migrationImage = await PostgresMigrationContainer.BuildMigrationImageAsync();
+
+        var migrationContainer1 = await PostgresMigrationContainer.BuildMigrationsAsync( Connection, Network, migrationImage );
+        var migrationContainer2 = await PostgresMigrationContainer.BuildMigrationsAsync( Connection, Network, migrationImage );
+        var migrationContainer3 = await PostgresMigrationContainer.BuildMigrationsAsync( Connection, Network, migrationImage );
+        var migrationContainer4 = await PostgresMigrationContainer.BuildMigrationsAsync( Connection, Network, migrationImage );
+
+        var migration1 = migrationContainer1.StartAsync( CancellationToken.None );
+        var migration2 = migrationContainer2.StartAsync( CancellationToken.None );
+        var migration3 = migrationContainer3.StartAsync( CancellationToken.None );
+        var migration4 = migrationContainer4.StartAsync( CancellationToken.None );
+
+        await Task.WhenAll( migration1, migration2, migration3, migration4 );
+    }
 }

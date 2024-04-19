@@ -46,6 +46,8 @@ internal class Program
         finally
         {
             await Log.CloseAndFlushAsync();
+
+            await Task.Delay( TimeSpan.FromMinutes( 10 ) );
         }
     }
 

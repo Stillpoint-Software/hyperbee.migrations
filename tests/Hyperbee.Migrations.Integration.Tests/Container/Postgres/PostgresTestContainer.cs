@@ -3,16 +3,14 @@ using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Networks;
 using Testcontainers.PostgreSql;
 
-namespace Hyperbee.Migrations.Integration.Tests;
+namespace Hyperbee.Migrations.Integration.Tests.Container.Postgres;
 
 [TestClass]
-public class InitializeTestContainer
+public class PostgresTestContainer
 {
     public static IDbConnection Connection { get; set; }
     public static INetwork Network { get; set; }
 
-
-    [AssemblyInitialize]
     public static async Task Initialize( TestContext context )
     {
         // TODO: clean up

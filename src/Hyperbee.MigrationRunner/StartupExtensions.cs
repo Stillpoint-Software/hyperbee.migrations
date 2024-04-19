@@ -26,7 +26,8 @@ internal static class StartupExtensions
         var provider = config["Provider"];
         return provider switch
         {
-            "Postgres" => services.AddPostgresProvider( config, logger ),
+            "Postgresql" => services.AddPostgresProvider( config, logger ),
+            "MongoDb" => services.AddMongoDbProvider( config, logger ),
             "Couchbase" => services.AddCouchbaseProvider( config, logger ),
             _ => throw new InvalidOperationException( $"Invalid Provider: {provider}" )
         };
@@ -37,7 +38,8 @@ internal static class StartupExtensions
         var provider = config["Provider"];
         return provider switch
         {
-            "Postgres" => services.AddPostgresMigrations( config ),
+            "Postgresql" => services.AddPostgresMigrations( config ),
+            "MongoDb" => services.AddMongoDbMigrations( config ),
             "Couchbase" => services.AddCouchbaseMigrations( config ),
             _ => throw new InvalidOperationException( $"Invalid Provider: {provider}" )
         };
@@ -48,7 +50,8 @@ internal static class StartupExtensions
         var provider = config["Provider"];
         return provider switch
         {
-            "Postgres" => loggerConfig.AddPostgresFilters(),
+            "Postgresql" => loggerConfig.AddPostgresFilters(),
+            "MongoDb" => loggerConfig.AddMongoDbFilters(),
             "Couchbase" => loggerConfig.AddCouchbaseFilters(),
             _ => throw new InvalidOperationException( $"Invalid Provider: {provider}" )
         };
