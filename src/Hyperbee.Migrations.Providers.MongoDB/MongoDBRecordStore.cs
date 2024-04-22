@@ -33,9 +33,42 @@ internal class MongoDBRecordStore : IMigrationRecordStore
     public async Task<IDisposable> CreateLockAsync()
     {
         _logger.LogDebug( "Running {action}", nameof( CreateLockAsync ) );
-        await Task.CompletedTask;
 
-        return null;
+        var db = _client.GetDatabase( _options.DatabaseName );
+        var collection = db.GetCollection<MigrationLock>( _options.CollectionName );
+        using var cursor = await collection.FindAsync( x => x.Id == 1 );
+        var migrationLock = await cursor.FirstOrDefaultAsync();
+
+        if ( migrationLock != null )
+        {
+            _logger.LogWarning( "{action} Lock already exists", nameof( CreateLockAsync ) );
+            throw new MigrationLockUnavailableException( $"The lock `{_options.LockName}` is unavailable." );
+        }
+
+        try
+        {
+            await collection.InsertOneAsync( new MigrationLock( 1, DateTimeOffset.UtcNow ) );
+        }
+        catch ( Exception ex )
+        {
+            _logger.LogError( ex, "{action} unable to create database lock", nameof( CreateLockAsync ) );
+            throw new MigrationLockUnavailableException( $"The lock `{_options.LockName}` is unavailable.", ex );
+        }
+
+        return new Disposable( () =>
+        {
+            _logger.LogInformation( "{action} disposing lock", nameof( CreateLockAsync ) );
+
+            try
+            {
+                collection.FindOneAndDelete( x => x.Id == 1 );
+            }
+            catch ( Exception ex )
+            {
+                _logger.LogCritical( ex, "{action} unable to remove database lock", nameof( CreateLockAsync ) );
+                throw;
+            }
+        } );
     }
 
     public async Task<bool> ExistsAsync( string recordId )
@@ -44,9 +77,12 @@ internal class MongoDBRecordStore : IMigrationRecordStore
 
         var db = _client.GetDatabase( _options.DatabaseName );
         var collection = db.GetCollection<MigrationRecord>( _options.CollectionName );
-        var cursor = await collection.FindAsync( x => x.Id == recordId );
+        using var cursor = await collection.FindAsync( x => x.Id == recordId );
+        var record = await cursor.FirstOrDefaultAsync();
 
-        return cursor.Current != null;
+        _logger.LogDebug( "{action} found `{recordId}`", nameof( ExistsAsync ), record?.Id );
+
+        return record != null;
     }
 
     public async Task DeleteAsync( string recordId )
@@ -69,5 +105,19 @@ internal class MongoDBRecordStore : IMigrationRecordStore
             Id = recordId,
             RunOn = DateTimeOffset.UtcNow
         } );
+    }
+
+    private record MigrationLock( int Id, DateTimeOffset LockedOn );
+
+    private sealed class Disposable( Action dispose ) : IDisposable
+    {
+        private int _disposed;
+        private Action Disposer { get; } = dispose;
+
+        public void Dispose()
+        {
+            if ( Interlocked.CompareExchange( ref _disposed, 1, 0 ) == 0 )
+                Disposer.Invoke();
+        }
     }
 }

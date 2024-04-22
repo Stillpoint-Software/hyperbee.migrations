@@ -26,7 +26,8 @@ internal static class StartupExtensions
     {
         var connectionString = config["MongoDb:ConnectionString"]; // from appsettings.<ENV>.json
 
-        logger?.Information( $"Connecting to `{connectionString}`." );
+        // Note: do not log sensitive data
+        //logger?.Information( $"Connecting to `{connectionString}`." );
 
         services.AddTransient<IMongoClient, MongoClient>( _ => new MongoClient( connectionString ) );
 

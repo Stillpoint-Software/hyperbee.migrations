@@ -36,7 +36,8 @@ internal static partial class StartupExtensions
         if ( maxHttpConnections <= 0 )
             maxHttpConnections = 10;
 
-        logger?.Information( $"User `{userName}` connecting to `{connectionString}`." );
+        //Note: do not log sensitive data
+        //logger?.Information( $"User `{userName}` connecting to `{connectionString}`." );
 
         services.AddCouchbase( c =>
         {
