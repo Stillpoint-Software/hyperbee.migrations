@@ -36,11 +36,11 @@ internal class PostgresRecordStore : IMigrationRecordStore
         var migrationLock = await getLockCommand.ExecuteScalarAsync();
         if ( migrationLock is DateTimeOffset releaseOn )
         {
-            _logger.LogWarning( "{action} Lock already exists", nameof(CreateLockAsync) );
+            _logger.LogWarning( "{action} Lock already exists", nameof( CreateLockAsync ) );
 
             if ( releaseOn < DateTime.UtcNow )
             {
-                _logger.LogInformation( "{action} Lock expired on {releaseOn}", nameof(CreateLockAsync), releaseOn );
+                _logger.LogInformation( "{action} Lock expired on {releaseOn}", nameof( CreateLockAsync ), releaseOn );
                 var command = _dataSource.CreateCommand( DeleteMigrationLock() );
                 command.ExecuteNonQuery();
             }
@@ -135,7 +135,7 @@ internal class PostgresRecordStore : IMigrationRecordStore
 
     private string GetMigrationLock() => $"SELECT release_on FROM {LockTableName} LIMIT 1";
 
-    private string InsertMigrationLock(TimeSpan maxLifetime) => $"INSERT INTO {LockTableName} (id, locked_on, release_on) VALUES (1, NOW(), NOW() + INTERVAL '{maxLifetime.TotalSeconds} SECONDS')";
+    private string InsertMigrationLock( TimeSpan maxLifetime ) => $"INSERT INTO {LockTableName} (id, locked_on, release_on) VALUES (1, NOW(), NOW() + INTERVAL '{maxLifetime.TotalSeconds} SECONDS')";
 
     private string DeleteMigrationLock() => $"DELETE FROM {LockTableName}";
 

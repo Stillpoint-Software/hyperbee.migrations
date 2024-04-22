@@ -43,9 +43,9 @@ internal class MongoDBRecordStore : IMigrationRecordStore
         {
             _logger.LogWarning( "{action} Lock already exists", nameof( CreateLockAsync ) );
 
-            if(migrationLock.ReleaseOn <  DateTime.UtcNow )
+            if ( migrationLock.ReleaseOn < DateTime.UtcNow )
             {
-                _logger.LogInformation( "{action} Lock expired on {releaseOn}", nameof(CreateLockAsync), migrationLock.ReleaseOn );
+                _logger.LogInformation( "{action} Lock expired on {releaseOn}", nameof( CreateLockAsync ), migrationLock.ReleaseOn );
                 collection.FindOneAndDelete( x => x.Id == 1 );
             }
             else

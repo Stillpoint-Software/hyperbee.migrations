@@ -76,13 +76,13 @@ function Resize-Feed() {
 
 function Update-Version() {
    Param(
-        [Parameter(Position = 0,Mandatory=$true)]
+        [Parameter(Position = 0, Mandatory=$true)]
         [ValidateSet('Major','Minor','Patch', IgnoreCase = $true)]
         [string] $Type,
         [string] $Path = 'Directory.Build.props',
         [switch] $Commit
     )
-
+    
     try {
         if (!(Test-Path $Path)) {
             Write-Error "The version file '$Path' was not found in the current directory."
@@ -98,6 +98,9 @@ function Update-Version() {
 
         $node = $xml.SelectSingleNode("//ns:Project/ns:PropertyGroup[ns:$propName]", $ns)
         $version = $node.$propName -as [Int]
+
+        $previousVersionString = "v$($node.MajorVersion).$($node.MinorVersion).$($node.PatchVersion)"
+
         $node.$propName = ($version + 1) -as [String]
 
         if ( $Type -eq 'major' ) {
@@ -109,21 +112,102 @@ function Update-Version() {
             $node.PatchVersion = '0'
         }
 
-        Write-Host "Version now '$($node.MajorVersion).$($node.MinorVersion).$($node.PatchVersion)'."
+        $newVersionString = "v$($node.MajorVersion).$($node.MinorVersion).$($node.PatchVersion)"
+        Write-Host "Previous version was '$previousVersionString'. Version now '$newVersionString'."
 
         $xml.Save($Path)
 
         if ( $Commit ) {
-            git add $path
+            git add $Path
             git commit -m "bump $($Type.ToLower())" -q -o $Path
         }
+
+        return $previousVersionString, $newVersionString
     }
     catch {
 		Write-Error "Update-Version failed. Make sure you are executing from a `Developer PowerShell`."
 	}
 }
 
+function Set-Version() {
+    Param(
+        [Parameter(Position = 0,Mandatory=$true)]
+        [string] $Version,
+        [string] $Path = 'Directory.Build.props',
+        [switch] $Commit
+    )
+        
+    try {
+        if (!(Test-Path $Path)) {
+            Write-Error "The version file '$Path' was not found in the current directory."
+            throw
+        }
+
+        # Remove any non-numeric characters from the version string
+        $Version = $Version -replace '[^0-9.]', ''
+
+        # Split the version string into major, minor, and patch versions
+        $MajorVersion, $MinorVersion, $PatchVersion = $Version.Split('.')
+
+        $xml = [xml](Get-Content $Path)
+        $ns = New-Object System.Xml.XmlNamespaceManager($xml.NameTable)
+        $ns.AddNamespace("ns", $xml.DocumentElement.NamespaceURI)
+
+        $node = $xml.SelectSingleNode("//ns:Project/ns:PropertyGroup", $ns)
+
+        $previousVersionString = "v$($node.MajorVersion).$($node.MinorVersion).$($node.PatchVersion)"
+
+        # Update the version numbers
+        $node.MajorVersion = $MajorVersion
+        $node.MinorVersion = $MinorVersion
+        $node.PatchVersion = $PatchVersion
+
+        $newVersionString = "v$($node.MajorVersion).$($node.MinorVersion).$($node.PatchVersion)"
+        Write-Host "Previous version was '$previousVersionString'. Version now '$newVersionString'."
+
+        $xml.Save($Path)
+        
+        if ( $Commit ) {
+            git add $Path
+            git commit -m "bump $($Type.ToLower())" -q -o $Path
+        }
+
+        return $previousVersionString, $newVersionString
+    }
+    catch {
+        Write-Error "Set-Version failed. Make sure you are executing from a `Developer PowerShell`."
+    }
+}
+
+function Get-Version() {
+    Param(
+        [string] $Path = 'Directory.Build.props'
+    )
+        
+    try {
+        if (!(Test-Path $Path)) {
+            Write-Error "The version file '$Path' was not found in the current directory."
+            throw
+        }
+
+        $xml = [xml](Get-Content $Path)
+        $ns = New-Object System.Xml.XmlNamespaceManager($xml.NameTable)
+        $ns.AddNamespace("ns", $xml.DocumentElement.NamespaceURI)
+
+        $node = $xml.SelectSingleNode("//ns:Project/ns:PropertyGroup", $ns)
+
+        $versionString = "v$($node.MajorVersion).$($node.MinorVersion).$($node.PatchVersion)"
+        Write-Host "Current version is '$versionString'."
+
+        return $versionString
+    }
+    catch {
+        Write-Error "Get-Version failed. Make sure you are executing from a `Developer PowerShell`."
+    }
+}
 
 Export-ModuleMember -Function 'Publish-Packages'
 Export-ModuleMember -Function 'Resize-Feed'
 Export-ModuleMember -Function 'Update-Version'
+Export-ModuleMember -Function 'Set-Version'
+Export-ModuleMember -Function 'Get-Version'
