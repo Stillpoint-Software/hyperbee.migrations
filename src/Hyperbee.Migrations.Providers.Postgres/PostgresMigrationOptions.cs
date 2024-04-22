@@ -9,6 +9,7 @@ public class PostgresMigrationOptions : MigrationOptions
     public string SchemaName { get; set; }
     public string TableName { get; set; }
     public string LockName { get; set; }
+    public TimeSpan LockMaxLifetime { get; set; }
 
     public PostgresMigrationOptions()
     : this( null )
@@ -21,6 +22,8 @@ public class PostgresMigrationOptions : MigrationOptions
         SchemaName = DefaultSchema;
         TableName = DefaultMigrationTable;
         LockName = DefaultLockTable;
+
+        LockMaxLifetime = TimeSpan.FromHours( 1 );
     }
 
     public void Deconstruct( out string schemaName, out string tableName, out string lockName )

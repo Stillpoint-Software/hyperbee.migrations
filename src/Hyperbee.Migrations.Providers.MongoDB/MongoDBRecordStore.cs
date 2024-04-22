@@ -42,12 +42,21 @@ internal class MongoDBRecordStore : IMigrationRecordStore
         if ( migrationLock != null )
         {
             _logger.LogWarning( "{action} Lock already exists", nameof( CreateLockAsync ) );
-            throw new MigrationLockUnavailableException( $"The lock `{_options.LockName}` is unavailable." );
+
+            if(migrationLock.ReleaseOn <  DateTime.UtcNow )
+            {
+                _logger.LogInformation( "{action} Lock expired on {releaseOn}", nameof(CreateLockAsync), migrationLock.ReleaseOn );
+                collection.FindOneAndDelete( x => x.Id == 1 );
+            }
+            else
+            {
+                throw new MigrationLockUnavailableException( $"The lock `{_options.LockName}` is unavailable." );
+            }
         }
 
         try
         {
-            await collection.InsertOneAsync( new MigrationLock( 1, DateTimeOffset.UtcNow ) );
+            await collection.InsertOneAsync( new MigrationLock( 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow + _options.LockMaxLifetime ) );
         }
         catch ( Exception ex )
         {
@@ -107,7 +116,7 @@ internal class MongoDBRecordStore : IMigrationRecordStore
         } );
     }
 
-    private record MigrationLock( int Id, DateTimeOffset LockedOn );
+    private record MigrationLock( int Id, DateTimeOffset LockedOn, DateTimeOffset ReleaseOn );
 
     private sealed class Disposable( Action dispose ) : IDisposable
     {

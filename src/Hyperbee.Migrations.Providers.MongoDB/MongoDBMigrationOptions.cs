@@ -9,7 +9,7 @@ public class MongoDBMigrationOptions : MigrationOptions
     public string DatabaseName { get; set; }
     public string CollectionName { get; set; }
     public string LockName { get; set; }
-
+    public TimeSpan LockMaxLifetime { get; set; }
 
     public MongoDBMigrationOptions()
         : this( null )
@@ -22,6 +22,8 @@ public class MongoDBMigrationOptions : MigrationOptions
         DatabaseName = DefaultDatabase;
         CollectionName = DefaultCollection;
         LockName = DefaultLockCollection;
+
+        LockMaxLifetime = TimeSpan.FromHours( 1 );
     }
 
     public void Deconstruct( out string databaseName, out string collectionName, out string lockName )

@@ -35,10 +35,9 @@ internal static class StartupExtensions
 
     public static IServiceCollection AddPostgresMigrations( this IServiceCollection services, IConfiguration config )
     {
-
         var lockingEnabled = config.GetValue<bool>( "Migrations:Lock:Enabled" );
         var lockName = config["Migrations:Lock:Name"];
-
+        var lockMaxLifetime = TimeSpan.FromSeconds( config.GetValue( "Migrations:Lock:MaxLifetime", 3600 ) );
 
         var profiles = (IList<string>) config.GetSection( "Migrations:Profiles" )
             .Get<IEnumerable<string>>() ?? Enumerable.Empty<string>()
@@ -52,6 +51,7 @@ internal static class StartupExtensions
             c.Profiles = profiles;
             c.LockName = lockName;
             c.LockingEnabled = lockingEnabled;
+            c.LockMaxLifetime = lockMaxLifetime;
 
             c.SchemaName = schemaName;
             c.TableName = tableName;

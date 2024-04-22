@@ -34,15 +34,25 @@ internal class PostgresRecordStore : IMigrationRecordStore
 
         var getLockCommand = _dataSource.CreateCommand( GetMigrationLock() );
         var migrationLock = await getLockCommand.ExecuteScalarAsync();
-        if ( migrationLock != null )
+        if ( migrationLock is DateTimeOffset releaseOn )
         {
-            _logger.LogWarning( "{action} Lock already exists", nameof( CreateLockAsync ) );
-            throw new MigrationLockUnavailableException( $"The lock `{_options.LockName}` is unavailable." );
+            _logger.LogWarning( "{action} Lock already exists", nameof(CreateLockAsync) );
+
+            if ( releaseOn < DateTime.UtcNow )
+            {
+                _logger.LogInformation( "{action} Lock expired on {releaseOn}", nameof(CreateLockAsync), releaseOn );
+                var command = _dataSource.CreateCommand( DeleteMigrationLock() );
+                command.ExecuteNonQuery();
+            }
+            else
+            {
+                throw new MigrationLockUnavailableException( $"The lock `{_options.LockName}` is unavailable." );
+            }
         }
 
         try
         {
-            var command = _dataSource.CreateCommand( InsertMigrationLock() );
+            var command = _dataSource.CreateCommand( InsertMigrationLock( _options.LockMaxLifetime ) );
             await command.ExecuteNonQueryAsync();
         }
         catch ( Exception ex )
@@ -111,8 +121,9 @@ internal class PostgresRecordStore : IMigrationRecordStore
 
          CREATE TABLE IF NOT EXISTS {LockTableName}
          (
-             id        integer PRIMARY KEY,
-             locked_on timestamp without time zone NOT NULL
+             id         integer PRIMARY KEY,
+             locked_on  timestamp without time zone NOT NULL,
+             release_on timestamp without time zone NOT NULL
          );
          """;
 
@@ -122,9 +133,9 @@ internal class PostgresRecordStore : IMigrationRecordStore
 
     private string DeleteMigrationRecord( string recordId ) => $"DELETE FROM {MigrationTableName} WHERE record_id = '{recordId}'";
 
-    private string GetMigrationLock() => $"SELECT locked_on FROM {LockTableName} LIMIT 1";
+    private string GetMigrationLock() => $"SELECT release_on FROM {LockTableName} LIMIT 1";
 
-    private string InsertMigrationLock() => $"INSERT INTO {LockTableName} (id, locked_on) VALUES (1, NOW())";
+    private string InsertMigrationLock(TimeSpan maxLifetime) => $"INSERT INTO {LockTableName} (id, locked_on, release_on) VALUES (1, NOW(), NOW() + INTERVAL '{maxLifetime.TotalSeconds} SECONDS')";
 
     private string DeleteMigrationLock() => $"DELETE FROM {LockTableName}";
 

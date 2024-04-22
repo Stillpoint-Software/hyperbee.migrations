@@ -38,6 +38,7 @@ internal static class StartupExtensions
     {
         var lockingEnabled = config.GetValue<bool>( "Migrations:Lock:Enabled" );
         var lockName = config["Migrations:Lock:Name"];
+        var lockMaxLifetime = TimeSpan.FromSeconds( config.GetValue( "Migrations:Lock:MaxLifetime", 3600 ) );
 
         var profiles = (IList<string>) config.GetSection( "Migrations:Profiles" )
             .Get<IEnumerable<string>>() ?? Enumerable.Empty<string>()
@@ -49,7 +50,9 @@ internal static class StartupExtensions
         services.AddMongoDBMigrations( c =>
         {
             c.Profiles = profiles;
+            c.LockName = lockName;
             c.LockingEnabled = lockingEnabled;
+            c.LockMaxLifetime = lockMaxLifetime;
 
             c.DatabaseName = databaseName;
             c.CollectionName = collectionName;
