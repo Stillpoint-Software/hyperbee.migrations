@@ -9,13 +9,22 @@ using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using Serilog.Events;
 
-// BF TODO We should provide a generalized mechanism for providers to participate in runner setup
+namespace Hyperbee.MigrationRunner.Couchbase;
 
-namespace Hyperbee.MigrationRunner;
-
-internal static partial class StartupExtensionsCouchbaseProvider
+internal static partial class StartupExtensions
 {
-    public static IServiceCollection AddCouchbaseProvider( this IServiceCollection services, IConfiguration config, ILogger logger = null )
+    internal static IConfigurationBuilder AddAppSettingsFile( this IConfigurationBuilder builder )
+    {
+        return builder
+            .AddJsonFile( "appsettings.json", optional: false, reloadOnChange: true );
+    }
+
+    internal static IConfigurationBuilder AddAppSettingsEnvironmentFile( this IConfigurationBuilder builder )
+    {
+        return builder
+            .AddJsonFile( ConfigurationHelper.EnvironmentAppSettingsName, optional: true );
+    }
+    public static IServiceCollection AddProvider( this IServiceCollection services, IConfiguration config, ILogger logger = null )
     {
         var connectionString = config["Couchbase:ConnectionString"]; // from appsettings.<ENV>.json couchbase://localhost
         var userName = config["Couchbase:UserName"]; // from secrets.json or aws:secrets
@@ -41,7 +50,7 @@ internal static partial class StartupExtensionsCouchbaseProvider
         return services;
     }
 
-    public static IServiceCollection AddCouchbaseMigrations( this IServiceCollection services, IConfiguration config )
+    public static IServiceCollection AddMigrations( this IServiceCollection services, IConfiguration config )
     {
         var bucketName = config["Migrations:BucketName"];
         var scopeName = config["Migrations:ScopeName"];
@@ -105,4 +114,10 @@ internal static partial class StartupExtensionsCouchbaseProvider
 
     [GeneratedRegex( "^Issue getting Cluster Map on server {server}!" )]
     private static partial Regex RegexClusterMapIssueMessage();
+
+}
+
+internal static class ConfigurationHelper
+{
+    internal static string EnvironmentAppSettingsName => $"appsettings.{Environment.GetEnvironmentVariable( "DOTNET_ENVIRONMENT" ) ?? "Development"}.json";
 }

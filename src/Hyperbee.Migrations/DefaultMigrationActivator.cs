@@ -9,7 +9,7 @@ public class DefaultMigrationActivator : IMigrationActivator
 
     public DefaultMigrationActivator( IServiceProvider serviceProvider )
     {
-        _serviceProvider = serviceProvider ?? throw new ArgumentNullException( nameof(serviceProvider) );
+        _serviceProvider = serviceProvider ?? throw new ArgumentNullException( nameof( serviceProvider ) );
     }
 
     public Migration CreateInstance( Type migrationType )

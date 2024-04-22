@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Couchbase.Samples.Migrations;
 
-[Migration(2000)] 
+[Migration( 2000 )]
 public class SecondaryAction : Migration
 {
     private readonly IClusterProvider _clusterProvider;

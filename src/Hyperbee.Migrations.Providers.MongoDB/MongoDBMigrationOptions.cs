@@ -8,12 +8,12 @@ public class MongoDBMigrationOptions : MigrationOptions
     public string DatabaseName { get; set; }
     public string CollectionName { get; set; }
 
-    public MongoDBMigrationOptions() 
+    public MongoDBMigrationOptions()
     : this( null )
     {
     }
 
-    public MongoDBMigrationOptions( IMigrationActivator migrationActivator ) 
+    public MongoDBMigrationOptions( IMigrationActivator migrationActivator )
     : base( migrationActivator )
     {
         DatabaseName = DefaultDatabase;

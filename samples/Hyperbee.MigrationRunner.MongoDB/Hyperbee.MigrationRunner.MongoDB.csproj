@@ -38,10 +38,8 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Hyperbee.Migrations.Providers.Couchbase\Hyperbee.Migrations.Providers.Couchbase.csproj" />
-    <ProjectReference Include="..\Hyperbee.Migrations.Providers.MongoDB\Hyperbee.Migrations.Providers.MongoDB.csproj" />
-    <ProjectReference Include="..\Hyperbee.Migrations.Providers.Postgres\Hyperbee.Migrations.Providers.Postgres.csproj" />
-    <ProjectReference Include="..\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.MongoDB\Hyperbee.Migrations.Providers.MongoDB.csproj" />
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Update="Microsoft.SourceLink.GitHub" Version="8.0.0">

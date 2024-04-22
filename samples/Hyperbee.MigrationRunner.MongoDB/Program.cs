@@ -5,7 +5,7 @@ using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
 
-namespace Hyperbee.MigrationRunner;
+namespace Hyperbee.MigrationRunner.MongoDB;
 
 internal class Program
 {
@@ -32,8 +32,8 @@ internal class Program
                 .ConfigureServices( ( context, services ) =>
                 {
                     services
-                        .AddProvider( context.Configuration, logger )
-                        .AddMigrations( context.Configuration )
+                        .AddMongoDbProvider( context.Configuration, logger )
+                        .AddMongoDbMigrations( context.Configuration )
                         .AddHostedService<MainService>();
                 } )
                 .UseSerilog()
@@ -46,8 +46,6 @@ internal class Program
         finally
         {
             await Log.CloseAndFlushAsync();
-
-            await Task.Delay( TimeSpan.FromMinutes( 10 ) );
         }
     }
 
@@ -67,15 +65,15 @@ internal class Program
             .MinimumLevel.Debug()
             .ReadFrom.Configuration( config )
             .Enrich.FromLogContext()
-            .AddProviderLoggerFilters( config )
+            .AddMongoDbFilters()
             .WriteTo.File( jsonFormatter, pathFormat, rollingInterval: RollingInterval.Day, shared: true )
             .WriteTo.Console( restrictedToMinimumLevel: LogEventLevel.Information )
             .CreateLogger();
 
-        return Log.ForContext( typeof(Program) );
+        return Log.ForContext( typeof( Program ) );
     }
 
-    private static IDictionary<string,string> SwitchMappings()
+    private static Dictionary<string, string> SwitchMappings()
     {
         // pass array of FromAssemblies: -a AssemblyName1 -a AssemblyName2
 
@@ -85,25 +83,19 @@ internal class Program
             { "-f", "[Migrations:FromPaths]" },
             { "-a", "[Migrations:FromAssemblies]" },
             { "-p", "[Migrations:Profiles]" },
-            { "-b", "Migrations:BucketName" },
-            { "-s", "Migrations:ScopeName" },
-            { "-c", "Migrations:CollectionName" },
-            
-            { "-usr", "Couchbase:UserName" },
-            { "-pwd", "Couchbase:Password" },
-            { "-cs", "Couchbase:ConnectionString" },
+            { "-d", "Migrations:DatabaseName" },
+            { "-v", "Migrations:CollectionName" },
+
+            { "-cs", "Postgresql:ConnectionString" },
 
             // aliases
             { "--file", "[Migrations:FromPaths]" },
             { "--assembly", "[Migrations:FromAssemblies]" },
             { "--profile", "[Migrations:Profiles]" },
-            { "--bucket", "Migrations:BucketName" },
-            { "--scope", "Migrations:ScopeName" },
+            { "--database", "Migrations:DatabaseName" },
             { "--collection", "Migrations:CollectionName" },
 
-            { "--user", "Couchbase:UserName" },
-            { "--password", "Couchbase:Password" },
-            { "--connection", "Couchbase:ConnectionString" }
+            { "--connection", "Postgresql:ConnectionString" }
         };
     }
 }

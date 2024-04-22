@@ -3,7 +3,7 @@
 namespace Hyperbee.Migrations.Postgres.Samples.Migrations;
 
 [Migration( 1000 )]
-public class Initial(PostgresResourceRunner<Initial> resourceRunner) : Migration
+public class Initial( PostgresResourceRunner<Initial> resourceRunner ) : Migration
 {
     public override async Task UpAsync( CancellationToken cancellationToken = default )
     {

@@ -22,7 +22,7 @@ internal class PostgresRecordStore : IMigrationRecordStore
     public async Task InitializeAsync( CancellationToken cancellationToken = default )
     {
         // wait for system ready
-        _logger.LogDebug( "Running {action}", nameof(InitializeAsync) );
+        _logger.LogDebug( "Running {action}", nameof( InitializeAsync ) );
 
         var createCommand = _dataSource.CreateCommand( CreateMigrationTable() );
         await createCommand.ExecuteNonQueryAsync( cancellationToken );
@@ -30,13 +30,13 @@ internal class PostgresRecordStore : IMigrationRecordStore
 
     public async Task<IDisposable> CreateLockAsync()
     {
-        _logger.LogDebug( "Running {action}", nameof(CreateLockAsync) );
+        _logger.LogDebug( "Running {action}", nameof( CreateLockAsync ) );
 
         var getLockCommand = _dataSource.CreateCommand( GetMigrationLock() );
         var migrationLock = await getLockCommand.ExecuteScalarAsync();
         if ( migrationLock != null )
         {
-            _logger.LogWarning( "{action} Lock already exists", nameof(CreateLockAsync) );
+            _logger.LogWarning( "{action} Lock already exists", nameof( CreateLockAsync ) );
             throw new MigrationLockUnavailableException( $"The lock `{_options.LockName}` is unavailable." );
         }
 
@@ -47,13 +47,13 @@ internal class PostgresRecordStore : IMigrationRecordStore
         }
         catch ( Exception ex )
         {
-            _logger.LogError( ex, "{action} unable to create database lock", nameof(CreateLockAsync) );
+            _logger.LogError( ex, "{action} unable to create database lock", nameof( CreateLockAsync ) );
             throw new MigrationLockUnavailableException( $"The lock `{_options.LockName}` is unavailable.", ex );
         }
 
         return new Disposable( () =>
         {
-            _logger.LogInformation( "{action} disposing lock", nameof(CreateLockAsync) );
+            _logger.LogInformation( "{action} disposing lock", nameof( CreateLockAsync ) );
 
             try
             {
@@ -62,7 +62,7 @@ internal class PostgresRecordStore : IMigrationRecordStore
             }
             catch ( Exception ex )
             {
-                _logger.LogCritical( ex, "{action} unable to remove database lock", nameof(CreateLockAsync) );
+                _logger.LogCritical( ex, "{action} unable to remove database lock", nameof( CreateLockAsync ) );
                 throw;
             }
         } );
@@ -70,19 +70,19 @@ internal class PostgresRecordStore : IMigrationRecordStore
 
     public async Task<bool> ExistsAsync( string recordId )
     {
-        _logger.LogDebug( "Running {action} with `{recordId}`", nameof(ExistsAsync), recordId );
+        _logger.LogDebug( "Running {action} with `{recordId}`", nameof( ExistsAsync ), recordId );
 
         var command = _dataSource.CreateCommand( GetMigrationRecord( recordId ) );
         var id = await command.ExecuteScalarAsync();
 
-        _logger.LogDebug( "{action} found `{recordId}`", nameof(ExistsAsync), id );
+        _logger.LogDebug( "{action} found `{recordId}`", nameof( ExistsAsync ), id );
 
         return id != null;
     }
 
     public async Task DeleteAsync( string recordId )
     {
-        _logger.LogDebug( "Running {action} with `{recordId}`", nameof(DeleteAsync), recordId );
+        _logger.LogDebug( "Running {action} with `{recordId}`", nameof( DeleteAsync ), recordId );
 
         var command = _dataSource.CreateCommand( DeleteMigrationRecord( recordId ) );
         await command.ExecuteNonQueryAsync();
@@ -90,7 +90,7 @@ internal class PostgresRecordStore : IMigrationRecordStore
 
     public async Task WriteAsync( string recordId )
     {
-        _logger.LogDebug( "Running {action} with `{recordId}`", nameof(WriteAsync), recordId );
+        _logger.LogDebug( "Running {action} with `{recordId}`", nameof( WriteAsync ), recordId );
 
         var command = _dataSource.CreateCommand( InsertMigrationRecord( recordId ) );
         await command.ExecuteNonQueryAsync();

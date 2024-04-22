@@ -13,7 +13,7 @@ public sealed record ClusterHelper( ICluster Cluster );
 
 public static class ClusterProviderExtensions
 {
-    public static ClusterHelper Helper( this ICluster cluster ) => new(cluster);
+    public static ClusterHelper Helper( this ICluster cluster ) => new( cluster );
 
     public static async Task<ClusterHelper> GetClusterHelperAsync( this IClusterProvider clusterProvider )
     {
@@ -106,7 +106,7 @@ public static class CouchbaseHelper
         // There is a small window after management api creation where an item exists
         // but isn't available to N1QL. This method provides a mechanism for waiting
         // until N1QL is ready to process queries.
-        
+
         // N1Ql is returning incomplete results when previously shutdown ungracefully
         // this can be fixed by querying for "select * from system:indexes" first.
 
@@ -127,8 +127,8 @@ public static class CouchbaseHelper
         var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
             .ConfigureAwait( false );
 
-//      var collectionSpec = new CollectionSpec( Unquote( scopeName ), Unquote( collectionName ) );
-//      await bucket.Collections.CreateCollectionAsync( collectionSpec ).ConfigureAwait( false );
+        //      var collectionSpec = new CollectionSpec( Unquote( scopeName ), Unquote( collectionName ) );
+        //      await bucket.Collections.CreateCollectionAsync( collectionSpec ).ConfigureAwait( false );
 
         var settings = CreateCollectionSettings.Default;
         await bucket.Collections.CreateCollectionAsync( Unquote( scopeName ), Unquote( collectionName ), settings ).ConfigureAwait( false );
@@ -140,8 +140,8 @@ public static class CouchbaseHelper
         var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
             .ConfigureAwait( false );
 
-//      var collectionSpec = new CollectionSpec( Unquote( scopeName ), Unquote( collectionName ) );
-//      await bucket.Collections.DropCollectionAsync( collectionSpec ).ConfigureAwait( false );
+        //      var collectionSpec = new CollectionSpec( Unquote( scopeName ), Unquote( collectionName ) );
+        //      await bucket.Collections.DropCollectionAsync( collectionSpec ).ConfigureAwait( false );
 
         await bucket.Collections.DropCollectionAsync( Unquote( scopeName ), Unquote( collectionName ) ).ConfigureAwait( false );
     }
@@ -178,13 +178,13 @@ public static class CouchbaseHelper
 
         // N1Ql is returning incomplete results when previously shutdown ungracefully
         // this can be fixed by querying for "select * from system:indexes" first.
-        
+
         await Fixes.SystemQueriesAsync( clusterHelper ).ConfigureAwait( false );
 
         // N1Ql query the keyspace for the scope and collection
         return await QueryExistsAsync(
             clusterHelper,
-            $"SELECT RAW count(*) FROM system:keyspaces WHERE `bucket` = '{Unquote(bucketName)}' AND `scope` = '{Unquote(scopeName)}' AND name = '{Unquote(collectionName)}'"
+            $"SELECT RAW count(*) FROM system:keyspaces WHERE `bucket` = '{Unquote( bucketName )}' AND `scope` = '{Unquote( scopeName )}' AND name = '{Unquote( collectionName )}'"
         ).ConfigureAwait( false );
     }
 
@@ -192,7 +192,7 @@ public static class CouchbaseHelper
     {
         await QueryExecuteAsync(
             clusterHelper,
-            $"CREATE PRIMARY INDEX ON `default`:`{Unquote(bucketName)}`.`{Unquote(scopeName)}`.`{Unquote(collectionName)}`"
+            $"CREATE PRIMARY INDEX ON `default`:`{Unquote( bucketName )}`.`{Unquote( scopeName )}`.`{Unquote( collectionName )}`"
         ).ConfigureAwait( false );
     }
 
@@ -210,7 +210,7 @@ public static class CouchbaseHelper
     {
         return await QueryExistsAsync(
             clusterHelper,
-            $"SELECT RAW count(*) FROM system:indexes WHERE keyspace_id = '{Unquote(bucketName)}' AND name = '{Unquote(indexName)}'"
+            $"SELECT RAW count(*) FROM system:indexes WHERE keyspace_id = '{Unquote( bucketName )}' AND name = '{Unquote( indexName )}'"
         ).ConfigureAwait( false );
     }
 

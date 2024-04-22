@@ -2,7 +2,7 @@
 
 namespace Hyperbee.Migrations.Couchbase.Samples.Migrations;
 
-[Migration(1000)] 
+[Migration( 1000 )]
 public class CreateInitialBuckets : Migration
 {
     private readonly CouchbaseResourceRunner<CreateInitialBuckets> _resourceRunner;
@@ -25,7 +25,7 @@ public class CreateInitialBuckets : Migration
             cancellationToken
         );
 
-        await _resourceRunner.DocumentsFromAsync( new []
+        await _resourceRunner.DocumentsFromAsync( new[]
             {
                 "migrationbucket/_default"
             },

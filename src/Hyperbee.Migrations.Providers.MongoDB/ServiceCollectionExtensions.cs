@@ -3,7 +3,6 @@ using System.Runtime.Loader;
 using Hyperbee.Migrations.Providers.MongoDB.Resources;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using MongoDB.Driver;
 
 namespace Hyperbee.Migrations.Providers.MongoDB;
 
@@ -55,12 +54,12 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<MigrationOptions>( provider => provider.GetRequiredService<MongoDBMigrationOptions>() );
         services.AddSingleton<IMigrationRecordStore, MongoDBRecordStore>();
         services.AddSingleton<MigrationRunner>();
-        services.AddTransient( typeof(MongoDBResourceRunner<>) ); // technically singleton works because of the nature of migrations, but even so ..
+        services.AddTransient( typeof( MongoDBResourceRunner<> ) ); // technically singleton works because of the nature of migrations, but even so ..
 
         return services;
     }
 
-    private static IEnumerable<T> GetEnumerable<T>( this IConfiguration config, string key ) 
+    private static IEnumerable<T> GetEnumerable<T>( this IConfiguration config, string key )
         => config.GetSection( key )
             .Get<IEnumerable<T>>() ?? Enumerable.Empty<T>();
 }

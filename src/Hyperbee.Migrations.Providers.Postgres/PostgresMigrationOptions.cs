@@ -10,12 +10,12 @@ public class PostgresMigrationOptions : MigrationOptions
     public string TableName { get; set; }
     public string LockName { get; set; }
 
-    public PostgresMigrationOptions() 
+    public PostgresMigrationOptions()
     : this( null )
     {
     }
 
-    public PostgresMigrationOptions( IMigrationActivator migrationActivator ) 
+    public PostgresMigrationOptions( IMigrationActivator migrationActivator )
     : base( migrationActivator )
     {
         SchemaName = DefaultSchema;

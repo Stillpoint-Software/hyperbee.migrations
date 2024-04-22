@@ -2,7 +2,7 @@
 
 namespace Hyperbee.Migrations.Resources;
 
-[AttributeUsage(AttributeTargets.Assembly)]
+[AttributeUsage( AttributeTargets.Assembly )]
 public class ResourceLocationAttribute : Attribute
 {
     public string RootNamespace { get; init; }

@@ -1,4 +1,4 @@
-using DotNet.Testcontainers.Builders;
+﻿using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Images;
@@ -16,7 +16,7 @@ public class MongoDbMigrationContainer
             .WithDeleteIfExists( true )
             .WithCleanUp( true )
             .WithName( "db-migrations" )
-            .WithDockerfile( "samples/Hyperbee.Migrations.MongoDB.Samples/Dockerfile" )
+            .WithDockerfile( "samples/Hyperbee.MigrationRunner.MongoDB/Dockerfile" )
             .WithDockerfileDirectory( location.DirectoryPath )
             .Build();
 
@@ -35,8 +35,7 @@ public class MongoDbMigrationContainer
             .WithNetwork( network )
             .WithImage( image )
             // TODO: fix connection string issue with server using IP verses network aliases
-            .WithEnvironment( "Provider", "MongoDb" )
-            .WithEnvironment( "MongoDb__ConnectionString", "mongodb://test:test@db:27017/")
+            .WithEnvironment( "MongoDb__ConnectionString", "mongodb://test:test@db:27017/" )
             .WithEnvironment( "Migrations__FromPaths__0", "./Hyperbee.Migrations.MongoDB.Samples.dll" )
             .WithEnvironment( "Migrations__Lock__Enabled", "true" )
             .WithEnvironment( "Migrations__Lock__Name", "ledger_lock" )

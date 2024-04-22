@@ -5,4 +5,4 @@
 
 using Hyperbee.Migrations.Resources;
 
-[assembly: ResourceLocation("Hyperbee.Migrations.MongoDB.Samples.Resources")] 
+[assembly: ResourceLocation( "Hyperbee.Migrations.MongoDB.Samples.Resources" )]

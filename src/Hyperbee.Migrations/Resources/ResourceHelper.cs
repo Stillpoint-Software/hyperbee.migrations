@@ -11,7 +11,7 @@ public static class ResourceHelper
     {
         var fullyQualifiedName = fullyQualified ? name : GetResourceName<TType>( name );
 
-        using var stream = typeof(TType).Assembly.GetManifestResourceStream( fullyQualifiedName )
+        using var stream = typeof( TType ).Assembly.GetManifestResourceStream( fullyQualifiedName )
                            ?? throw new FileNotFoundException( $"Cannot find '{fullyQualifiedName}'." );
 
         using var reader = new StreamReader( stream );
@@ -35,7 +35,7 @@ public static class ResourceHelper
 
         var ns = GetNamespace<TType>();
 
-        return typeof(TType)
+        return typeof( TType )
             .Assembly
             .GetManifestResourceNames()
             .Where( x => x.StartsWith( $"{ns}.{key}" ) )
@@ -44,17 +44,17 @@ public static class ResourceHelper
 
     public static string[] GetResourceNames<TType>()
     {
-        return typeof(TType).Assembly.GetManifestResourceNames();
+        return typeof( TType ).Assembly.GetManifestResourceNames();
     }
 
     private static string GetNamespace<TType>()
     {
-        return typeof(TType) // look for assembly attribute
+        return typeof( TType ) // look for assembly attribute
             .Assembly
-            .GetCustomAttributes( typeof(ResourceLocationAttribute), false )
+            .GetCustomAttributes( typeof( ResourceLocationAttribute ), false )
             .Cast<ResourceLocationAttribute>()
             .Select( x => x.RootNamespace )
-            .FirstOrDefault() ?? typeof(TType).Namespace; // default to type namespace
+            .FirstOrDefault() ?? typeof( TType ).Namespace; // default to type namespace
     }
 
     private static readonly char[] InvalidChars =

@@ -202,16 +202,16 @@ public class CouchbaseResourceRunner<TMigration>
                     switch ( node )
                     {
                         case JsonObject:
-                        {
-                            yield return CreateDocumentItem( resourcePath, node, options );
-                            break;
-                        }
+                            {
+                                yield return CreateDocumentItem( resourcePath, node, options );
+                                break;
+                            }
                         case JsonArray:
-                        {
-                            foreach ( var item in node.AsArray() )
-                                yield return CreateDocumentItem( resourcePath, item, options );
-                            break;
-                        }
+                            {
+                                foreach ( var item in node.AsArray() )
+                                    yield return CreateDocumentItem( resourcePath, item, options );
+                                break;
+                            }
                     }
                 }
             }
@@ -333,13 +333,13 @@ public class CouchbaseResourceRunner<TMigration>
 
     private static void ThrowIfNoResourceLocationFor()
     {
-        var exists = typeof(TMigration)
+        var exists = typeof( TMigration )
             .Assembly
-            .GetCustomAttributes( typeof(ResourceLocationAttribute), false )
+            .GetCustomAttributes( typeof( ResourceLocationAttribute ), false )
             .Cast<ResourceLocationAttribute>()
             .Any();
 
         if ( !exists )
-            throw new NotSupportedException( $"Missing required assembly attribute: {nameof(ResourceLocationAttribute)}." );
+            throw new NotSupportedException( $"Missing required assembly attribute: {nameof( ResourceLocationAttribute )}." );
     }
 }

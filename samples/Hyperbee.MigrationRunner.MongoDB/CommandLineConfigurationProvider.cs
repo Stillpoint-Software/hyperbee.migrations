@@ -2,7 +2,7 @@
 
 // Enhancement to microsoft's CommandLineConfigurationProvider with array support
 
-namespace Hyperbee.MigrationRunner;
+namespace Hyperbee.MigrationRunner.MongoDB;
 
 public static class CommandLineConfigurationExtensions
 {

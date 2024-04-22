@@ -6,12 +6,22 @@ using Serilog;
 using Serilog.Core;
 using Serilog.Events;
 
-// BF TODO We should provide a generalized mechanism for providers to participate in runner setup
+namespace Hyperbee.MigrationRunner.MongoDB;
 
-namespace Hyperbee.MigrationRunner;
-
-internal static class StartupExtensionsMongoDbProvider
+internal static class StartupExtensions
 {
+    internal static IConfigurationBuilder AddAppSettingsFile( this IConfigurationBuilder builder )
+    {
+        return builder
+            .AddJsonFile( "appsettings.json", optional: false, reloadOnChange: true );
+    }
+
+    internal static IConfigurationBuilder AddAppSettingsEnvironmentFile( this IConfigurationBuilder builder )
+    {
+        return builder
+            .AddJsonFile( ConfigurationHelper.EnvironmentAppSettingsName, optional: true );
+    }
+
     public static IServiceCollection AddMongoDbProvider( this IServiceCollection services, IConfiguration config, ILogger logger = null )
     {
         var connectionString = config["MongoDb:ConnectionString"]; // from appsettings.<ENV>.json
@@ -32,14 +42,17 @@ internal static class StartupExtensionsMongoDbProvider
             .Get<IEnumerable<string>>() ?? Enumerable.Empty<string>()
             .ToList();
 
+        var databaseName = config.GetValue<string>( "Migrations:DatabaseName" );
+        var collectionName = config.GetValue<string>( "Migrations:CollectionName" );
+
         services.AddMongoDBMigrations( c =>
         {
             c.Profiles = profiles;
             c.LockingEnabled = lockingEnabled;
 
-            // TODO: What do we need configured?
-            // c.CollectionName = "migration";
-        });
+            c.DatabaseName = databaseName;
+            c.CollectionName = collectionName;
+        } );
 
         return services;
     }
@@ -53,4 +66,9 @@ internal static class StartupExtensionsMongoDbProvider
         return self;
     }
 
+}
+
+internal static class ConfigurationHelper
+{
+    internal static string EnvironmentAppSettingsName => $"appsettings.{Environment.GetEnvironmentVariable( "DOTNET_ENVIRONMENT" ) ?? "Development"}.json";
 }

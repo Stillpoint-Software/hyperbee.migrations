@@ -12,8 +12,8 @@ public class DefaultMigrationConventions : IMigrationConventions
     {
         var type = migration.GetType();
 
-        if ( type.GetCustomAttribute( typeof(MigrationAttribute) ) is not MigrationAttribute attribute )
-            throw new MigrationException( $"Migration `{type.Name}` is missing `{nameof(MigrationAttribute)}`." );
+        if ( type.GetCustomAttribute( typeof( MigrationAttribute ) ) is not MigrationAttribute attribute )
+            throw new MigrationException( $"Migration `{type.Name}` is missing `{nameof( MigrationAttribute )}`." );
 
         // convert underscores to the replacement char, eliminate repetition, and trim front and back.
         // '__ONE_Two___Three_' => 'one-two-three'

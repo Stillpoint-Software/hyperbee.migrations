@@ -52,7 +52,7 @@ public class MongoDBResourceRunner<TMigration>
             var count = resourceParts.Length;
 
             if ( count == 2 )
-                throw new ArgumentException( "Invalid resource path. Path must be in the form 'database/collection'.", nameof(resourcePaths) );
+                throw new ArgumentException( "Invalid resource path. Path must be in the form 'database/collection'.", nameof( resourcePaths ) );
 
             var databaseName = resourceParts[0];
             var collectionName = resourceParts[1];

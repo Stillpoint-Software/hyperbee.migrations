@@ -17,12 +17,12 @@ public class CouchbaseMigrationOptions : MigrationOptions
     public TimeSpan LockMaxLifetime { get; set; }
     public TimeSpan LockRenewInterval { get; set; }
 
-    public CouchbaseMigrationOptions() 
+    public CouchbaseMigrationOptions()
     : this( null )
     {
     }
 
-    public CouchbaseMigrationOptions( IMigrationActivator migrationActivator ) 
+    public CouchbaseMigrationOptions( IMigrationActivator migrationActivator )
     : base( migrationActivator )
     {
         ScopeName = "migrations";

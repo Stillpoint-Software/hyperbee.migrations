@@ -22,7 +22,7 @@ internal class MongoDBRecordStore : IMigrationRecordStore
     public Task InitializeAsync( CancellationToken cancellationToken = default )
     {
         // wait for system ready
-        _logger.LogDebug( "Running {action}", nameof(InitializeAsync) );
+        _logger.LogDebug( "Running {action}", nameof( InitializeAsync ) );
 
         var db = _client.GetDatabase( _options.DatabaseName );
         db.GetCollection<MigrationRecord>( _options.CollectionName );
@@ -32,7 +32,7 @@ internal class MongoDBRecordStore : IMigrationRecordStore
 
     public async Task<IDisposable> CreateLockAsync()
     {
-        _logger.LogDebug( "Running {action}", nameof(CreateLockAsync) );
+        _logger.LogDebug( "Running {action}", nameof( CreateLockAsync ) );
         await Task.CompletedTask;
 
         return null;
@@ -40,7 +40,7 @@ internal class MongoDBRecordStore : IMigrationRecordStore
 
     public async Task<bool> ExistsAsync( string recordId )
     {
-        _logger.LogDebug( "Running {action} with `{recordId}`", nameof(ExistsAsync), recordId );
+        _logger.LogDebug( "Running {action} with `{recordId}`", nameof( ExistsAsync ), recordId );
 
         var db = _client.GetDatabase( _options.DatabaseName );
         var collection = db.GetCollection<MigrationRecord>( _options.CollectionName );
@@ -51,7 +51,7 @@ internal class MongoDBRecordStore : IMigrationRecordStore
 
     public async Task DeleteAsync( string recordId )
     {
-        _logger.LogDebug( "Running {action} with `{recordId}`", nameof(DeleteAsync), recordId );
+        _logger.LogDebug( "Running {action} with `{recordId}`", nameof( DeleteAsync ), recordId );
 
         var db = _client.GetDatabase( _options.DatabaseName );
         var collection = db.GetCollection<MigrationRecord>( _options.CollectionName );
@@ -60,7 +60,7 @@ internal class MongoDBRecordStore : IMigrationRecordStore
 
     public async Task WriteAsync( string recordId )
     {
-        _logger.LogDebug( "Running {action} with `{recordId}`", nameof(WriteAsync), recordId );
+        _logger.LogDebug( "Running {action} with `{recordId}`", nameof( WriteAsync ), recordId );
 
         var db = _client.GetDatabase( _options.DatabaseName );
         var collection = db.GetCollection<MigrationRecord>( _options.CollectionName );

@@ -1,6 +1,6 @@
+﻿using System.Data;
 using DotNet.Testcontainers.Networks;
 using Hyperbee.Migrations.Integration.Tests.Container.Postgres;
-using System.Data;
 
 namespace Hyperbee.Migrations.Integration.Tests;
 
@@ -28,8 +28,8 @@ public class PostgresRunnerTest
     {
         var migrationContainer = await PostgresMigrationContainer.BuildMigrationsAsync( Connection, Network );
 
-        await migrationContainer.StartAsync( CancellationToken.None );
-        await migrationContainer.StartAsync( CancellationToken.None );
+        await migrationContainer.StartAsync();
+        await migrationContainer.StartAsync();
 
         // TODO: Assert no migrations ran on second run
     }
@@ -44,10 +44,10 @@ public class PostgresRunnerTest
         var migrationContainer3 = await PostgresMigrationContainer.BuildMigrationsAsync( Connection, Network, migrationImage );
         var migrationContainer4 = await PostgresMigrationContainer.BuildMigrationsAsync( Connection, Network, migrationImage );
 
-        var migration1 = migrationContainer1.StartAsync( CancellationToken.None );
-        var migration2 = migrationContainer2.StartAsync( CancellationToken.None );
-        var migration3 = migrationContainer3.StartAsync( CancellationToken.None );
-        var migration4 = migrationContainer4.StartAsync( CancellationToken.None );
+        var migration1 = migrationContainer1.StartAsync();
+        var migration2 = migrationContainer2.StartAsync();
+        var migration3 = migrationContainer3.StartAsync();
+        var migration4 = migrationContainer4.StartAsync();
 
         await Task.WhenAll( migration1, migration2, migration3, migration4 );
     }

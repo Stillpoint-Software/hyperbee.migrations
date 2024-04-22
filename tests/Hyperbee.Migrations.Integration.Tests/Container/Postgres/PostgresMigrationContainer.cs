@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
@@ -16,7 +16,7 @@ public class PostgresMigrationContainer
             .WithDeleteIfExists( true )
             .WithCleanUp( true )
             .WithName( "db-migrations" )
-            .WithDockerfile( "samples/Hyperbee.Migrations.Postgres.Samples/Dockerfile" )
+            .WithDockerfile( "samples/Hyperbee.MigrationRunner.Postgres/Dockerfile" )
             .WithDockerfileDirectory( location.DirectoryPath )
             .Build();
 
@@ -36,7 +36,6 @@ public class PostgresMigrationContainer
             .WithImage( image )
             // TODO: fix connection string issue with server using IP verses network aliases
             //.WithEnvironment( "Postgresql__ConnectionString", connection.ConnectionString )
-            .WithEnvironment( "Provider", "Postgresql" )
             .WithEnvironment( "Postgresql__ConnectionString", "Server=db;Port=5432;Database=postgres;User Id=test;Password=test;" )
             .WithEnvironment( "Migrations__FromPaths__0", "./Hyperbee.Migrations.Postgres.Samples.dll" )
             .WithEnvironment( "Migrations__Lock__Enabled", "true" )

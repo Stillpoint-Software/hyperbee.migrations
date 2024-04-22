@@ -5,12 +5,22 @@ using Serilog;
 using Serilog.Core;
 using Serilog.Events;
 
-// BF TODO We should provide a generalized mechanism for providers to participate in runner setup
+namespace Hyperbee.MigrationRunner.Postgres;
 
-namespace Hyperbee.MigrationRunner;
-
-internal static class StartupExtensionsPostgresProvider
+internal static class StartupExtensions
 {
+    internal static IConfigurationBuilder AddAppSettingsFile( this IConfigurationBuilder builder )
+    {
+        return builder
+            .AddJsonFile( "appsettings.json", optional: false, reloadOnChange: true );
+    }
+
+    internal static IConfigurationBuilder AddAppSettingsEnvironmentFile( this IConfigurationBuilder builder )
+    {
+        return builder
+            .AddJsonFile( ConfigurationHelper.EnvironmentAppSettingsName, optional: true );
+    }
+
     public static IServiceCollection AddPostgresProvider( this IServiceCollection services, IConfiguration config, ILogger logger = null )
     {
         var connectionString = config["Postgresql:ConnectionString"]; // from appsettings.<ENV>.json
@@ -33,16 +43,17 @@ internal static class StartupExtensionsPostgresProvider
             .Get<IEnumerable<string>>() ?? Enumerable.Empty<string>()
             .ToList();
 
+        var schemaName = config.GetValue<string>( "Migrations:SchemaName" );
+        var tableName = config.GetValue<string>( "Migrations:TableName" );
+
         services.AddPostgresMigrations( c =>
         {
             c.Profiles = profiles;
             c.LockName = lockName;
             c.LockingEnabled = lockingEnabled;
 
-            // TODO: What do we need configured?
-            // c.SchemaName = "migration";
-            // c.TableName = "ledger";
-            // c.LockName = "ledger_lock";
+            c.SchemaName = schemaName;
+            c.TableName = tableName;
         } );
 
         return services;
@@ -56,5 +67,9 @@ internal static class StartupExtensionsPostgresProvider
         npgsqlLevelSwitch.MinimumLevel = LogEventLevel.Warning;
         return self;
     }
+}
 
+internal static class ConfigurationHelper
+{
+    internal static string EnvironmentAppSettingsName => $"appsettings.{Environment.GetEnvironmentVariable( "DOTNET_ENVIRONMENT" ) ?? "Development"}.json";
 }

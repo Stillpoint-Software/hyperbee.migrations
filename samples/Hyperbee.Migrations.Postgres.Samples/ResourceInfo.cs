@@ -5,4 +5,4 @@
 
 using Hyperbee.Migrations.Resources;
 
-[assembly: ResourceLocation("Hyperbee.Migrations.Postgres.Samples.Resources")] 
+[assembly: ResourceLocation( "Hyperbee.Migrations.Postgres.Samples.Resources" )]

@@ -27,7 +27,7 @@ public static class WaitHelper
 
         using var tts = TimeoutTokenSource.CreateTokenSource( timeout );
         using var lts = CancellationTokenSource.CreateLinkedTokenSource( tts.Token, cancellationToken );
-        
+
         var operationCancelToken = lts.Token;
         var timeoutToken = tts.Token;
 
@@ -61,7 +61,7 @@ public static class WaitHelper
 
 public class RetryStrategyException : Exception
 {
-    public RetryStrategyException( string message, Exception innerException ) : base( message, innerException) { }
+    public RetryStrategyException( string message, Exception innerException ) : base( message, innerException ) { }
 }
 
 public class RetryTimeoutException : Exception

@@ -20,9 +20,9 @@ public class MigrationRunner
 
     public MigrationRunner( IMigrationRecordStore recordStore, MigrationOptions options, ILogger<MigrationRunner> logger )
     {
-        _recordStore = recordStore ?? throw new ArgumentNullException( nameof(recordStore) );
-        _options = options ?? throw new ArgumentNullException( nameof(options) );
-        _logger = logger ?? throw new ArgumentNullException( nameof(logger) );
+        _recordStore = recordStore ?? throw new ArgumentNullException( nameof( recordStore ) );
+        _options = options ?? throw new ArgumentNullException( nameof( options ) );
+        _logger = logger ?? throw new ArgumentNullException( nameof( logger ) );
     }
 
     public virtual async Task RunAsync( CancellationToken cancellationToken = default )
@@ -121,10 +121,10 @@ public class MigrationRunner
         // discover descriptors
         var descriptors = options.Assemblies
             .SelectMany( assembly => assembly.GetTypes() )
-            .Where( type => typeof(Migration).IsAssignableFrom( type ) && !type.IsAbstract )
+            .Where( type => typeof( Migration ).IsAssignableFrom( type ) && !type.IsAbstract )
             .Select( type =>
             {
-                var attribute = type.GetCustomAttribute( typeof(MigrationAttribute) ) as MigrationAttribute;
+                var attribute = type.GetCustomAttribute( typeof( MigrationAttribute ) ) as MigrationAttribute;
                 return new MigrationDescriptor( type, attribute );
             } )
             .Where( descriptor => DescriptorInScope( descriptor, options ) )

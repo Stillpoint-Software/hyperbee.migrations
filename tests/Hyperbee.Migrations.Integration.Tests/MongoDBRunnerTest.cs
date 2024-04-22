@@ -1,4 +1,4 @@
-using DotNet.Testcontainers.Networks;
+﻿using DotNet.Testcontainers.Networks;
 using Hyperbee.Migrations.Integration.Tests.Container.MongoDb;
 using MongoDB.Driver;
 
@@ -21,7 +21,8 @@ public class MongoDBRunnerTest
     public async Task Should_Run_WithMongoDb()
     {
         var migrationContainer = await MongoDbMigrationContainer.BuildMigrationsAsync( Client, Network );
-        await migrationContainer.StartAsync( CancellationToken.None );
+        await migrationContainer.StartAsync();
+        await migrationContainer.StartAsync();
 
         // TODO: Assert
     }

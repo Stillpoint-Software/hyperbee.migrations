@@ -54,13 +54,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<MigrationOptions>( provider => provider.GetRequiredService<PostgresMigrationOptions>() );
         services.AddSingleton<IMigrationRecordStore, PostgresRecordStore>();
         services.AddSingleton<MigrationRunner>();
-        
-        services.AddTransient( typeof(PostgresResourceRunner<>) ); // technically singleton works because of the nature of migrations, but even so ..
+
+        services.AddTransient( typeof( PostgresResourceRunner<> ) ); // technically singleton works because of the nature of migrations, but even so ..
 
         return services;
     }
 
-    private static IEnumerable<T> GetEnumerable<T>( this IConfiguration config, string key ) 
+    private static IEnumerable<T> GetEnumerable<T>( this IConfiguration config, string key )
         => config.GetSection( key )
             .Get<IEnumerable<T>>() ?? Enumerable.Empty<T>();
 }

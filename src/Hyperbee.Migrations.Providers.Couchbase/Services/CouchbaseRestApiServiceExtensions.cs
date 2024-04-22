@@ -9,19 +9,19 @@ internal static class CouchbaseRestApiServiceExtensions
 {
     public static async Task WaitUntilManagementReadyAsync( this ICouchbaseRestApiService restApi, TimeSpan timeout, CancellationToken cancellationToken = default )
     {
-        await WaitHelper.WaitUntilAsync( 
-            async token => await restApi.ManagementReadyAsync( token ).ConfigureAwait( false ), 
-            timeout, 
-            cancellationToken 
+        await WaitHelper.WaitUntilAsync(
+            async token => await restApi.ManagementReadyAsync( token ).ConfigureAwait( false ),
+            timeout,
+            cancellationToken
         );
     }
 
     public static async Task WaitUntilBucketHealthyAsync( this ICouchbaseRestApiService restApi, string bucketName, TimeSpan timeout, CancellationToken cancellationToken = default )
     {
-        await WaitHelper.WaitUntilAsync( 
-            async token => await restApi.BucketHealthyAsync( bucketName, token ).ConfigureAwait( false ), 
-            timeout, 
-            cancellationToken 
+        await WaitHelper.WaitUntilAsync(
+            async token => await restApi.BucketHealthyAsync( bucketName, token ).ConfigureAwait( false ),
+            timeout,
+            cancellationToken
         );
     }
 
@@ -44,9 +44,9 @@ internal static class CouchbaseRestApiServiceExtensions
 
     public static async Task WaitUntilClusterHealthyAsync( this ICouchbaseRestApiService restApi, CancellationToken cancellationToken = default )
     {
-        await WaitHelper.WaitUntilAsync( 
+        await WaitHelper.WaitUntilAsync(
             async token => await restApi.ClusterHealthyAsync( token ).ConfigureAwait( false ),
-            cancellationToken 
+            cancellationToken
         );
     }
 }
