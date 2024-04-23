@@ -39,7 +39,7 @@ public class PostgresResourceRunner<TMigration>
     {
         var migrationName = Migration.VersionedName<TMigration>();
 
-        foreach ( var statement in ReadResources( migrationName, resourceNames ) )
+        foreach ( var statement in ReadResources() )
         {
             await using var command = _dataSource.CreateCommand( statement );
 
@@ -61,11 +61,14 @@ public class PostgresResourceRunner<TMigration>
 
         return;
 
-        static IEnumerable<string> ReadResources( string migrationName, params string[] resourceNames )
+        IEnumerable<string> ReadResources()
         {
             foreach ( var resourceName in resourceNames )
             {
-                var statement = ResourceHelper.GetResource<TMigration>( $"{migrationName}.{resourceName}" );
+                var resource = $"{migrationName}.{resourceName}";
+                _logger.LogInformation( " - Resource: [{resource}]", resource );
+
+                var statement = ResourceHelper.GetResource<TMigration>( resource );
                 yield return statement;
             }
         }
@@ -80,7 +83,7 @@ public class PostgresResourceRunner<TMigration>
     {
         var migrationName = Migration.VersionedName<TMigration>();
 
-        foreach ( var statement in ReadResources( migrationName ) )
+        foreach ( var statement in ReadResources() )
         {
             await using var command = _dataSource.CreateCommand( statement );
 
@@ -102,13 +105,15 @@ public class PostgresResourceRunner<TMigration>
 
         return;
 
-        static IEnumerable<string> ReadResources( string migrationName )
+        IEnumerable<string> ReadResources()
         {
             var resourceNames = ResourceHelper.GetResourceNames<TMigration>( migrationName );
 
             foreach ( var resourceName in resourceNames )
             {
-                var statement = ResourceHelper.GetResource<TMigration>( $"{migrationName}.{resourceName}" );
+                _logger.LogInformation( " - Resource: [{resource}]", resourceName );
+
+                var statement = ResourceHelper.GetResource<TMigration>( resourceName, true );
                 yield return statement;
             }
         }

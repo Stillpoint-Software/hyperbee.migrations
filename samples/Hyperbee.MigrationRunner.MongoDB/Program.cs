@@ -86,7 +86,7 @@ internal class Program
             { "-d", "Migrations:DatabaseName" },
             { "-v", "Migrations:CollectionName" },
 
-            { "-cs", "Postgresql:ConnectionString" },
+            { "-cs", "MongoDb:ConnectionString" },
 
             // aliases
             { "--file", "[Migrations:FromPaths]" },
@@ -95,7 +95,7 @@ internal class Program
             { "--database", "Migrations:DatabaseName" },
             { "--collection", "Migrations:CollectionName" },
 
-            { "--connection", "Postgresql:ConnectionString" }
+            { "--connection", "MongoDb:ConnectionString" }
         };
     }
 }

@@ -36,7 +36,7 @@ public class PeopleHaveFullNames : Migration // #2 inherit from Migration
 }
 ```
 
-To run the migrations from an ASP.NET Core app.
+For simple applications migrations can be run from an ASP.NET Core app.
 
 ```c#
 // In Startup.cs
@@ -88,7 +88,7 @@ app running, and both try to run migrations, Hyperbee Migrations will prevent th
 migrations and will log a warning.
 
 Hyperbee Migrations accomplishes this by using a distributed lock at the database layer. The default
-implementation uses a timeout and an auto-renewal interval to prevent orphaned locks.
+implementation is based on the provider and uses a timeout and an auto-renewal interval to prevent orphaned locks.
 
 If you want to change this behavior you can override the default options:
 

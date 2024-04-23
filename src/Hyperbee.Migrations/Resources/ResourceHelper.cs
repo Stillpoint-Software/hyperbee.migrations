@@ -1,6 +1,4 @@
-﻿using System;
-using System.IO;
-using System.Linq;
+﻿using System.Globalization;
 using System.Text;
 
 namespace Hyperbee.Migrations.Resources;
@@ -29,16 +27,15 @@ public static class ResourceHelper
         return $"{ns}.{key}";
     }
 
-    public static string[] GetResourceNames<TType>( string key )
+    public static string[] GetResourceNames<TType>( string name )
     {
-        ArgumentNullException.ThrowIfNull( key );
-
-        var ns = GetNamespace<TType>();
+        var key = GetResourceName<TType>( name );
 
         return typeof( TType )
             .Assembly
             .GetManifestResourceNames()
-            .Where( x => x.StartsWith( $"{ns}.{key}" ) )
+            .Where( x => x.StartsWith( key ) )
+            .OrderBy( x => x )
             .ToArray();
     }
 
@@ -58,12 +55,38 @@ public static class ResourceHelper
     }
 
     private static readonly char[] InvalidChars =
-    {
+    [
         ' ',
-        '\u00A0' /* non-breaking space */, ',', ';', '|', '~', '@',
-        '#', '%', '^', '&', '*', '+', '-', '/', '\\', '<', '>', '?', '[',
-        ']', '(', ')', '{', '}', '\"', '\'', '!', '`', '='
-    };
+        '\u00A0' /* non-breaking space */,
+        ',',
+        ';',
+        '|',
+        '~',
+        '@',
+        '#',
+        '%',
+        '^',
+        '&',
+        '*',
+        '+',
+        '-',
+        '/',
+        '\\',
+        '<',
+        '>',
+        '?',
+        '[',
+        ']',
+        '(',
+        ')',
+        '{',
+        '}',
+        '\"',
+        '\'',
+        '!',
+        '`',
+        '='
+    ];
 
     private static string SanitizeName( ReadOnlySpan<char> name )
     {

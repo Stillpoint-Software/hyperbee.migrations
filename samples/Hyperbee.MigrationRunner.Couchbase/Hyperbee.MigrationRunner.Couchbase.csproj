@@ -3,8 +3,9 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
-    <PackAsTool>true</PackAsTool>
-    <ToolCommandName>Hyperbee.MigrationRunner</ToolCommandName>
+    <IsPackable>false</IsPackable>
+    <!-- <PackAsTool>true</PackAsTool> -->
+    <!-- <ToolCommandName>Hyperbee.MigrationRunner.Couchbase</ToolCommandName> -->
     <UserSecretsId>14a6aa26-10f4-4883-92f3-969529ef1c37</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
     <DockerfileContext>..\..</DockerfileContext>

@@ -25,7 +25,7 @@ public class MongoDBResourceRunner<TMigration>
     {
         var migrationName = Migration.VersionedName<TMigration>();
 
-        foreach ( var item in ReadResources( migrationName, resourcePaths ) )
+        foreach ( var item in ReadResources() )
         {
             try
             {
@@ -62,11 +62,14 @@ public class MongoDBResourceRunner<TMigration>
             return new DocumentItem( location, document );
         }
 
-        static IEnumerable<DocumentItem> ReadResources( string migrationName, params string[] resourcePaths )
+        IEnumerable<DocumentItem> ReadResources()
         {
             foreach ( var resourceName in resourcePaths )
             {
-                var document = ResourceHelper.GetResource<TMigration>( $"{migrationName}.{resourceName}" );
+                var resource = $"{migrationName}.{resourceName}";
+                _logger.LogInformation( " - Resource: [{resource}]", resource );
+
+                var document = ResourceHelper.GetResource<TMigration>( resource );
                 yield return CreateDocumentItem( resourceName, document );
             }
         }

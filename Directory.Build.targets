@@ -4,8 +4,8 @@
 	Push the target package to nuget
     -->
 	<Target Name="PushPackage" AfterTargets="Pack"
-	        Condition="'$(PushAfterPack)'=='true' AND ('$(IsPackable)'=='true' OR '$(PackAsTool)'=='true')">
-		<Exec Command="dotnet nuget push $(SolutionDir)output/$(TargetName).$(PackageVersion).nupkg $(PackageSourceParam)"></Exec>
+          Condition="'$(PushAfterPack)'=='true' AND ('$(IsPackable)'=='true' OR '$(PackAsTool)'=='true')">
+    <Exec Command="dotnet nuget push $(SolutionDir)output/$(TargetName).$(PackageVersion).nupkg $(PackageSourceParam) $(PackageApiKeyParam)"></Exec>
 	</Target>
 
 	<!--
@@ -28,5 +28,12 @@
 			<PackageSourceParam Condition="'$(PackageSource)'!=''">--source $(PackageSource)</PackageSourceParam>
 		</PropertyGroup>
 	</Target>
+
+  <Target Name="SetPackageApiKey" BeforeTargets="GenerateNuspec"
+          Condition="'$(PushAfterPack)'=='true'">
+    <PropertyGroup>
+      <PackageApiKeyParam Condition="'$(PackageApiKey)'!=''">--api-key $(PackageApiKey)</PackageApiKeyParam>
+    </PropertyGroup>
+  </Target>
 
 </Project>
