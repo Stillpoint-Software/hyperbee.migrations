@@ -1,9 +1,9 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
 using Hyperbee.Migrations.Providers.Couchbase.Parsers;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 // ReSharper disable UnusedMember.Global
 // ReSharper disable InconsistentNaming
@@ -37,7 +37,7 @@ public class StatementTests
 
     public static string GetResource( string fullyQualifiedName )
     {
-        using var stream = typeof(StatementTests).Assembly.GetManifestResourceStream( fullyQualifiedName );
+        using var stream = typeof( StatementTests ).Assembly.GetManifestResourceStream( fullyQualifiedName );
 
         if ( stream == null )
             throw new FileNotFoundException( $"Cannot find '{fullyQualifiedName}'." );

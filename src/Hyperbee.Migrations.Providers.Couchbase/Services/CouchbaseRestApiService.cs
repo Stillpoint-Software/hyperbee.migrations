@@ -77,11 +77,11 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
                 ? options.BootstrapHttpPortTls // expected 18091
                 : options.BootstrapHttpPort; // expected 8091
 
-            ConnectionStringUris = match.Groups["hosts"].Value.Split( ',' ) 
+            ConnectionStringUris = match.Groups["hosts"].Value.Split( ',' )
                 .Select( value =>
                 {
                     var (host, port) = HostEndpoint.Parse( value.Trim() );
-                    return new Uri( $"{scheme}://{host}:{port.GetValueOrDefault(defaultPort)}" );
+                    return new Uri( $"{scheme}://{host}:{port.GetValueOrDefault( defaultPort )}" );
                 } )
                 .ToList();
         }
@@ -127,7 +127,7 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
                 .ConfigureAwait( false );
 
             response.EnsureSuccessStatusCode();
-            
+
             var responseBody = await response.Content.ReadAsStreamAsync( cancellationToken )
                 .ConfigureAwait( false );
 

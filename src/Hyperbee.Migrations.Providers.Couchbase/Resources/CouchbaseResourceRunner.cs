@@ -12,7 +12,8 @@ using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
 using Hyperbee.Migrations.Providers.Couchbase.Parsers;
 using Hyperbee.Migrations.Providers.Couchbase.Services;
-using Hyperbee.Migrations.Providers.Couchbase.Wait;
+using Hyperbee.Migrations.Resources;
+using Hyperbee.Migrations.Wait;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Providers.Couchbase.Resources;
@@ -179,7 +180,7 @@ public class CouchbaseResourceRunner<TMigration>
             return new DocumentItem( keyspace, id, content );
         }
 
-        static IEnumerable<DocumentItem> ReadResources( string migrationName, params string[] resourcePaths )
+        IEnumerable<DocumentItem> ReadResources( string migrationName, params string[] resourcePaths )
         {
             foreach ( var resourcePath in resourcePaths )
             {
@@ -201,16 +202,16 @@ public class CouchbaseResourceRunner<TMigration>
                     switch ( node )
                     {
                         case JsonObject:
-                        {
-                            yield return CreateDocumentItem( resourcePath, node, options );
-                            break;
-                        }
+                            {
+                                yield return CreateDocumentItem( resourcePath, node, options );
+                                break;
+                            }
                         case JsonArray:
-                        {
-                            foreach ( var item in node.AsArray() )
-                                yield return CreateDocumentItem( resourcePath, item, options );
-                            break;
-                        }
+                            {
+                                foreach ( var item in node.AsArray() )
+                                    yield return CreateDocumentItem( resourcePath, item, options );
+                                break;
+                            }
                     }
                 }
             }
@@ -332,13 +333,13 @@ public class CouchbaseResourceRunner<TMigration>
 
     private static void ThrowIfNoResourceLocationFor()
     {
-        var exists = typeof(TMigration)
+        var exists = typeof( TMigration )
             .Assembly
-            .GetCustomAttributes( typeof(ResourceLocationAttribute), false )
+            .GetCustomAttributes( typeof( ResourceLocationAttribute ), false )
             .Cast<ResourceLocationAttribute>()
             .Any();
 
         if ( !exists )
-            throw new NotSupportedException( $"Missing required assembly attribute: {nameof(ResourceLocationAttribute)}." );
+            throw new NotSupportedException( $"Missing required assembly attribute: {nameof( ResourceLocationAttribute )}." );
     }
 }

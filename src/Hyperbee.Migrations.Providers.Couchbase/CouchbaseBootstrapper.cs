@@ -6,7 +6,7 @@ using Couchbase.Core.Exceptions;
 using Couchbase.Diagnostics;
 using Couchbase.Extensions.DependencyInjection;
 using Hyperbee.Migrations.Providers.Couchbase.Services;
-using Hyperbee.Migrations.Providers.Couchbase.Wait;
+using Hyperbee.Migrations.Wait;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Providers.Couchbase;
@@ -110,57 +110,57 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
                 switch ( state )
                 {
                     case Start:
-                    {
-                        _logger?.LogInformation( "Waiting for admin api ..." );
-                        state = WaitForUri;
-                        break;
-                    }
+                        {
+                            _logger?.LogInformation( "Waiting for admin api ..." );
+                            state = WaitForUri;
+                            break;
+                        }
 
                     case WaitForUri:
-                    {
-                        await _restApiService.WaitUntilManagementReadyAsync( notifyInterval, operationCancelToken ).ConfigureAwait( false );
-                        _logger?.LogInformation( "Admin api is ready." );
-                        state = StateUriReady;
-                        break;
-                    }
+                        {
+                            await _restApiService.WaitUntilManagementReadyAsync( notifyInterval, operationCancelToken ).ConfigureAwait( false );
+                            _logger?.LogInformation( "Admin api is ready." );
+                            state = StateUriReady;
+                            break;
+                        }
 
                     case StateUriReady:
-                    {
-                        _logger?.LogInformation( "Waiting for cluster ready ..." );
-                        state = WaitForHealthy;
-                        break;
-                    }
+                        {
+                            _logger?.LogInformation( "Waiting for cluster ready ..." );
+                            state = WaitForHealthy;
+                            break;
+                        }
 
                     case WaitForHealthy:
-                    {
-                        await _restApiService.WaitUntilClusterHealthyAsync( notifyInterval, operationCancelToken ).ConfigureAwait( false );
-                        _logger?.LogInformation( "Cluster is healthy." );
-                        state = StateHealthy;
-                        break;
-                    }
+                        {
+                            await _restApiService.WaitUntilClusterHealthyAsync( notifyInterval, operationCancelToken ).ConfigureAwait( false );
+                            _logger?.LogInformation( "Cluster is healthy." );
+                            state = StateHealthy;
+                            break;
+                        }
 
                     case StateHealthy:
-                    {
-                        // the cluster is healthy but calling `GetClusterAsync` too quickly results in
-                        // an intermittent internal bootstrap error. when this happens, couchbase will
-                        // throw a `NotSupportedException` with an incorrect complaint that the server
-                        // version is < 6.5. this results in calls to WaitUntilReadyAsync() failing.
-                        //
-                        // try to remedy by adding a delay until we can find a better solution.
+                        {
+                            // the cluster is healthy but calling `GetClusterAsync` too quickly results in
+                            // an intermittent internal bootstrap error. when this happens, couchbase will
+                            // throw a `NotSupportedException` with an incorrect complaint that the server
+                            // version is < 6.5. this results in calls to WaitUntilReadyAsync() failing.
+                            //
+                            // try to remedy by adding a delay until we can find a better solution.
 
-                        await Task.Delay( 5000, operationCancelToken );
-                        state = WaitForReady;
-                        break;
-                    }
+                            await Task.Delay( 5000, operationCancelToken );
+                            state = WaitForReady;
+                            break;
+                        }
 
                     case WaitForReady:
-                    {
-                        var cluster = await _clusterProvider.GetClusterAsync().ConfigureAwait( false );
-                        var waitOptions = new WaitUntilReadyOptions().CancellationToken( operationCancelToken );
-                        await cluster.WaitUntilReadyAsync( notifyInterval, waitOptions ).ConfigureAwait( false );
-                        _logger?.LogInformation( "Cluster is ready." );
-                        return;
-                    }
+                        {
+                            var cluster = await _clusterProvider.GetClusterAsync().ConfigureAwait( false );
+                            var waitOptions = new WaitUntilReadyOptions().CancellationToken( operationCancelToken );
+                            await cluster.WaitUntilReadyAsync( notifyInterval, waitOptions ).ConfigureAwait( false );
+                            _logger?.LogInformation( "Cluster is ready." );
+                            return;
+                        }
                 }
             }
             catch ( UnambiguousTimeoutException )
@@ -173,7 +173,7 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
                 // the cluster is healthy but WaitUntilReadyAsync failed due to a couchbase
                 // bootstrap initialization problem or invalid credentials.
 
-                _logger?.LogCritical( 
+                _logger?.LogCritical(
                     "Couchbase incorrectly reported the system version as < 6.5. " +
                     "This is caused by invalid credentials or is the result of an internal couchbase bootstrap error. " +
                     "The system will exit with error." );
@@ -192,7 +192,7 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
 
         var cluster = await _clusterProvider.GetClusterAsync();
 
-        foreach( var (bucketName, _) in await cluster.Buckets.GetAllBucketsAsync() )
+        foreach ( var (bucketName, _) in await cluster.Buckets.GetAllBucketsAsync() )
         {
             _logger?.LogInformation( "Waiting for bucket {bucketName} ...", bucketName );
 

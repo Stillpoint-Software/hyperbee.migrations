@@ -30,7 +30,7 @@ public class StatementParser
     //
     // It is intended for reading statements from statements.json resource files. 
 
-    private readonly KeyspaceParser _keyspaceParser = new ();
+    private readonly KeyspaceParser _keyspaceParser = new();
 
     public StatementItem ParseStatement( string statement )
     {
@@ -86,7 +86,7 @@ public class StatementParser
             ParseKeyspace( keyspace, out var k, out var e, true );
             return new StatementItem( StatementType.CreateCollection, statement, k, default, e.ToString() );
         }
-        
+
         // create-scope ::= CREATE SCOPE [ namespace ':' ] bucket '.' scope
 
         match = Regex.Match( statement, @"^\s*CREATE\s+SCOPE\s+(?<keyspace>.+)", RegexOptions.IgnoreCase );
@@ -170,7 +170,7 @@ public class StatementParser
         trailingExpr = expr[count..].Trim();
     }
 
-    private static readonly IReadOnlyDictionary<string,BucketType> BucketTypes = new Dictionary<string,BucketType>( StringComparer.OrdinalIgnoreCase )
+    private static readonly IReadOnlyDictionary<string, BucketType> BucketTypes = new Dictionary<string, BucketType>( StringComparer.OrdinalIgnoreCase )
     {
         ["Couchbase"] = BucketType.Couchbase,
         ["Ephemeral"] = BucketType.Ephemeral,
@@ -198,7 +198,7 @@ public class StatementParser
         settings.RamQuotaMB = !match.Groups["quota"].ValueSpan.IsEmpty
             ? int.Parse( match.Groups["quota"].ValueSpan )
             : 256;
-                
+
         settings.FlushEnabled = !match.Groups["flush"].ValueSpan.IsEmpty;
 
         if ( !match.Groups["replicas"].ValueSpan.IsEmpty )

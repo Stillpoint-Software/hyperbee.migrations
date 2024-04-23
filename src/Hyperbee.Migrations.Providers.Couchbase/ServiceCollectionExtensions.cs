@@ -59,8 +59,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<MigrationOptions>( provider => provider.GetRequiredService<CouchbaseMigrationOptions>() );
         services.AddSingleton<IMigrationRecordStore, CouchbaseRecordStore>();
         services.AddSingleton<MigrationRunner>();
-        
-        services.AddTransient( typeof(CouchbaseResourceRunner<>) ); // technically singleton works because of the nature of migrations, but even so ..
+
+        services.AddTransient( typeof( CouchbaseResourceRunner<> ) ); // technically singleton works because of the nature of migrations, but even so ..
 
         // add support for calling couchbase web sdk api (outside the couchbase net sdk).
 
@@ -70,12 +70,12 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<ICouchbaseRestApiService, CouchbaseRestApiService>()
             .AddHttpMessageHandler<CouchbaseAuthenticationHandler>();
 
-        services.AddTransient<ICouchbaseBootstrapper,CouchbaseBootstrapper>();
+        services.AddTransient<ICouchbaseBootstrapper, CouchbaseBootstrapper>();
 
         return services;
     }
 
-    private static IEnumerable<T> GetEnumerable<T>( this IConfiguration config, string key ) 
+    private static IEnumerable<T> GetEnumerable<T>( this IConfiguration config, string key )
         => config.GetSection( key )
             .Get<IEnumerable<T>>() ?? Enumerable.Empty<T>();
 }

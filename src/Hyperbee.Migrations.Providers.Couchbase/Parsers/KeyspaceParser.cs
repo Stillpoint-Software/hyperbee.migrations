@@ -113,7 +113,7 @@ public class KeyspaceParser
                     if ( c != '`' )
                         continue;
 
-                    keyspace[k++] = Capture( expr, captureStart, i - (options.PreserveQuotes ? 0: 1) ); // adjust for backtick capture or discard
+                    keyspace[k++] = Capture( expr, captureStart, i - (options.PreserveQuotes ? 0 : 1) ); // adjust for backtick capture or discard
                     count = i;
                     scanner = Scanner.Trailing;
                     break;

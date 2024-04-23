@@ -5,8 +5,6 @@ VisualStudioVersion = 17.0.31919.166
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{5A09B7FE-D694-45B5-BCBC-256A8E06CFC5}"
 	ProjectSection(SolutionItems) = preProject
-		.github\workflows\build-test.yml = .github\workflows\build-test.yml
-		.github\workflows\deployment.yml = .github\workflows\deployment.yml
 		Directory.Build.props = Directory.Build.props
 		Directory.Build.targets = Directory.Build.targets
 		README.md = README.md
@@ -19,11 +17,44 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations.Tests",
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations", "src\Hyperbee.Migrations\Hyperbee.Migrations.csproj", "{D2CF7E72-8FCA-40F7-9136-587053C43E72}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.MigrationRunner", "src\Hyperbee.MigrationRunner\Hyperbee.MigrationRunner.csproj", "{7950479E-82AB-418B-BCDE-E0AADFDC6442}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations.Samples", "src\Hyperbee.Migrations.Samples\Hyperbee.Migrations.Samples.csproj", "{6955BD23-3377-456C-99BB-3CC1F07759B5}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations.Providers.Couchbase", "src\Hyperbee.Migrations.Providers.Couchbase\Hyperbee.Migrations.Providers.Couchbase.csproj", "{E5B18453-0203-44A2-8616-DBF9F6B01340}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Samples", "Samples", "{17F0B438-3EBD-4566-9A22-7A5EC4AEAF3D}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations.Couchbase.Samples", "samples\Hyperbee.Migrations.Couchbase.Samples\Hyperbee.Migrations.Couchbase.Samples.csproj", "{898BD151-B367-4C7C-B179-3E2F9097BA42}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations.Postgres.Samples", "samples\Hyperbee.Migrations.Postgres.Samples\Hyperbee.Migrations.Postgres.Samples.csproj", "{F70642F8-4559-407F-8F7A-A787DA184A40}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations.Providers.Postgres", "src\Hyperbee.Migrations.Providers.Postgres\Hyperbee.Migrations.Providers.Postgres.csproj", "{ECB3B1C1-BDAB-45EE-B8C0-10D776606917}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations.Integration.Tests", "tests\Hyperbee.Migrations.Integration.Tests\Hyperbee.Migrations.Integration.Tests.csproj", "{5B3A48F5-C917-46D8-B261-F4A09699DE16}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations.Providers.MongoDB", "src\Hyperbee.Migrations.Providers.MongoDB\Hyperbee.Migrations.Providers.MongoDB.csproj", "{0CBDCC95-FC40-4B69-AE6B-B32CA225F60A}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.Migrations.MongoDB.Samples", "samples\Hyperbee.Migrations.MongoDB.Samples\Hyperbee.Migrations.MongoDB.Samples.csproj", "{8A426713-23C8-4F6D-849C-8BEED43A6BE0}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.MigrationRunner.Postgres", "samples\Hyperbee.MigrationRunner.Postgres\Hyperbee.MigrationRunner.Postgres.csproj", "{090A7D6A-9581-4FAE-9230-AA8730082C16}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.MigrationRunner.Couchbase", "samples\Hyperbee.MigrationRunner.Couchbase\Hyperbee.MigrationRunner.Couchbase.csproj", "{1210799E-F447-4475-9DC1-E58447831944}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Hyperbee.MigrationRunner.MongoDB", "samples\Hyperbee.MigrationRunner.MongoDB\Hyperbee.MigrationRunner.MongoDB.csproj", "{C4B50B74-3FCA-453E-AF19-D9EA9233F8FC}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".github", ".github", "{004E4E55-FA1C-49D0-865F-4FF238C7A1F3}"
+	ProjectSection(SolutionItems) = preProject
+		.github\dependabot.yml = .github\dependabot.yml
+		.github\issue-branch.yml = .github\issue-branch.yml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{A192B3D2-E452-4A85-BBA4-1A8499F1A056}"
+	ProjectSection(SolutionItems) = preProject
+		.github\workflows\create-prerelease.yml = .github\workflows\create-prerelease.yml
+		.github\workflows\create-release.yml = .github\workflows\create-release.yml
+		.github\workflows\format.yml = .github\workflows\format.yml
+		.github\workflows\issue-branch.yml = .github\workflows\issue-branch.yml
+		.github\workflows\publish.yml = .github\workflows\publish.yml
+		.github\workflows\test-report.yml = .github\workflows\test-report.yml
+		.github\workflows\test.yml = .github\workflows\test.yml
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -39,24 +70,61 @@ Global
 		{D2CF7E72-8FCA-40F7-9136-587053C43E72}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D2CF7E72-8FCA-40F7-9136-587053C43E72}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D2CF7E72-8FCA-40F7-9136-587053C43E72}.Release|Any CPU.Build.0 = Release|Any CPU
-		{7950479E-82AB-418B-BCDE-E0AADFDC6442}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{7950479E-82AB-418B-BCDE-E0AADFDC6442}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{7950479E-82AB-418B-BCDE-E0AADFDC6442}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{7950479E-82AB-418B-BCDE-E0AADFDC6442}.Release|Any CPU.Build.0 = Release|Any CPU
-		{6955BD23-3377-456C-99BB-3CC1F07759B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{6955BD23-3377-456C-99BB-3CC1F07759B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{6955BD23-3377-456C-99BB-3CC1F07759B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{6955BD23-3377-456C-99BB-3CC1F07759B5}.Release|Any CPU.Build.0 = Release|Any CPU
 		{E5B18453-0203-44A2-8616-DBF9F6B01340}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{E5B18453-0203-44A2-8616-DBF9F6B01340}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E5B18453-0203-44A2-8616-DBF9F6B01340}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E5B18453-0203-44A2-8616-DBF9F6B01340}.Release|Any CPU.Build.0 = Release|Any CPU
+		{898BD151-B367-4C7C-B179-3E2F9097BA42}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{898BD151-B367-4C7C-B179-3E2F9097BA42}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{898BD151-B367-4C7C-B179-3E2F9097BA42}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{898BD151-B367-4C7C-B179-3E2F9097BA42}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F70642F8-4559-407F-8F7A-A787DA184A40}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F70642F8-4559-407F-8F7A-A787DA184A40}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F70642F8-4559-407F-8F7A-A787DA184A40}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F70642F8-4559-407F-8F7A-A787DA184A40}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ECB3B1C1-BDAB-45EE-B8C0-10D776606917}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ECB3B1C1-BDAB-45EE-B8C0-10D776606917}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ECB3B1C1-BDAB-45EE-B8C0-10D776606917}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ECB3B1C1-BDAB-45EE-B8C0-10D776606917}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5B3A48F5-C917-46D8-B261-F4A09699DE16}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5B3A48F5-C917-46D8-B261-F4A09699DE16}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5B3A48F5-C917-46D8-B261-F4A09699DE16}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5B3A48F5-C917-46D8-B261-F4A09699DE16}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0CBDCC95-FC40-4B69-AE6B-B32CA225F60A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0CBDCC95-FC40-4B69-AE6B-B32CA225F60A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0CBDCC95-FC40-4B69-AE6B-B32CA225F60A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0CBDCC95-FC40-4B69-AE6B-B32CA225F60A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8A426713-23C8-4F6D-849C-8BEED43A6BE0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8A426713-23C8-4F6D-849C-8BEED43A6BE0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8A426713-23C8-4F6D-849C-8BEED43A6BE0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8A426713-23C8-4F6D-849C-8BEED43A6BE0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{090A7D6A-9581-4FAE-9230-AA8730082C16}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{090A7D6A-9581-4FAE-9230-AA8730082C16}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{090A7D6A-9581-4FAE-9230-AA8730082C16}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{090A7D6A-9581-4FAE-9230-AA8730082C16}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1210799E-F447-4475-9DC1-E58447831944}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1210799E-F447-4475-9DC1-E58447831944}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1210799E-F447-4475-9DC1-E58447831944}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1210799E-F447-4475-9DC1-E58447831944}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C4B50B74-3FCA-453E-AF19-D9EA9233F8FC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C4B50B74-3FCA-453E-AF19-D9EA9233F8FC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C4B50B74-3FCA-453E-AF19-D9EA9233F8FC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C4B50B74-3FCA-453E-AF19-D9EA9233F8FC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{D8A2293A-3053-4A96-B182-FA7DEA5C02CA} = {0A564ABB-7C2D-4F4D-B62A-F8127E0964FA}
+		{898BD151-B367-4C7C-B179-3E2F9097BA42} = {17F0B438-3EBD-4566-9A22-7A5EC4AEAF3D}
+		{F70642F8-4559-407F-8F7A-A787DA184A40} = {17F0B438-3EBD-4566-9A22-7A5EC4AEAF3D}
+		{5B3A48F5-C917-46D8-B261-F4A09699DE16} = {0A564ABB-7C2D-4F4D-B62A-F8127E0964FA}
+		{8A426713-23C8-4F6D-849C-8BEED43A6BE0} = {17F0B438-3EBD-4566-9A22-7A5EC4AEAF3D}
+		{090A7D6A-9581-4FAE-9230-AA8730082C16} = {17F0B438-3EBD-4566-9A22-7A5EC4AEAF3D}
+		{1210799E-F447-4475-9DC1-E58447831944} = {17F0B438-3EBD-4566-9A22-7A5EC4AEAF3D}
+		{C4B50B74-3FCA-453E-AF19-D9EA9233F8FC} = {17F0B438-3EBD-4566-9A22-7A5EC4AEAF3D}
+		{004E4E55-FA1C-49D0-865F-4FF238C7A1F3} = {5A09B7FE-D694-45B5-BCBC-256A8E06CFC5}
+		{A192B3D2-E452-4A85-BBA4-1A8499F1A056} = {004E4E55-FA1C-49D0-865F-4FF238C7A1F3}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {97071D77-035B-4126-AD4E-DE150E318714}
