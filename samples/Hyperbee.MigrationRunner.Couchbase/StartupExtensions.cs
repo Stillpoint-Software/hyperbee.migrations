@@ -42,7 +42,7 @@ internal static partial class StartupExtensions
         services.AddCouchbase( c =>
         {
             c.EnableTls = false;
-           // c.WithBuckets( bucket );
+            // c.WithBuckets( bucket );
             c.WithConnectionString( connectionString );
             c.WithCredentials( userName, password );
             //c.MaxHttpConnections = maxHttpConnections;

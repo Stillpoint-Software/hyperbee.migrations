@@ -1,9 +1,9 @@
-﻿using DotNet.Testcontainers.Builders;
+﻿using System.Text;
+using System.Text.Json;
+using DotNet.Testcontainers.Builders;
+using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Networks;
 using Testcontainers.Couchbase;
-using System.Text;
-using System.Text.Json;
-using DotNet.Testcontainers.Configurations;
 
 namespace Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
 
@@ -21,10 +21,10 @@ public class CouchbaseTestContainer
             .WithName( "couch_net" )
             .WithCleanUp( true )
             .Build();
-        
+
         await network.CreateAsync( cancellationToken )
             .ConfigureAwait( false );
-        
+
         var couchbaseContainer = new CouchbaseBuilder()
             .WithCleanUp( true )
             .WithNetwork( network )
@@ -176,7 +176,7 @@ public class CouchbaseTestContainer
             return false;
         }
     }
-    
+
     private sealed class SetupCredentialsRequest : HttpRequestMessage
     {
         public SetupCredentialsRequest()

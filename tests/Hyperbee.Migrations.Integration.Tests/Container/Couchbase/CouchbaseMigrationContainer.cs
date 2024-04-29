@@ -43,7 +43,7 @@ public class CouchbaseMigrationContainer
             .Build();
     }
 
-    public static async Task RunMigrationsAsync( string connectionString,INetwork network )
+    public static async Task RunMigrationsAsync( string connectionString, INetwork network )
     {
         var migrationContainer = await BuildMigrationsAsync( connectionString, network );
 
