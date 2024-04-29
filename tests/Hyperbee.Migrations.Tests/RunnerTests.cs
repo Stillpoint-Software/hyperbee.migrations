@@ -1,12 +1,12 @@
-﻿using Microsoft.Extensions.Logging;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
-using NSubstitute;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using NSubstitute;
 
 // ReSharper disable UnusedMember.Global
 // ReSharper disable InconsistentNaming
@@ -188,7 +188,7 @@ public class RunnerTests
             store.Remove( record );
             return Task.CompletedTask;
         } );
-        recordStore.StoreAsync( Arg.Any<string>() ).Returns( args =>
+        recordStore.WriteAsync( Arg.Any<string>() ).Returns( args =>
         {
             var id = args.Arg<string>();
             store.Add( (args.Arg<string>(), new MigrationRecord { Id = id }) );

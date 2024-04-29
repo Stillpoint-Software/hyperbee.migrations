@@ -13,10 +13,10 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
         public BasicAuthenticationHeaderProvider( string user, string credential )
         {
             if ( user == null )
-                throw new ArgumentNullException( nameof(user) );
+                throw new ArgumentNullException( nameof( user ) );
 
             if ( credential == null )
-                throw new ArgumentNullException( nameof(credential) );
+                throw new ArgumentNullException( nameof( credential ) );
 
             var bytes = Encoding.ASCII.GetBytes( $"{user}:{credential}" );
             _base64EncodedAuthenticationString = Convert.ToBase64String( bytes );

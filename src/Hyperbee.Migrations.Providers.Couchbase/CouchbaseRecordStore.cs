@@ -6,7 +6,7 @@ using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
 using Hyperbee.Migrations.Providers.Couchbase.Services;
-using Hyperbee.Migrations.Providers.Couchbase.Wait;
+using Hyperbee.Migrations.Wait;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Providers.Couchbase;
@@ -61,11 +61,11 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             _logger.LogInformation( "Creating ledger bucket `{name}`.", bucketName );
 
             await cluster.Buckets.CreateBucketAsync( new BucketSettings
-                {
-                    Name = bucketName,
-                    RamQuotaMB = 100,
-                    FlushEnabled = true
-                } )
+            {
+                Name = bucketName,
+                RamQuotaMB = 100,
+                FlushEnabled = true
+            } )
                 .ConfigureAwait( false );
 
             await WaitHelper.WaitUntilAsync(
@@ -74,7 +74,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
                 cancellationToken
             );
 
-            // we created the bucket and it exists but couchbase my not have reported it yet.
+            // we created the bucket, and it exists but couchbase my not have reported it yet.
             // wait for the bucket to be ready.
             //
             // bucket.WaitUntilReadyAsync() will return ready when the bucket is ready but the node is in warmup.
@@ -90,7 +90,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             _logger.LogInformation( "Creating ledger bucket indexes." );
 
             await cluster.QueryIndexes.CreatePrimaryIndexAsync( bucketName ).ConfigureAwait( false );
-            await cluster.QueryIndexes.CreateIndexAsync( bucketName, "ix_type", new [] { "type" } ).ConfigureAwait( false );
+            await cluster.QueryIndexes.CreateIndexAsync( bucketName, "ix_type", new[] { "type" } ).ConfigureAwait( false );
         }
 
         // check for scope
@@ -100,10 +100,10 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             _logger.LogInformation( "Creating ledger scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName );
             await clusterHelper.CreateScopeAsync( bucketName, scopeName ).ConfigureAwait( false );
 
-            await WaitHelper.WaitUntilAsync( 
-                async _ => await clusterHelper.ScopeExistsAsync( bucketName, scopeName ).ConfigureAwait( false ), 
-                new PauseRetryStrategy(), 
-                cancellationToken 
+            await WaitHelper.WaitUntilAsync(
+                async _ => await clusterHelper.ScopeExistsAsync( bucketName, scopeName ).ConfigureAwait( false ),
+                new PauseRetryStrategy(),
+                cancellationToken
             );
         }
 
@@ -192,7 +192,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             .ConfigureAwait( false );
     }
 
-    public async Task StoreAsync( string recordId )
+    public async Task WriteAsync( string recordId )
     {
         var collection = await GetCollectionAsync()
             .ConfigureAwait( false );

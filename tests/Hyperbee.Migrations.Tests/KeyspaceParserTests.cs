@@ -13,7 +13,7 @@ namespace Hyperbee.Migrations.Tests
         {
             // arrange
             var parser = new KeyspaceParser();
- 
+
             // act
             var result = parser.ParseExpression( keyspace, out _ );
 

@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Runtime.Serialization;
 
 namespace Hyperbee.Migrations;
 
@@ -18,11 +17,6 @@ public class MigrationException : Exception
 
     public MigrationException( string message, Exception innerException )
     : base( message, innerException )
-    {
-    }
-
-    internal MigrationException( SerializationInfo info, StreamingContext context )
-    : base( info, context )
     {
     }
 }
