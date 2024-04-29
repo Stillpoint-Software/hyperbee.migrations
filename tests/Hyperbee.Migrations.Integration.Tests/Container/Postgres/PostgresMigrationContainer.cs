@@ -15,7 +15,7 @@ public class PostgresMigrationContainer
         var image = new ImageFromDockerfileBuilder()
             .WithDeleteIfExists( true )
             .WithCleanUp( true )
-            .WithName( "db-migrations" )
+            .WithName( "postgres-db-migrations" )
             .WithDockerfile( "samples/Hyperbee.MigrationRunner.Postgres/Dockerfile" )
             .WithDockerfileDirectory( location.DirectoryPath )
             .Build();

@@ -1,8 +1,4 @@
-﻿using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Couchbase.Core.Exceptions;
+﻿using Couchbase.Core.Exceptions;
 using Couchbase.Diagnostics;
 using Couchbase.Extensions.DependencyInjection;
 using Hyperbee.Migrations.Providers.Couchbase.Services;
@@ -194,8 +190,6 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
 
         foreach ( var (bucketName, _) in await cluster.Buckets.GetAllBucketsAsync() )
         {
-            _logger?.LogInformation( "Waiting for bucket {bucketName} ...", bucketName );
-
             var bucket = await cluster.BucketAsync( bucketName );
 
             while ( true )

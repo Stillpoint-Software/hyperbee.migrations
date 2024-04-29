@@ -1,8 +1,4 @@
-﻿using System;
-using System.Threading;
-using System.Threading.Tasks;
-
-namespace Hyperbee.Migrations.Wait;
+﻿namespace Hyperbee.Migrations.Wait;
 
 public static class WaitHelper
 {

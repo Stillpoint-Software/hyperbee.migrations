@@ -1,4 +1,5 @@
-﻿using Hyperbee.Migrations.Integration.Tests.Container.MongoDb;
+﻿using Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
+using Hyperbee.Migrations.Integration.Tests.Container.MongoDb;
 using Hyperbee.Migrations.Integration.Tests.Container.Postgres;
 
 namespace Hyperbee.Migrations.Integration.Tests.Container;
@@ -11,5 +12,6 @@ public class InitializeTestContainers
     {
         await MongoDbTestContainer.Initialize( context );
         await PostgresTestContainer.Initialize( context );
+        await CouchbaseTestContainer.Initialize( context );
     }
 }

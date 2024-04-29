@@ -1,6 +1,5 @@
 ﻿using DotNet.Testcontainers.Networks;
 using Hyperbee.Migrations.Integration.Tests.Container.MongoDb;
-using Hyperbee.Migrations.Integration.Tests.Container.Postgres;
 using MongoDB.Driver;
 
 namespace Hyperbee.Migrations.Integration.Tests;
@@ -19,13 +18,22 @@ public class MongoDBRunnerTest
     }
 
     [TestMethod]
-    public async Task Should_Run_WithMongoDb()
+    public async Task Should_Succeed_WhenRunningUpTwice()
     {
         var migrationContainer = await MongoDbMigrationContainer.BuildMigrationsAsync( Client, Network );
         await migrationContainer.StartAsync();
-        await migrationContainer.StartAsync();
 
-        // TODO: Assert
+        var (stdOut1, _) = await migrationContainer.GetLogsAsync();
+
+        Assert.IsTrue( stdOut1.Contains( "[1000] Initial: Up migration started" ) );
+        Assert.IsTrue( stdOut1.Contains( "[1000-Initial.administration/users/user.json]" ) );
+        Assert.IsTrue( stdOut1.Contains( "[1000] Initial: Up migration completed" ) );
+        Assert.IsTrue( stdOut1.Contains( "Executed 1 migrations" ) );
+
+        await migrationContainer.StartAsync();
+        var (stdOut2, _) = await migrationContainer.GetLogsAsync();
+
+        Assert.IsTrue( stdOut2.Contains( "Executed 0 migrations" ) );
     }
 
 
@@ -46,6 +54,20 @@ public class MongoDBRunnerTest
 
         await Task.WhenAll( migration1, migration2, migration3, migration4 );
 
-        // TODO: Assert
+        var (stdOut1, _) = await migrationContainer1.GetLogsAsync();
+        var (stdOut2, _) = await migrationContainer2.GetLogsAsync();
+        var (stdOut3, _) = await migrationContainer3.GetLogsAsync();
+        var (stdOut4, _) = await migrationContainer4.GetLogsAsync();
+
+        var allStdOut = string.Empty;
+        allStdOut += stdOut1;
+        allStdOut += stdOut2;
+        allStdOut += stdOut3;
+        allStdOut += stdOut4;
+
+        // TODO: Hack, there is still a possible issue with timing.
+        Assert.IsTrue( allStdOut.Contains( "Executed 1 migrations" ) );
+        Assert.IsTrue( allStdOut.Contains( "Executed 0 migrations" ) );
+        Assert.IsTrue( allStdOut.Contains( "The migration lock is unavailable. Skipping migrations." ) );
     }
 }
