@@ -3,11 +3,6 @@ name: Create Prerelease
 on:
   workflow_dispatch:
     inputs:
-      update_version:
-        description: 'Update version number:'
-        type: boolean
-        required: true
-        default: true
       version_type:
         description: 'Update branch version by:'
         type: choice
@@ -48,12 +43,7 @@ jobs:
       shell: pwsh
       run: |
           Import-Module ./solution-helper.psm1 -Force
-          if (${{ github.event.inputs.update_version }}) {
-            $previousVersion, $newVersion = Update-Version -type ${{ github.event.inputs.version_type }}     
-          } else {
-            $newVersion = Get-Version
-            $previousVersion = $newVersion
-          }
+          $previousVersion, $newVersion = Update-Version -type ${{ github.event.inputs.version_type }}     
           echo "version_tag=$newVersion" | Out-File -FilePath $env:GITHUB_ENV -Append 
           echo "previous_version_tag=$previousVersion" | Out-File -FilePath $env:GITHUB_ENV -Append 
 
