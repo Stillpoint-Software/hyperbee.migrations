@@ -8,7 +8,8 @@ developer involved. Migrations solve the problem of evolving a database schema (
 (for example, the developer's local database, the test database and the production database). Database changes
 are described in classes written in C# that can be checked into a version control system.
 
-The framework API is heavily influenced by [Fluent Migrator](https://github.com/schambers/fluentmigrator), [Raven Migrations](https://github.com/migrating-ravens/RavenMigrations) and [DbUp](https://github.com/DbUp/DbUp)
+The framework API is heavily influenced by [Fluent Migrator](https://github.com/schambers/fluentmigrator)
+and [Raven Migrations](https://github.com/migrating-ravens/RavenMigrations).
 
 ## Concepts
 
@@ -35,7 +36,7 @@ public class PeopleHaveFullNames : Migration // #2 inherit from Migration
 }
 ```
 
-For simple applications migrations can be run from an ASP.NET Core app.
+For simple applications, migrations can be run from an ASP.NET Core app.
 
 ```c#
 // In Startup.cs
@@ -156,7 +157,7 @@ Hyperbee Migrations relies on dependency injection to pass services to your migr
 public class MyMigration : Migration
 {
 	private IClusterProvider _clusterProvider;
-    private ILogger _logger;
+  private ILogger _logger;
 
 	// Injected services registered with the container
 	public MyMigration( IClusterProvider clusterProvider, ILogger<MyMigration> logger )
@@ -174,9 +175,9 @@ public class MyMigration : Migration
 
 ## Integration
 
-We suggest you run the migrations at the start of your application to ensure that any new changes you have made
-apply to your application before you application starts. If you do not want to do it here, you can choose to do it
-out of band using a seperate application. If you're using ASP.NET Core, you can run them in your Startup.cs
+Many applications run migrations at the start of your application to ensure that any new changes made have made
+apply to the application before the application starts. If you do not want to do it here, you can choose to do it
+out of band using a separate application. If you're using ASP.NET Core, you can run them in your Startup.cs
 
 ```c#
 public void ConfigureServices( IServiceCollection services )
@@ -244,7 +245,7 @@ public async Task Main()
     {
         MigrationActivator = new MyCustomActivator( clusterProvider, factory ),
         Assemblies = new List<Assembly> { Assembly.GetEntryAssembly() }
-    } );
+    };
 
     var store = new CouchbaseRecordStore( clusterProvider, options, logger );
 
@@ -256,14 +257,14 @@ public async Task Main()
 
 ### The Record Store
 
-Hyperbee Migrations currently supports **Couchbase** databases but it can easily be extended.
+Hyperbee Migrations currently supports **Couchbase**, **MongoDB** & **Postgres** databases but it can easily be extended.
 The steps are:
 
 1. Derive from IMigrationRecordStore
 2. Derive from MigrationOptions to add any store specific configuration
 3. Implement ServiceCollectionExtensions to register your implementation
 
-See the Couchbase implementation for reference.
+See the one of the current implementations for reference.
 
 ## Configure Local Solution
 
@@ -288,25 +289,9 @@ To run the migration solution you will need to add some local configuration.
 }
 ```
 
-## Installing The MigrationRunner
+## Using Sample Runners
 
-The runner can be installed as a dotnet tool.
-
-```powershell
-# install the runner from nuget
-dotnet tool install Hyperbee.MigrationRunner --global --add-source {NUGET_SOURCE}
-```
-
-```powershell
-# install the runner from a local copy
-dotnet tool install Hyperbee.MigrationRunner --global --version 1.0.0-local.{version}
-```
-
-```powershell
-# uninstall the runner
-dotnet tool list -g
-dotnet tool uninstall Hyperbee.MigrationRunner --global
-```
+Currently there is are [sample runners](../../samples) for each of the database providers.  These provider a simple console app that can be run using a command line or built into a docker image.
 
 ### Running From The Command Line
 
@@ -367,36 +352,3 @@ from the `appSettings.json` in the execution folder. Arguments can also be provi
   }
 }
 ```
-
-
-#### Examples
-
-```powershell
-# example: run using values in settings file (default)
-hyperbee.migrationrunner
-
-# example: pass multiple migration assemblies to the runner
-hyperbee.migrationrunner -a AssemblyName1 -a AssemblyName2 
-
-# example: pass multiple migration assemblies by path to the runner
-hyperbee.migrationrunner -f "c:\folder\AssemblyName1.dll" -f "c:\folder\AssemblyName2.dll" 
-
-# example: pass multiple migration assemblies by path to the runner
-hyperbee.migrationrunner -f "c:\folder\AssemblyName1.dll" -f "c:\folder\AssemblyName2.dll" 
-
-```
-
-# TODO
-
-* Dynamic provider loading
-* Option to specify provider through configuration and/or command line
-* Providers should have own startup/registration
-* Add Hyperbee.Migration.Providers.Mongodb
-  * Mongo bootstrapper
-  * Mongo distributed lock
-  * Mongo resource runner and basic statements.json parser
-* Relocate shared functionality for providers
-  * WaitHelper
-* Provider samples
-  * Rename Hyperbee.Migrations.Samples to Hyperbee.Migrations.Samples.Couchbase
-  * Create Hyperbee.Migrations.Samples.Mongodb
