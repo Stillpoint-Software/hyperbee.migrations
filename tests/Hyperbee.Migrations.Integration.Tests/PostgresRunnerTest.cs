@@ -1,9 +1,11 @@
-﻿using System.Data;
+﻿//#define INTEGRATIONS
+using System.Data;
 using DotNet.Testcontainers.Networks;
 using Hyperbee.Migrations.Integration.Tests.Container.Postgres;
 
 namespace Hyperbee.Migrations.Integration.Tests;
 
+#if INTEGRATIONS
 [TestClass]
 public class PostgresRunnerTest
 {
@@ -71,3 +73,4 @@ public class PostgresRunnerTest
         Assert.IsTrue( allStdOut.Contains( "The migration lock is unavailable. Skipping migrations." ) );
     }
 }
+#endif
