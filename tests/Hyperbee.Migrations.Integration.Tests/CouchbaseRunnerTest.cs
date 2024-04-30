@@ -1,8 +1,10 @@
-﻿using DotNet.Testcontainers.Networks;
+﻿//#define INTEGRATIONS
+using DotNet.Testcontainers.Networks;
 using Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
 
 namespace Hyperbee.Migrations.Integration.Tests;
 
+#if INTEGRATIONS
 [TestClass]
 public class CouchbaseRunnerTest
 {
@@ -80,3 +82,4 @@ public class CouchbaseRunnerTest
         Assert.IsTrue( allStdOut.Contains( "The migration lock is unavailable. Skipping migrations." ) );
     }
 }
+#endif

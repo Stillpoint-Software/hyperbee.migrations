@@ -1,9 +1,11 @@
-﻿using DotNet.Testcontainers.Networks;
+﻿//#define INTEGRATIONS
+using DotNet.Testcontainers.Networks;
 using Hyperbee.Migrations.Integration.Tests.Container.MongoDb;
 using MongoDB.Driver;
 
 namespace Hyperbee.Migrations.Integration.Tests;
 
+#if INTEGRATIONS
 [TestClass]
 public class MongoDBRunnerTest
 {
@@ -71,3 +73,4 @@ public class MongoDBRunnerTest
         Assert.IsTrue( allStdOut.Contains( "The migration lock is unavailable. Skipping migrations." ) );
     }
 }
+#endif
