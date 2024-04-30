@@ -19,13 +19,13 @@ jobs:
 
     steps:
     - name: Release Configuration
-      if: ${{ env.BRANCH_NAME == 'main' && github.event.release.prerelease == false }}
+      if: ${{ env.BRANCH_NAME == 'main' && (github.event.release.prerelease == false || github.event_name == 'workflow_dispatch') }}
       run: |
           echo "BUILD_CONFIGURATION=Release" >> $GITHUB_ENV
           echo "VERSION_SUFFIX=" >> $GITHUB_ENV 
     
     - name: Debug Configuration
-      if: ${{ github.event.release.prerelease }}
+      if: ${{ (github.event.release.prerelease || github.event_name == 'workflow_dispatch') }}
       run: |
           echo "BUILD_CONFIGURATION=Debug" >> $GITHUB_ENV
           echo "VERSION_SUFFIX=develop.$(date +'%y%m%d%H%M%S')" >> $GITHUB_ENV
