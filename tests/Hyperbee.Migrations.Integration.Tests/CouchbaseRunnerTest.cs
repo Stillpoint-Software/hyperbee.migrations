@@ -1,4 +1,4 @@
-﻿//#define INTEGRATIONS
+﻿#define INTEGRATIONS
 using DotNet.Testcontainers.Networks;
 using Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
 
@@ -41,7 +41,8 @@ public class CouchbaseRunnerTest
         Assert.IsTrue( stdOut1.Contains( "UPSERT `0c81e0a030c64b8c80cbd05adf25e522/f90bcd5525b442dda8a5ee83e0987ec3` TO migrationbucket SCOPE _default COLLECTION _default" ) );
         Assert.IsTrue( stdOut1.Contains( "[1000] CreateInitialBuckets: Up migration completed" ) );
         Assert.IsTrue( stdOut1.Contains( "[2000] SecondaryAction: Up migration completed" ) );
-        Assert.IsTrue( stdOut1.Contains( "Executed 2 migrations" ) );
+        Assert.IsTrue( stdOut1.Contains( "[3000] MigrationAction: Up migration completed" ) );
+        Assert.IsTrue( stdOut1.Contains( "Executed 3 migrations" ) );
 
         await migrationContainer.StartAsync();
         var (stdOut2, _) = await migrationContainer.GetLogsAsync();
@@ -78,7 +79,7 @@ public class CouchbaseRunnerTest
         allStdOut += stdOut4;
 
         // TODO: Hack, there is still a possible issue with timing.
-        Assert.IsTrue( allStdOut.Contains( "Executed 2 migrations" ) );
+        Assert.IsTrue( allStdOut.Contains( "Executed 3 migrations" ) );
         Assert.IsTrue( allStdOut.Contains( "The migration lock is unavailable. Skipping migrations." ) );
     }
 }

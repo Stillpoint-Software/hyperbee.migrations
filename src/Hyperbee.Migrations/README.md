@@ -15,13 +15,23 @@ and [Raven Migrations](https://github.com/migrating-ravens/RavenMigrations).
 
 Every migration has several elements you need to be aware of.
 
+* You can create a StartMethod method that resolves to **Task \<bool>**, in order to tell the runner when to start.
+* You can create a StopMethod method that resolves to **bool**, in order to tell the runner when to stop.
+* You can set whether or not you want to journal the migration.
+
+
 ### A Migration
 
 A migration looks like the following:
 
 ```c#
 // #1 - specify the migration number
-[Migration(1)]
+// #2 - specify the start
+// #3 - specify the stop
+// #4 - specify to journal
+
+This example, is run with no specific start, stop and is journaling
+[Migration(1, null, null, true)]
 public class PeopleHaveFullNames : Migration // #2 inherit from Migration
 {
     // #3 do the migration
@@ -34,6 +44,22 @@ public class PeopleHaveFullNames : Migration // #2 inherit from Migration
     {
     }
 }
+
+This example with start, stop and journaling
+[Migration(2, "StartMethod", "StopMethod", true)]
+public class PeopleHaveFullNames : Migration // #2 inherit from Migration
+{
+    // #3 do the migration
+    public async override Task UpAsync( CancellationToken cancellationToken = default )
+    {
+    }
+
+    // #4 optional: undo the migration
+    public async override Task DownAsync( CancellationToken cancellationToken = default )
+    {
+    }
+}
+
 ```
 
 For simple applications, migrations can be run from an ASP.NET Core app.
@@ -42,6 +68,12 @@ For simple applications, migrations can be run from an ASP.NET Core app.
 // In Startup.cs
 public void ConfigureServices(IServiceCollection services)
 {
+    // Register the migration queue
+    services.AddSingleton<MigrationQueue>();
+
+    // Register the background service to run the migration items in the queue
+    services.AddHostedService<MigrationBackgroundService>();
+
     // Configure couchbase
     services.AddCouchbase(...);
 
@@ -57,13 +89,33 @@ public void Configure(IApplicationBuilder app, ...)
 }
 ```
 
+### Helper Methods
+
+    * MigrationCronHelper.CronDelayAsync(TimerProvider, string as a cron expression).  This will delay the processing of the migration. See Cron syntax.
+   
+   
+#### Cron Syntax
+
+| *            |    *        | *                       |  *            | *                    |
+| --------     | -------     | -------                 | -------       | -------              |
+| minute(0-59) | hour (0-23) | day of the month (1-31) | month( 1-12)  | day of the week (0-6)|
+
+#### Examples
+| Cron Expression | Schedule                           |
+| --------        | -------                            |
+| * * * * *       | Every minute                       |
+| 0 * * * *       | Every hour                         |
+| 0 0 * * *       | Every day at 12:00 AM              |
+| 0 0 * * FRI     | At 12:00 AM, only on Friday        |
+| 0 0 1 * *       | At 12:00 AM, on day 1 of the month |
+
 ### The Runner
 
 At the heart of migrations is the **MigrationRunner**. The migration runner scans all provided assemblies for
 classes deriving from the **Migration** base class and then orders them according to their migration attribute
 value.
 
-After each migration is executed a **MigrationRecord** is inserted into your database. This ensures that the
+After each migration is executed, a **MigrationRecord** is inserted into your database, unless no journaling is set. This ensures that the
 next time the runner is executed, previously completed migrations are not executed again. When a migration is
 rolled back the **MigrationRecord** is removed.
 
@@ -113,7 +165,7 @@ with the profile of _"development"_ and setting **options** to include only that
 migrations run in which environments.
 
 ```c#
-[Migration(3, "development")]
+[Migration(3, null,null, true,"development")]
 public class DevelopmentOnlyMigration : Migration
 {
     public async override Task UpAsync( CancellationToken cancellationToken = default )
@@ -138,7 +190,7 @@ public void ConfigureServices( IServiceCollection services )
 A migration may belong to multiple profiles.
 
 ```c#
-[Migration(3, "development", "staging")]
+[Migration(3, null,null, true,"development", "staging")]
 public class TargetedMigration : Migration
 {
     // ...
@@ -157,7 +209,7 @@ Hyperbee Migrations relies on dependency injection to pass services to your migr
 public class MyMigration : Migration
 {
 	private IClusterProvider _clusterProvider;
-  private ILogger _logger;
+    private ILogger _logger;
 
 	// Injected services registered with the container
 	public MyMigration( IClusterProvider clusterProvider, ILogger<MyMigration> logger )

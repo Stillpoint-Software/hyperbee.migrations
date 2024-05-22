@@ -55,6 +55,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IMigrationRecordStore, PostgresRecordStore>();
         services.AddSingleton<MigrationRunner>();
 
+
         services.AddTransient( typeof( PostgresResourceRunner<> ) ); // technically singleton works because of the nature of migrations, but even so ..
 
         return services;

@@ -5,9 +5,13 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <None Remove="Resources\3000-MigrationAction\migrationbucket\_default\cc00e1ca6b66b9427db69476e32fb3d6d1b039d776be33472ea30767694fb49e9c.json" />
+  </ItemGroup>
+  <ItemGroup>
     <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\statements.json" />
     <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\migrationbucket\_default\cc0c81e0a030c64b8c80cbd05adf25e522f90bcd5525b442dda8a5ee83e0987ec3.json" />
     <EmbeddedResource Include="Resources\1000-CreateInitialBuckets\migrationbucket\statements.json" />
+    <EmbeddedResource Include="Resources\3000-MigrationAction\migrationbucket\_default\cc00e1ca6b66b9427db69476e32fb3d6d1b039d776be33472ea30767694fb49e9c.json" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Couchbase.Extensions.DependencyInjection" Version="3.5.1" />

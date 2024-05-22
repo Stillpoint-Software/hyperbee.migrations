@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
+﻿using System.Diagnostics;
 using System.Reflection;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations;
@@ -12,7 +7,6 @@ namespace Hyperbee.Migrations;
 public class MigrationRunner
 {
     private readonly IMigrationRecordStore _recordStore;
-
     private readonly MigrationOptions _options;
     private readonly ILogger<MigrationRunner> _logger;
 
@@ -85,23 +79,23 @@ public class MigrationRunner
             }
 
             // run the migration
-
             var version = attribute!.Version;
             var name = migration.GetType().Name;
 
             _logger.LogInformation( "[{version}] {name}: {direction} migration started", version, name, direction );
 
-            switch ( direction )
+            var migrationItem = new MigrationItem
             {
-                case Direction.Down:
-                    await migration.DownAsync( cancellationToken ).ConfigureAwait( false );
-                    await _recordStore.DeleteAsync( recordId ).ConfigureAwait( false );
-                    break;
+                Migration = migration,
+                Direction = direction,
+                Attribute = attribute,
+                RecordId = recordId,
+                CancellationToken = cancellationToken
+            };
 
-                case Direction.Up:
-                    await migration.UpAsync( cancellationToken ).ConfigureAwait( false );
-                    await _recordStore.WriteAsync( recordId ).ConfigureAwait( false );
-                    break;
+            if ( await StartMigration( migrationItem ) )
+            {
+                await ProcessJobAsync( migrationItem, _recordStore, cancellationToken ).ConfigureAwait( false );
             }
 
             runCount++;
@@ -165,4 +159,61 @@ public class MigrationRunner
             .Intersect( attribute.Profiles, StringComparer.OrdinalIgnoreCase )
             .Any();
     }
+
+    private async Task ProcessJobAsync( MigrationItem migrationItem, IMigrationRecordStore recordStore, CancellationToken cancellationToken )
+    {
+        switch ( migrationItem.Direction )
+        {
+            case Direction.Up:
+                await migrationItem.Migration.UpAsync( cancellationToken ).ConfigureAwait( false );
+
+                if ( await StopMigration( migrationItem ) )
+                {
+                    if ( migrationItem.Attribute.Journal )
+                        await recordStore.WriteAsync( migrationItem.RecordId ).ConfigureAwait( false );
+                }
+                break;
+            case Direction.Down:
+                await migrationItem.Migration.DownAsync( cancellationToken ).ConfigureAwait( false );
+
+                if ( await StopMigration( migrationItem ) )
+                {
+                    if ( migrationItem.Attribute.Journal )
+                        await recordStore.DeleteAsync( migrationItem.RecordId ).ConfigureAwait( false );
+                }
+                break;
+        }
+    }
+
+    private async Task<bool> StartMigration( MigrationItem migrationItem )
+    {
+        if ( string.IsNullOrEmpty( migrationItem.Attribute.StartMethod ) )
+        {
+            return true;
+        }
+
+        var methodInfo = migrationItem.Migration.GetType().GetMethod( migrationItem.Attribute.StartMethod );
+
+        if ( methodInfo != null && methodInfo.ReturnType == typeof( Task<bool> ) )
+            return await (Task<bool>) methodInfo.Invoke( migrationItem.Migration, null )!;
+
+        _logger.LogError( $"Method '{methodInfo?.Name}' not found or does not return a boolean or string." );
+        return false;
+    }
+
+    private async Task<bool> StopMigration( MigrationItem migrationItem )
+    {
+        if ( string.IsNullOrEmpty( migrationItem.Attribute.StopMethod ) )
+        {
+            return true;
+        }
+        var methodInfo = migrationItem.Migration.GetType().GetMethod( migrationItem.Attribute.StopMethod );
+
+        if ( methodInfo != null && methodInfo.ReturnType == typeof( Task<bool> ) )
+            return await (Task<bool>) methodInfo.Invoke( migrationItem.Migration, null )!;
+
+        _logger.LogError( $"Method '{methodInfo?.Name}' not found or does not return a boolean." );
+        return false;
+    }
+
 }

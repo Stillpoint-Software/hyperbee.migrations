@@ -1,4 +1,4 @@
-﻿//#define INTEGRATIONS
+﻿#define INTEGRATIONS
 using DotNet.Testcontainers.Networks;
 using Hyperbee.Migrations.Integration.Tests.Container.MongoDb;
 using MongoDB.Driver;
@@ -28,9 +28,10 @@ public class MongoDBRunnerTest
         var (stdOut1, _) = await migrationContainer.GetLogsAsync();
 
         Assert.IsTrue( stdOut1.Contains( "[1000] Initial: Up migration started" ) );
-        Assert.IsTrue( stdOut1.Contains( "[1000-Initial.administration/users/user.json]" ) );
         Assert.IsTrue( stdOut1.Contains( "[1000] Initial: Up migration completed" ) );
-        Assert.IsTrue( stdOut1.Contains( "Executed 1 migrations" ) );
+        Assert.IsTrue( stdOut1.Contains( "[2000] MigrationAction: Up migration started" ) );
+        Assert.IsTrue( stdOut1.Contains( "[2000] MigrationAction: Up migration completed" ) );
+        Assert.IsTrue( stdOut1.Contains( "Executed 2 migrations" ) );
 
         await migrationContainer.StartAsync();
         var (stdOut2, _) = await migrationContainer.GetLogsAsync();

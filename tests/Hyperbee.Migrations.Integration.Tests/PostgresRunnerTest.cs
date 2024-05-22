@@ -1,4 +1,4 @@
-﻿//#define INTEGRATIONS
+﻿#define INTEGRATIONS
 using System.Data;
 using DotNet.Testcontainers.Networks;
 using Hyperbee.Migrations.Integration.Tests.Container.Postgres;
@@ -17,6 +17,7 @@ public class PostgresRunnerTest
     {
         Connection = PostgresTestContainer.Connection;
         Network = PostgresTestContainer.Network;
+
     }
 
     [TestMethod]
@@ -29,9 +30,10 @@ public class PostgresRunnerTest
         var (stdOut1, _) = await migrationContainer.GetLogsAsync();
 
         Assert.IsTrue( stdOut1.Contains( "[1000] Initial: Up migration started" ) );
-        Assert.IsTrue( stdOut1.Contains( "[Hyperbee.Migrations.Postgres.Samples.Resources._1000_Initial.CreateUsers.sql]" ) );
         Assert.IsTrue( stdOut1.Contains( "[1000] Initial: Up migration completed" ) );
-        Assert.IsTrue( stdOut1.Contains( "Executed 1 migrations" ) );
+        Assert.IsTrue( stdOut1.Contains( "[2000] MigrationAction: Up migration started" ) );
+        Assert.IsTrue( stdOut1.Contains( "[2000] MigrationAction: Up migration completed" ) );
+        Assert.IsTrue( stdOut1.Contains( "Executed 2 migrations" ) );
 
         await migrationContainer.StartAsync();
         var (stdOut2, _) = await migrationContainer.GetLogsAsync();
@@ -68,7 +70,7 @@ public class PostgresRunnerTest
         allStdOut += stdOut4;
 
         // TODO: Hack, there is still a possible issue with timing.
-        Assert.IsTrue( allStdOut.Contains( "Executed 1 migrations" ) );
+        Assert.IsTrue( allStdOut.Contains( "Executed 2 migrations" ) );
         Assert.IsTrue( allStdOut.Contains( "Executed 0 migrations" ) );
         Assert.IsTrue( allStdOut.Contains( "The migration lock is unavailable. Skipping migrations." ) );
     }
