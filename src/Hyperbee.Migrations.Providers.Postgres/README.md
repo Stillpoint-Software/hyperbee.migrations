@@ -61,9 +61,12 @@ services.AddPostgresDBMigrations( options =>
 The Postgres provider also provides a `PostgresResourceRunner<MyMigration>` that adds helpful functionality when using embedded resources.  
  - `SqlFromAsync` runs sql statements and can do any sort of updates supported by Postgres
  - `AllSqlFromAsync` runs all the embedded resources with the resource named matching the Migration. See [1000-Initial](../../samples/Hyperbee.Migrations.Postgres.Samples/Migrations/1000-Initial.cs) as an example
+ - `StartMethod` determines when the migration should start (optional)
+ - `StopMethod` determines when the migration should stop (optional)
+ - `false` determines if you want to journal (default = true)
 
 ```c#
-[Migration(1)]
+[Migration(1, "StartMethod", "StopMethod", false)]
 public class MyMigration : Migration
 {
     private readonly MongoDBResourceRunner<MyMigration> _resourceRunner;
@@ -79,6 +82,16 @@ public class MyMigration : Migration
         await resourceRunner.SqlFromAsync( [
             "1-MyMigration.sql"
         ], cancellationToken );
+    }
+
+     public Task<bool> StartMethod()
+    {
+      //create process here        
+    }
+    
+    public Task<bool> StopMethod()
+    {
+      //create process here    
     }
 }
 ```

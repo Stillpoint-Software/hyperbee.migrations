@@ -40,11 +40,14 @@ public class RunnerTests
         // act
         await migrationRunner.RunAsync();
 
-
         // assert
-        Assert.AreEqual( 2, store.Count );
+        Assert.AreEqual( 5, store.Count );
         Assert.AreEqual( "record.1.first-migration", store.First().Id );
         Assert.AreEqual( "record.2.second-migration", store.Skip( 1 ).First().Id );
+        Assert.AreEqual( "record.7.cron-delay-no-stop-migration", store.Skip( 2 ).First().Id );
+        Assert.AreEqual( "record.8.cron-delay-with-stop-migration", store.Skip( 3 ).First().Id );
+        Assert.AreEqual( "record.9.stop-migration", store.Skip( 4 ).First().Id );
+
     }
 
     [TestMethod]
@@ -133,13 +136,15 @@ public class RunnerTests
         await migrationRunner.RunAsync();
 
         // assert
-        Assert.AreEqual( 3, store.Count );
+        Assert.AreEqual( 6, store.Count );
         Assert.AreEqual( "record.1.first-migration", store.First().Id );
         Assert.AreEqual( "record.2.second-migration", store.Skip( 1 ).First().Id );
         Assert.AreEqual( "record.3.development-migration", store.Skip( 2 ).First().Id );
+        Assert.AreEqual( "record.7.cron-delay-no-stop-migration", store.Skip( 3 ).First().Id );
+        Assert.AreEqual( "record.8.cron-delay-with-stop-migration", store.Skip( 4 ).First().Id );
+        Assert.AreEqual( "record.9.stop-migration", store.Skip( 5 ).First().Id );
     }
 
-    [TestMethod]
     public async Task Migrations_run_with_up_direction_with_inheritance()
     {
         // arrange
@@ -158,6 +163,9 @@ public class RunnerTests
         Assert.AreEqual( "record.1.first-migration", store.First().Id );
         Assert.AreEqual( "record.2.second-migration", store.Skip( 1 ).First().Id );
         Assert.AreEqual( "record.4.subclass-of-basemigration", store.Skip( 2 ).First().Id );
+        Assert.AreEqual( "record.7.cron-delay-no-stop-migration", store.Skip( 3 ).First().Id );
+        Assert.AreEqual( "record.8.cron-delay-with-stop-migration", store.Skip( 4 ).First().Id );
+        Assert.AreEqual( "record.9.stop-migration", store.Skip( 5 ).First().Id );
     }
 
     [TestMethod]
@@ -170,21 +178,19 @@ public class RunnerTests
         options.Profiles.Add( "exclude-me" );
         var logger = Substitute.For<ILogger<MigrationRunner>>();
 
-        var queue = Substitute.For<MigrationQueue>();
-        var loggerServices = Substitute.For<ILogger<MigrationService>>();
-
-        var migrationService = new MigrationService( queue, recordStore, loggerServices );
         var migrationRunner = new MigrationRunner( recordStore, options, logger );
 
         // act
         await migrationRunner.RunAsync();
-        await migrationService.DoWork( _cancellationTokenSource.Token );
 
         // assert
-        Assert.AreEqual( 3, store.Count );
+        Assert.AreEqual( 6, store.Count );
         Assert.AreEqual( "record.1.first-migration", store.First().Id );
         Assert.AreEqual( "record.2.second-migration", store.Skip( 1 ).First().Id );
         Assert.AreEqual( "record.5.has-problems-with-underscores", store.Skip( 2 ).First().Id );
+        Assert.AreEqual( "record.7.cron-delay-no-stop-migration", store.Skip( 3 ).First().Id );
+        Assert.AreEqual( "record.8.cron-delay-with-stop-migration", store.Skip( 4 ).First().Id );
+        Assert.AreEqual( "record.9.stop-migration", store.Skip( 5 ).First().Id );
     }
 
 
@@ -193,10 +199,10 @@ public class RunnerTests
     {
         // arrange
         var _timeProvider = Substitute.For<FakeTimeProvider>();
-        var helper = new MigrationCronHelper( _timeProvider );
+        var helper = new MigrationCronHelper();
 
         // act
-        var results = await helper.CronDelayAsync( "1 * * * *" );
+        var results = await helper.CronDelayAsync( "* * * * *" );
 
         // assert
         Assert.IsTrue( results );
@@ -246,6 +252,7 @@ public class RunnerTests
 
         return fakeTimeProvider;
     }
+
 }
 
 // test support
@@ -256,6 +263,7 @@ public class FakeLock : IDisposable
     {
     }
 }
+
 
 [Migration( 1 )]
 public class First_Migration : Migration
@@ -296,17 +304,29 @@ public class No_Jounal_Migration : Migration
     public override Task DownAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
 }
 
-[Migration( 7, nameof( StartMethod ), nameof( StopMethod ), journal: true )]
+[Migration( 7, nameof( StartMethod ), nameof( StopMethod ) )]
 public class Cron_Delay_No_Stop_Migration : Migration
 {
+    private readonly FakeTimeProvider _fake = new( DateTimeOffset.UtcNow );
+    private int count = 0;
+
     public override Task UpAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
     public override Task DownAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
+
     public async Task<bool> StartMethod()
     {
-        await Task.Delay( TimeSpan.FromSeconds( 10 ) );
+        await Task.Delay( TimeSpan.FromSeconds( 5 ) );
         return true;
     }
-    public bool StopMethod() { return false; }
+
+    public async Task<bool> StopMethod()
+    {
+        if ( count == 1 )
+            return await Task.FromResult( true );
+
+        count++;
+        return await Task.FromResult( false );
+    }
 }
 
 [Migration( 8, nameof( StartMethod ), nameof( StopMethod ), true )]
@@ -317,10 +337,10 @@ public class Cron_Delay_With_Stop_Migration : Migration
     public async Task<bool> StartMethod()
     {
         await Task.Delay( TimeSpan.FromSeconds( 10 ) );
-        return true;
+        return await Task.FromResult( true );
     }
 
-    public bool StopMethod() { return true; }
+    public async Task<bool> StopMethod() { return await Task.FromResult( true ); }
 }
 
 [Migration( 9, null, nameof( StopMethod ), true )]
@@ -328,7 +348,10 @@ public class Stop_Migration : Migration
 {
     public override Task UpAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
     public override Task DownAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
-    public bool StopMethod() { return true; }
+    public async Task<bool> StopMethod()
+    {
+        return await Task.FromResult( true );
+    }
 }
 
 public abstract class BaseMigration : Migration

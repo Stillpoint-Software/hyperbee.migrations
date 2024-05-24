@@ -1,27 +1,35 @@
-﻿using Hyperbee.Migrations.Providers.MongoDB.Resources;
+﻿using Hyperbee.Migrations.Helper;
+using Hyperbee.Migrations.Providers.MongoDB.Resources;
 
 namespace Hyperbee.Migrations.MongoDB.Samples.Migrations;
 
-[Migration( 2000, "StartMethod", "StopMethod", true )]
+[Migration( 2000, "StartMethod", "StopMethod" )]
 public class MigrationAction( MongoDBResourceRunner<MigrationAction> resourceRunner ) : Migration
 {
+    private int _count = 0;
+
     public override async Task UpAsync( CancellationToken cancellationToken = default )
     {
         // run a `resource` migration to create initial state.
         await resourceRunner.DocumentsFromAsync( [
-            "administration/adduser.json"
+            "administration/users/adduser.json"
         ], cancellationToken );
     }
 
     public async Task<bool> StartMethod()
     {
-        //logic here to determine when to stop;
-        return await Task.FromResult( true );
+        _count++;
+        var helper = new MigrationCronHelper();
+        var results = await helper.CronDelayAsync( "* * * * *" );
+        return results;
     }
 
-    public async Task<bool> StopMethod()
+    public Task<bool> StopMethod()
     {
-        //logic here to determine when to stop;
-        return await Task.FromResult( true );
+        if ( _count > 2 )
+        {
+            return Task.FromResult( true );
+        }
+        return Task.FromResult( false );
     }
 }

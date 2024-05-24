@@ -1,10 +1,12 @@
-﻿using Hyperbee.Migrations.Providers.Postgres.Resources;
+﻿using Hyperbee.Migrations.Helper;
+using Hyperbee.Migrations.Providers.Postgres.Resources;
 
 namespace Hyperbee.Migrations.Postgres.Samples.Migrations;
 
 [Migration( 2000, "StartMethod", "StopMethod", true )]
 public class MigrationAction( PostgresResourceRunner<MigrationAction> resourceRunner ) : Migration
 {
+    private int _count = 0;
     public override async Task UpAsync( CancellationToken cancellationToken = default )
     {
         // run a `resource` migration to create initial state.
@@ -15,16 +17,19 @@ public class MigrationAction( PostgresResourceRunner<MigrationAction> resourceRu
 
     public async Task<bool> StartMethod()
     {
-        //logic here to determine when to stop;
-        return await Task.FromResult( true );
+        _count++;
+        var helper = new MigrationCronHelper();
+        var results = await helper.CronDelayAsync( "* * * * *" );
+        return results;
     }
 
-    public async Task<bool> StopMethod()
+    public Task<bool> StopMethod()
     {
-
-        //add cron helper
-        //logic here to determine when to stop;
-        return await Task.FromResult( true );
+        if ( _count > 2 )
+        {
+            return Task.FromResult( true );
+        }
+        return Task.FromResult( false );
     }
 }
 

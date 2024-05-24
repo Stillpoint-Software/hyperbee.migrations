@@ -5,17 +5,14 @@ namespace Hyperbee.Migrations.Helper;
 
 public class MigrationCronHelper
 {
-    private readonly TimeProvider timeProvider;
-
-    public MigrationCronHelper( TimeProvider timeProvider )
+    public MigrationCronHelper()
     {
-        this.timeProvider = timeProvider;
     }
 
     public async Task<bool> CronDelayAsync( string cron )
     {
         var cronExpression = CronExpression.Parse( cron );
-        var currentTime = timeProvider.GetUtcNow();
+        var currentTime = DateTime.UtcNow;
 
         var nextOccurrence = cronExpression.GetNextOccurrence( currentTime, TimeZoneInfo.Utc );
 

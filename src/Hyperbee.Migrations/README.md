@@ -16,7 +16,7 @@ and [Raven Migrations](https://github.com/migrating-ravens/RavenMigrations).
 Every migration has several elements you need to be aware of.
 
 * You can create a StartMethod method that resolves to **Task \<bool>**, in order to tell the runner when to start.
-* You can create a StopMethod method that resolves to **bool**, in order to tell the runner when to stop.
+* You can create a StopMethod method that resolves to **Task \<bool>**, in order to tell the runner when to stop.
 * You can set whether or not you want to journal the migration.
 
 
@@ -31,7 +31,7 @@ A migration looks like the following:
 // #4 - specify to journal
 
 This example, is run with no specific start, stop and is journaling
-[Migration(1, null, null, true)]
+[Migration(1)]
 public class PeopleHaveFullNames : Migration // #2 inherit from Migration
 {
     // #3 do the migration
@@ -45,8 +45,8 @@ public class PeopleHaveFullNames : Migration // #2 inherit from Migration
     }
 }
 
-This example with start, stop and journaling
-[Migration(2, "StartMethod", "StopMethod", true)]
+This example with start, stop and NO journaling
+[Migration(2, "StartMethod", "StopMethod", false)]
 public class PeopleHaveFullNames : Migration // #2 inherit from Migration
 {
     // #3 do the migration
@@ -57,6 +57,18 @@ public class PeopleHaveFullNames : Migration // #2 inherit from Migration
     // #4 optional: undo the migration
     public async override Task DownAsync( CancellationToken cancellationToken = default )
     {
+    }
+
+    //#5 optional: when to start
+    public Task<bool> StartMethod()
+    {
+        
+    }
+    
+    //#6 optional: when to stop
+    public Task<bool> StopMethod()
+    {
+       
     }
 }
 
@@ -68,12 +80,6 @@ For simple applications, migrations can be run from an ASP.NET Core app.
 // In Startup.cs
 public void ConfigureServices(IServiceCollection services)
 {
-    // Register the migration queue
-    services.AddSingleton<MigrationQueue>();
-
-    // Register the background service to run the migration items in the queue
-    services.AddHostedService<MigrationBackgroundService>();
-
     // Configure couchbase
     services.AddCouchbase(...);
 

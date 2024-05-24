@@ -82,8 +82,6 @@ public class MigrationRunner
             var version = attribute!.Version;
             var name = migration.GetType().Name;
 
-            _logger.LogInformation( "[{version}] {name}: {direction} migration started", version, name, direction );
-
             var migrationItem = new MigrationItem
             {
                 Migration = migration,
@@ -93,9 +91,20 @@ public class MigrationRunner
                 CancellationToken = cancellationToken
             };
 
-            if ( await StartMigration( migrationItem ) )
+            var stopProcess = false;
+
+            while ( stopProcess == false )
             {
-                await ProcessJobAsync( migrationItem, _recordStore, cancellationToken ).ConfigureAwait( false );
+                if ( await StartMigration( migrationItem ) )
+                {
+                    _logger.LogInformation( "[{version}] {name}: {direction} migration started", version, name, direction );
+                    stopProcess = await ProcessJobAsync( migrationItem, _recordStore, cancellationToken ).ConfigureAwait( false );
+                }
+
+                if ( stopProcess == false )
+                {
+                    _logger.LogInformation( "[{version}] {name}: {direction} migration continuing", version, name, direction );
+                }
             }
 
             runCount++;
@@ -160,28 +169,37 @@ public class MigrationRunner
             .Any();
     }
 
-    private async Task ProcessJobAsync( MigrationItem migrationItem, IMigrationRecordStore recordStore, CancellationToken cancellationToken )
+    private async Task<bool> ProcessJobAsync( MigrationItem migrationItem, IMigrationRecordStore recordStore, CancellationToken cancellationToken )
     {
+
         switch ( migrationItem.Direction )
         {
             case Direction.Up:
-                await migrationItem.Migration.UpAsync( cancellationToken ).ConfigureAwait( false );
-
-                if ( await StopMigration( migrationItem ) )
                 {
-                    if ( migrationItem.Attribute.Journal )
-                        await recordStore.WriteAsync( migrationItem.RecordId ).ConfigureAwait( false );
+                    await migrationItem.Migration.UpAsync( cancellationToken ).ConfigureAwait( false );
+                    var stopMigration = await StopMigration( migrationItem );
+                    if ( stopMigration )
+                    {
+                        if ( migrationItem.Attribute.Journal )
+                            await recordStore.WriteAsync( migrationItem.RecordId ).ConfigureAwait( false );
+                    }
+
+                    return stopMigration;
                 }
-                break;
             case Direction.Down:
-                await migrationItem.Migration.DownAsync( cancellationToken ).ConfigureAwait( false );
-
-                if ( await StopMigration( migrationItem ) )
                 {
-                    if ( migrationItem.Attribute.Journal )
-                        await recordStore.DeleteAsync( migrationItem.RecordId ).ConfigureAwait( false );
+                    await migrationItem.Migration.DownAsync( cancellationToken ).ConfigureAwait( false );
+                    var stopMigration = await StopMigration( migrationItem );
+                    if ( stopMigration )
+                    {
+                        if ( migrationItem.Attribute.Journal )
+                            await recordStore.DeleteAsync( migrationItem.RecordId ).ConfigureAwait( false );
+                    }
+
+                    return stopMigration;
                 }
-                break;
+            default:
+                throw new NullReferenceException();
         }
     }
 

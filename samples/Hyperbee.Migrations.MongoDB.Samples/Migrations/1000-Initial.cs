@@ -2,7 +2,7 @@
 
 namespace Hyperbee.Migrations.MongoDB.Samples.Migrations;
 
-[Migration( 1000, null, null, true )]
+[Migration( 1000 )]
 public class Initial( MongoDBResourceRunner<Initial> resourceRunner ) : Migration
 {
     public override async Task UpAsync( CancellationToken cancellationToken = default )

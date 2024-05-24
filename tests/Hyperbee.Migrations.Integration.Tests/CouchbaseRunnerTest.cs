@@ -1,7 +1,4 @@
-﻿#define INTEGRATIONS
-using DotNet.Testcontainers.Networks;
-using Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
-
+﻿//#define INTEGRATIONS
 namespace Hyperbee.Migrations.Integration.Tests;
 
 #if INTEGRATIONS
@@ -63,9 +60,11 @@ public class CouchbaseRunnerTest
         var migration1 = migrationContainer1.StartAsync();
         var migration2 = migrationContainer2.StartAsync();
         var migration3 = migrationContainer3.StartAsync();
-        var migration4 = migrationContainer4.StartAsync();
 
-        await Task.WhenAll( migration1, migration2, migration3, migration4 );
+        await Task.WhenAll( migration1, migration2, migration3 );
+        await Task.Delay( 3000 );
+        var migration4 = migrationContainer4.StartAsync();
+        await migration4;
 
         var (stdOut1, _) = await migrationContainer1.GetLogsAsync();
         var (stdOut2, _) = await migrationContainer2.GetLogsAsync();

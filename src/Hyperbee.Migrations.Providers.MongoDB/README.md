@@ -83,9 +83,12 @@ public class MyMigration : Migration
 
 The MongoDB provider also provides a `MongoDBResourceRunner<MyMigration>` that adds helpful functionality when using embedded resources.  
  - `DocumentsFromAsync` inserts documents into database/collections within MongoDB.  This is normally use for pre seeding the database.
+ - `StartMethod` determines when the migration should start (optional)
+ - `StopMethod` determines when the migration should stop (optional)
+ - `false` determines if you want to journal (default = true)
 
 ```c#
-[Migration(1)]
+[Migration(1, "StartMethod", "StopMethod", false)]
 public class MyMigration : Migration
 {
     private readonly MongoDBResourceRunner<MyMigration> _resourceRunner;
@@ -101,6 +104,16 @@ public class MyMigration : Migration
         await resourceRunner.DocumentsFromAsync( [
             "administration/users/user.json"
         ], cancellationToken );
+    }
+
+    public Task<bool> StartMethod()
+    {
+      //create process here        
+    }
+    
+    public Task<bool> StopMethod()
+    {
+      //create process here    
     }
 }
 ```
