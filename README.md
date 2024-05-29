@@ -73,4 +73,7 @@ public class PeopleHaveFullNames : Migration // #2 inherit from Migration
 
 # Help
 
-See [Todo](https://github.com/Stillpoint-Software/hyperbee.migration/blob/main/docs/todo.md)
+See [Todo](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/todo.md)
+
+[![Hyperbee.Collections](https://github.com/Stillpoint-Software/Hyperbee.migrations/blob/main/assets/hyperbee.svg?raw=true)](https://github.com/Stillpoint-Software/Hyperbee.migrations)
+
