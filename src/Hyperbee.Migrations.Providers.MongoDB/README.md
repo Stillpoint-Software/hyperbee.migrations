@@ -12,6 +12,15 @@ We are committed to continuous improvement and feature enhancement. We appreciat
 
 Please see [Hyperbee Migrations' Read Me](../Hyperbee.Migrations/README.md) for non-database specific usage.
 
+
+## Concepts
+
+Every migration has several elements you need to be aware of.
+
+* You can create a StartMethod method that resolves to **Task \<bool>**, in order to tell the runner when to start.
+* You can create a StopMethod method that resolves to **Task \<bool>**, in order to tell the runner when to stop.
+* You can set whether or not you want to journal the migration.
+
 ## Configuration
 
 ### Add MongoDB Services
@@ -54,6 +63,30 @@ services.AddMongoDBMigrations( options =>
     options.LockMaxLifetime = TimeSpan.FromMinutes( 1 );         // max time-to-live
     options.LockName = "ledger"
 });
+```
+
+### Migrations
+Hyperbee Migrations relies on dependency injection to pass services to your migration.
+
+```c#
+[Migration(1)]
+public class MyMigration : Migration
+{
+	private IClusterProvider _clusterProvider;
+    private ILogger _logger;
+
+	// Injected services registered with the container
+	public MyMigration( IClusterProvider clusterProvider, ILogger<MyMigration> logger )
+	{
+        _clusterProvider = clusterProvider;
+		_logger = logger;
+	}
+
+	public async override Task UpAsync( CancellationToken cancellationToken = default )
+	{
+		// do something with clusterProvider
+	}
+}
 ```
 
 ### Dependency Injection
@@ -117,3 +150,81 @@ public class MyMigration : Migration
     }
 }
 ```
+
+### Profiles
+
+There are times when you may want to scope migrations to specific environments. To allow this Hyperbee Migrations
+supports profiles. For instance, some migrations might only run during development. By decorating your migration
+with the profile of _"development"_ and setting **options** to include only that profile, you can control which
+migrations run in which environments.
+
+```c#
+[Migration(3, "development")]
+public class DevelopmentOnlyMigration : Migration
+{
+    public async override Task UpAsync( CancellationToken cancellationToken = default )
+    {
+        // do something nice for local developers
+    }
+}
+
+...
+
+// In Startup.cs
+public void ConfigureServices( IServiceCollection services )
+{
+    services.AddMongoDBMigrations( options =>
+    {
+        // Configure to only run development migrations
+         options.Profiles = new[] { "development" } };
+    });
+}
+```
+
+A migration may belong to multiple profiles.
+
+```c#
+[Migration(3, "development", "staging")]
+public class TargetedMigration : Migration
+{
+    // ...
+}
+```
+
+### Cron Settings
+```c#
+[Migration(3, "StartMethod", "StopMethod")]
+public class DevelopmentOnlyMigration : Migration
+{
+    public async override Task UpAsync( CancellationToken cancellationToken = default )
+    {
+        // do something nice for local developers
+    }
+
+     public async Task<bool> StartMethod()
+    {
+        var helper = new MigrationCronHelper();
+        var results = await helper.CronDelayAsync( "* * * * *" );
+        return results;       
+    }
+
+    public Task<bool> StopMethod()
+    {
+       var helper = new MigrationCronHelper();
+       var results = await helper.CronDelayAsync( "4 * * * *" );
+       return results;   
+    }
+}
+```
+
+### Journaling
+Journaling is a bool indicator.  Null indicates there are no start or stop methods.
+```c#
+[Migration(3, null, null, false)]
+public class DevelopmentOnlyMigration : Migration
+{
+    public async override Task UpAsync( CancellationToken cancellationToken = default )
+    {
+        // do something nice for local developers
+    }
+}
