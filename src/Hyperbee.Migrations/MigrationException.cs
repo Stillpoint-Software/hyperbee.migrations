@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace Hyperbee.Migrations;
+﻿namespace Hyperbee.Migrations;
 
 [Serializable]
 public class MigrationException : Exception

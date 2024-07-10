@@ -5,6 +5,7 @@
     <PackageId>Hyperbee.Migrations.Providers.Postgres</PackageId>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>true</IsPackable>
+    <Nullable>enable</Nullable>
     <Authors>Stillpoint Software, Inc.</Authors>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageTags>.NET;Migrations;Postgres</PackageTags>
@@ -42,6 +43,7 @@
     <None Include="README.md">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <PackageReference Update="Microsoft.SourceLink.GitHub" Version="8.0.0">
       <PrivateAssets>all</PrivateAssets>

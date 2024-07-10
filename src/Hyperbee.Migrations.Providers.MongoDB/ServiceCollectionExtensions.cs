@@ -54,7 +54,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<MigrationOptions>( provider => provider.GetRequiredService<MongoDBMigrationOptions>() );
         services.AddSingleton<IMigrationRecordStore, MongoDBRecordStore>();
         services.AddSingleton<MigrationRunner>();
-        services.AddTransient( typeof( MongoDBResourceRunner<> ) ); // technically singleton works because of the nature of migrations, but even so ..
+        services.AddTransient( typeof( MongoDBResourceRunner<> ) );// technically singleton works because of the nature of migrations, but even so ..
 
         return services;
     }

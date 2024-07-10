@@ -8,10 +8,12 @@
 
   <ItemGroup>
     <None Remove="Resources\1000-Initial\administration\users\user.json" />
+    <None Remove="Resources\2000-MigrationAction\administration\adduser.json" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\1000-Initial\administration\users\user.json" />
+    <EmbeddedResource Include="Resources\2000-MigrationAction\administration\users\adduser.json" />
   </ItemGroup>
 
   <ItemGroup>

@@ -48,13 +48,17 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".github", ".github", "{004E
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{A192B3D2-E452-4A85-BBA4-1A8499F1A056}"
 	ProjectSection(SolutionItems) = preProject
-		.github\workflows\create-prerelease.yml = .github\workflows\create-prerelease.yml
 		.github\workflows\create-release.yml = .github\workflows\create-release.yml
 		.github\workflows\format.yml = .github\workflows\format.yml
 		.github\workflows\issue-branch.yml = .github\workflows\issue-branch.yml
 		.github\workflows\publish.yml = .github\workflows\publish.yml
 		.github\workflows\test-report.yml = .github\workflows\test-report.yml
 		.github\workflows\test.yml = .github\workflows\test.yml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{FAE7F244-124F-4BCB-8EA6-049BEE4991B9}"
+	ProjectSection(SolutionItems) = preProject
+		todo.md = todo.md
 	EndProjectSection
 EndProject
 Global
@@ -126,6 +130,7 @@ Global
 		{C4B50B74-3FCA-453E-AF19-D9EA9233F8FC} = {17F0B438-3EBD-4566-9A22-7A5EC4AEAF3D}
 		{004E4E55-FA1C-49D0-865F-4FF238C7A1F3} = {5A09B7FE-D694-45B5-BCBC-256A8E06CFC5}
 		{A192B3D2-E452-4A85-BBA4-1A8499F1A056} = {004E4E55-FA1C-49D0-865F-4FF238C7A1F3}
+		{FAE7F244-124F-4BCB-8EA6-049BEE4991B9} = {5A09B7FE-D694-45B5-BCBC-256A8E06CFC5}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {97071D77-035B-4126-AD4E-DE150E318714}
