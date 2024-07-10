@@ -55,7 +55,7 @@ public class CouchbaseTestContainer
 
     private static async Task ConfigureCouchbaseAsync( CouchbaseContainer container, CancellationToken cancellationToken = default )
     {
-        await WaitStrategy.WaitUntilAsync( () => WaitUntilNodeIsReady.UntilAsync( container ), TimeSpan.FromSeconds( 2 ), TimeSpan.FromMinutes( 5 ), cancellationToken )
+        await WaitStrategy.WaitUntilAsync( () => WaitUntilNodeIsReady.UntilAsync( container ), TimeSpan.FromSeconds( 2 ), TimeSpan.FromMinutes( 5 ), 1, cancellationToken )
             .ConfigureAwait( false );
 
         var buckets = new List<string> { "hyperbee" };
@@ -131,7 +131,7 @@ public class CouchbaseTestContainer
             .Build()
             .Last();
 
-        await WaitStrategy.WaitUntilAsync( () => waitUntilBucketIsCreated.UntilAsync( container ), TimeSpan.FromSeconds( 2 ), TimeSpan.FromMinutes( 5 ), cancellationToken )
+        await WaitStrategy.WaitUntilAsync( () => waitUntilBucketIsCreated.UntilAsync( container ), TimeSpan.FromSeconds( 2 ), TimeSpan.FromMinutes( 5 ), 1, cancellationToken )
             .ConfigureAwait( false );
     }
 
