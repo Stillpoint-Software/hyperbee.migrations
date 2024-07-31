@@ -7,7 +7,6 @@ using Testcontainers.Couchbase;
 
 namespace Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
 
-[TestClass]
 public class CouchbaseTestContainer
 {
     public static string ConnectionString { get; set; }
@@ -55,7 +54,11 @@ public class CouchbaseTestContainer
 
     private static async Task ConfigureCouchbaseAsync( CouchbaseContainer container, CancellationToken cancellationToken = default )
     {
-        await WaitStrategy.WaitUntilAsync( () => WaitUntilNodeIsReady.UntilAsync( container ), TimeSpan.FromSeconds( 2 ), TimeSpan.FromMinutes( 5 ), 1, cancellationToken )
+        await WaitStrategy.WaitUntilAsync(
+                () => WaitUntilNodeIsReady.UntilAsync( container ),
+                TimeSpan.FromSeconds( 5 ),
+                TimeSpan.FromMinutes( 3 ),
+                3, cancellationToken )
             .ConfigureAwait( false );
 
         var buckets = new List<string> { "hyperbee" };
