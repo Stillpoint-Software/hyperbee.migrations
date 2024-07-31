@@ -5,7 +5,6 @@ using Testcontainers.MongoDb;
 
 namespace Hyperbee.Migrations.Integration.Tests.Container.MongoDb;
 
-[TestClass]
 public class MongoDbTestContainer
 {
     public static IMongoClient Client { get; set; }

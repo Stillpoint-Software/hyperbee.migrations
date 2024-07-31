@@ -23,10 +23,10 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Couchbase.Extensions.DependencyInjection" Version="3.6.1" />
-    <PackageReference Include="CouchbaseNetClient" Version="3.6.1" />
+    <PackageReference Include="Couchbase.Extensions.DependencyInjection" Version="3.6.2" />
+    <PackageReference Include="CouchbaseNetClient" Version="3.6.2" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.21.0" />
-    <PackageReference Include="Serilog" Version="4.0.0" />
+    <PackageReference Include="Serilog" Version="4.0.1" />
     <PackageReference Include="Serilog.Extensions.Hosting" Version="8.0.0" />
     <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.2" />
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
@@ -42,6 +42,15 @@
     <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.MongoDB\Hyperbee.Migrations.Providers.MongoDB.csproj" />
     <ProjectReference Include="..\..\src\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
   </ItemGroup>
+
+  <!-- Target to exclude README.md from publish output -->
+  <Target Name="ExcludeReadmeFromPublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ExcludedReadmeFiles Include="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'README.md'" />
+      <ResolvedFileToPublish Remove="@(ExcludedReadmeFiles)" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <PackageReference Update="Microsoft.SourceLink.GitHub" Version="8.0.0">
       <PrivateAssets>all</PrivateAssets>

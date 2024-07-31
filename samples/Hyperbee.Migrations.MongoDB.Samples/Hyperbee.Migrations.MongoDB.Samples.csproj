@@ -21,6 +21,14 @@
     <ProjectReference Include="..\..\src\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
   </ItemGroup>
 
+  <!-- Target to exclude README.md from publish output -->
+  <Target Name="ExcludeReadmeFromPublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ExcludedReadmeFiles Include="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'README.md'" />
+      <ResolvedFileToPublish Remove="@(ExcludedReadmeFiles)" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <PackageReference Update="Microsoft.SourceLink.GitHub" Version="8.0.0">
       <PrivateAssets>all</PrivateAssets>

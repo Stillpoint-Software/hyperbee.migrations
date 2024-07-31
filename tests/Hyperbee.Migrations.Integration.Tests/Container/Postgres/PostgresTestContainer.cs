@@ -5,7 +5,6 @@ using Testcontainers.PostgreSql;
 
 namespace Hyperbee.Migrations.Integration.Tests.Container.Postgres;
 
-[TestClass]
 public class PostgresTestContainer
 {
     public static IDbConnection Connection { get; set; }
