@@ -16,6 +16,7 @@
   <ItemGroup>
     <PackageReference Include="Couchbase.Extensions.DependencyInjection" Version="3.6.2" />
     <PackageReference Include="CouchbaseNetClient" Version="3.6.2" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Couchbase\Hyperbee.Migrations.Providers.Couchbase.csproj" />
