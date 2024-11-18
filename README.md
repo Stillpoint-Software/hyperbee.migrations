@@ -55,12 +55,12 @@ public class PeopleHaveFullNames : Migration // #2 inherit from Migration
 
 # Build Requirements
 
-* To build and run this project, **.NET 8 SDK** is required.
-* Ensure your development tools are compatible with .NET 8.
+* To build and run this project, **.NET 9 SDK** is required.
+* Ensure your development tools are compatible with .NET 9.
 
 ## Building the Solution
 
-* With .NET 8 SDK installed, you can build the solution using the standard `dotnet build` command.
+* With .NET 9 SDK installed, you can build the solution using the standard `dotnet build` command.
 
 
 # Status
