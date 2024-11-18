@@ -31,8 +31,8 @@ public class StatementTests
         var node = JsonNode.Parse( json );
 
         return node!["statements"]!.AsArray()
-            .Select( e => e["statement"]?.ToString() )
-            .Where( x => x != null );
+            .Select( e => e!["statement"]?.ToString() )
+            .Where( x => x != null )!;
     }
 
     public static string GetResource( string fullyQualifiedName )

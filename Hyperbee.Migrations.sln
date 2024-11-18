@@ -54,12 +54,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "workflows", "workflows", "{
 		.github\workflows\publish.yml = .github\workflows\publish.yml
 		.github\workflows\test-report.yml = .github\workflows\test-report.yml
 		.github\workflows\test.yml = .github\workflows\test.yml
+		unlist-nuget.yml = unlist-nuget.yml
+		update-version.yml = update-version.yml
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{FAE7F244-124F-4BCB-8EA6-049BEE4991B9}"
-	ProjectSection(SolutionItems) = preProject
-		todo.md = todo.md
-	EndProjectSection
+Project("{D954291E-2A0B-460D-934E-DC6B0785DB48}") = "docs", "docs\docs.shproj", "{5A1580F9-6806-401E-9CAB-AC876DB070FD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -130,9 +129,12 @@ Global
 		{C4B50B74-3FCA-453E-AF19-D9EA9233F8FC} = {17F0B438-3EBD-4566-9A22-7A5EC4AEAF3D}
 		{004E4E55-FA1C-49D0-865F-4FF238C7A1F3} = {5A09B7FE-D694-45B5-BCBC-256A8E06CFC5}
 		{A192B3D2-E452-4A85-BBA4-1A8499F1A056} = {004E4E55-FA1C-49D0-865F-4FF238C7A1F3}
-		{FAE7F244-124F-4BCB-8EA6-049BEE4991B9} = {5A09B7FE-D694-45B5-BCBC-256A8E06CFC5}
+		{5A1580F9-6806-401E-9CAB-AC876DB070FD} = {5A09B7FE-D694-45B5-BCBC-256A8E06CFC5}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {97071D77-035B-4126-AD4E-DE150E318714}
+	EndGlobalSection
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		docs\docs.projitems*{5a1580f9-6806-401e-9cab-ac876db070fd}*SharedItemsImports = 13
 	EndGlobalSection
 EndGlobal
