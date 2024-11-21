@@ -1,7 +1,4 @@
-﻿#define INTEGRATIONS
-using DotNet.Testcontainers.Networks;
-using Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
-
+﻿//#define INTEGRATIONS
 namespace Hyperbee.Migrations.Integration.Tests;
 
 #if INTEGRATIONS
