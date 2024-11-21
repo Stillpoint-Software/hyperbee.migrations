@@ -1,8 +1,4 @@
-﻿#define INTEGRATIONS
-using DotNet.Testcontainers.Networks;
-using Hyperbee.Migrations.Integration.Tests.Container.MongoDb;
-using MongoDB.Driver;
-
+﻿//#define INTEGRATIONS
 namespace Hyperbee.Migrations.Integration.Tests;
 
 #if INTEGRATIONS

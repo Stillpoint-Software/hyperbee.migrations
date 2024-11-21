@@ -1,8 +1,4 @@
-﻿#define INTEGRATIONS
-using System.Data;
-using DotNet.Testcontainers.Networks;
-using Hyperbee.Migrations.Integration.Tests.Container.Postgres;
-
+﻿//#define INTEGRATIONS
 namespace Hyperbee.Migrations.Integration.Tests;
 
 #if INTEGRATIONS
