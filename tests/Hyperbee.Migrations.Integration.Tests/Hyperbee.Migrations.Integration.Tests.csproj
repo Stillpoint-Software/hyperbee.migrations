@@ -21,8 +21,8 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="MSTest.TestAdapter" Version="3.6.4" />
     <PackageReference Include="Npgsql" Version="9.0.1" />
-    <PackageReference Include="Testcontainers" Version="4.0.0" />
-    <PackageReference Include="Testcontainers.Couchbase" Version="4.0.0" />
+    <PackageReference Include="Testcontainers" Version="4.1.0" />
+    <PackageReference Include="Testcontainers.Couchbase" Version="4.1.0" />
     <PackageReference Include="Testcontainers.MongoDb" Version="4.0.0" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.0.0" />
   </ItemGroup>
