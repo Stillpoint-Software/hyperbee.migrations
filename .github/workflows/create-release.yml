@@ -13,6 +13,8 @@ on:
         type: boolean
         required: true
         default: false
+permissions:
+    contents: write
 
 env:
   ALLOW_PRERELEASE: ${{ startsWith(github.ref, 'refs/heads/develop') || startsWith(github.ref, 'refs/heads/hotfix/') }}
