@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <PackageId>Hyperbee.Migrations.Providers.Couchbase</PackageId>
@@ -25,9 +25,9 @@
     </AssemblyAttribute>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Couchbase.Extensions.DependencyInjection" Version="3.6.6" />
+    <PackageReference Include="Couchbase.Extensions.DependencyInjection" Version="3.7.0" />
     <PackageReference Include="Couchbase.Extensions.Locks" Version="2.0.0" />
-    <PackageReference Include="CouchbaseNetClient" Version="3.6.6" />
+    <PackageReference Include="CouchbaseNetClient" Version="3.7.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.3" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.3" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.3" />
