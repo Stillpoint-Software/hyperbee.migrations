@@ -11,7 +11,6 @@ env:
   DOTNET_VERSION: '9.0.x'
   NUGET_SOURCE: 'https://api.nuget.org/v3/index.json'
   BUILD_CONFIGURATION: ''
-  VERSION_SUFFIX: ''
 
 jobs:
   build-publish:
@@ -37,33 +36,15 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
+    - name: Install Nerdbank.GitVersioning tool
+      run: dotnet tool install --global nbgv
+
     - name: Get Current Version
       id: get_version
-      shell: pwsh
       run: |
-          Import-Module ./solution-helper.psm1 -Force
-          $build_version = Get-Version
-          echo "build_version=$build_version" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-    - name: Get Version Suffix
-      id: get_version_suffix
-      shell: bash
-      run: |
-        # Fetch the list of releases
-        releases=$(gh release list --json createdAt,tagName --limit 100)
-
-        # Filter the releases based on the starting version number, sort them by date, and extract the most recent one
-        latest_release=$(echo "$releases" | jq -r --arg build_version "$build_version" 'map(select(.tagName | startswith($build_version))) | sort_by(.createdAt) | reverse | .[0] | .tagName')
-
-        version_suffix=${latest_release#*$build_version-}
-
-        if [ "$version_suffix" == "$build_version" ]; then
-          version_suffix=""
-        fi
-
-        echo "VERSION_SUFFIX=$version_suffix" >> $GITHUB_ENV
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        nbgv get-version --format json > nbgv.json
+        version=$(jq -r .NuGetPackageVersion nbgv.json)
+        echo "version_tag=$version" >> $GITHUB_ENV
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
@@ -80,4 +61,4 @@ jobs:
       run: dotnet test --no-build --verbosity normal --configuration ${{ env.BUILD_CONFIGURATION }} ${{ env.SOLUTION_NAME }}
 
     - name: Pack and Push
-      run: dotnet pack --no-build --configuration ${{ env.BUILD_CONFIGURATION }} -p:PackageOutputPath=../../output --version-suffix "${{ env.VERSION_SUFFIX }}" -p:PackageSource='${{ env.NUGET_SOURCE }}' -p:PushAfterPack=true -p:PackageApiKey='${{ secrets.NUGET_API_KEY }}'
+      run: dotnet pack --no-build --configuration ${{ env.BUILD_CONFIGURATION }} -p:PackageOutputPath=../../output -p:PackageVersion=${{ env.version_tag }} -p:PackageSource='${{ env.NUGET_SOURCE }}' -p:PushAfterPack=true -p:PackageApiKey='${{ secrets.NUGET_API_KEY }}'

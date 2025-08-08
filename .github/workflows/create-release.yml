@@ -33,18 +33,20 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
+    - name: Install Nerdbank.GitVersioning tool
+      run: dotnet tool install --global nbgv
+
     - name: Get Current Version
       id: get_version
-      shell: pwsh
       run: |
-          Import-Module ./solution-helper.psm1 -Force
-          $version = Get-Version
-          if ("${{ github.event.inputs.is_prerelease }}" -eq "true") {
-            $version_tag = "$version-develop.$(date +'%y%m%d%H%M%S')"
-          } else {
-            $version_tag = $version
-          }
-          echo "version_tag=$version_tag" | Out-File -FilePath $env:GITHUB_ENV -Append
+        nbgv get-version --format json > nbgv.json
+        version=$(jq -r .NuGetPackageVersion nbgv.json)
+        if [ "${{ github.event.inputs.is_prerelease }}" = "true" ]; then
+          version_tag="${version}-preview.$(date +'%y%m%d%H%M%S')"
+        else
+          version_tag="$version"
+        fi
+        echo "version_tag=$version_tag" >> $GITHUB_ENV
 
     - name: Create Release
       run: |
