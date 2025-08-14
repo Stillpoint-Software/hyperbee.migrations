@@ -67,7 +67,13 @@ public class PeopleHaveFullNames : Migration // #2 inherit from Migration
 
 | Branch     | Action                                                                                                                                                                                                                      |
 |------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `develop`  | [![Build status](https://github.com/Stillpoint-Software/hyperbee.migrations/actions/workflows/publish.yml/badge.svg?branch=develop)](https://github.com/Stillpoint-Software/hyperbee.migration/actions/workflows/publish.yml)  |
-| `main`     | [![Build status](https://github.com/Stillpoint-Software/hyperbee.migrations/actions/workflows/publish.yml/badge.svg)](https://github.com/Stillpoint-Software/hyperbee.migration/actions/workflows/publish.yml)                 |
+| `develop`  | [![Build status](https://github.com/Stillpoint-Software/hyperbee.migrations/actions/workflows/publish.yml/badge.svg?branch=develop)](https://github.com/Stillpoint-Software/hyperbee.migration/actions/workflows/pack_publish.yml)  |
+| `main`     | [![Build status](https://github.com/Stillpoint-Software/hyperbee.migrations/actions/workflows/publish.yml/badge.svg)](https://github.com/Stillpoint-Software/hyperbee.migration/actions/workflows/pack_publish.yml)                 |
+
+
+# Help
+ See [Todo](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/todo.md)
+
+[![PostgresTest](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/assets/hyperbee.svg?raw=true)](https://github.com/Stillpoint-Software/hyperbee.migrations)
 
 
