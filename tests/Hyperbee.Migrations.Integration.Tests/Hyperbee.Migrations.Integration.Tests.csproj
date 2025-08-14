@@ -10,21 +10,21 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Couchbase.Extensions.DependencyInjection" Version="3.7.0" />
-    <PackageReference Include="CouchbaseNetClient" Version="3.7.0" />
+    <PackageReference Include="Couchbase.Extensions.DependencyInjection" Version="3.7.2" />
+    <PackageReference Include="CouchbaseNetClient" Version="3.7.2" />
     <PackageReference Include="coverlet.collector" Version="6.0.4">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="MongoDB.Driver" Version="3.3.0" />
-    <PackageReference Include="MSTest.TestFramework" Version="3.8.3" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
-    <PackageReference Include="MSTest.TestAdapter" Version="3.8.3" />
+    <PackageReference Include="MongoDB.Driver" Version="3.4.0" />
+    <PackageReference Include="MSTest.TestFramework" Version="3.9.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="MSTest.TestAdapter" Version="3.9.1" />
     <PackageReference Include="Npgsql" Version="9.0.3" />
-    <PackageReference Include="Testcontainers" Version="4.4.0" />
-    <PackageReference Include="Testcontainers.Couchbase" Version="4.4.0" />
-    <PackageReference Include="Testcontainers.MongoDb" Version="4.3.0" />
-    <PackageReference Include="Testcontainers.PostgreSql" Version="4.3.0" />
+    <PackageReference Include="Testcontainers" Version="4.5.0" />
+    <PackageReference Include="Testcontainers.Couchbase" Version="4.5.0" />
+    <PackageReference Include="Testcontainers.MongoDb" Version="4.5.0" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.5.0" />
   </ItemGroup>
 
   <ItemGroup>
