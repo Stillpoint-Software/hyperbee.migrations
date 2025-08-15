@@ -33,46 +33,31 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Run Update Version
-      id: set_version
-      shell: pwsh
+    - name: Install Nerdbank.GitVersioning tool
+      run: dotnet tool install --global nbgv
+
+    - name: Get Previous Version
+      id: get_previous_version
       run: |
-          Import-Module ./solution-helper.psm1 -Force
-          $previousVersion, $newVersion = Update-Version -type ${{ github.event.inputs.version_type }}     
-          echo "version_tag=$newVersion" | Out-File -FilePath $env:GITHUB_ENV -Append 
-          echo "previous_version_tag=$previousVersion" | Out-File -FilePath $env:GITHUB_ENV -Append 
+        nbgv get-version --format json > nbgv.json
+        previous_version=$(jq -r .NuGetPackageVersion nbgv.json)
+        echo "previous_version_tag=$previous_version" >> $GITHUB_ENV
 
-    - name: Check for Existing Release
-      run: | 
-        compare_versions() {
-          echo -e "$1\n$2" | sort -V | tail -n 1
-        }
-        
-        # Fetch the list of releases
-        releases=$(gh release list --json createdAt,tagName --limit 100)
-        echo -e "$releases"
+    - name: Bump Version
+      run: |
+        nbgv set-version ${{ github.event.inputs.version_type }}
 
-        # Sort the releases by date and extract the most recent one
-        latest_release=$(echo "$releases" | jq -r 'sort_by(.createdAt) | reverse | .[0] | .tagName')
-        echo -e "$latest_release"
+    - name: Get New Version
+      id: get_new_version
+      run: |
+        nbgv get-version --format json > nbgv.json
+        new_version=$(jq -r .NuGetPackageVersion nbgv.json)
+        echo "version_tag=$new_version" >> $GITHUB_ENV
 
-        greater_version=$(compare_versions $latest_release $version_tag)
-
-        if [ "$greater_version" = "$version_tag" ]; then
-            echo "✅ $version_tag is greater than $latest_release"
-        elif [ "$greater_version" = "$latest_release" ]; then
-            echo "⛔ $version_tag is less than $latest_release"
-            exit 1
-        else
-            echo "⚠️ Versions are equal"
-            exit 1
-        fi
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Update Version Number
+    - name: Commit and Push Version Change
       run: |
         git config --global user.name '${{ github.triggering_actor }}'
         git config --global user.email '${{ github.triggering_actor }}@users.noreply.github.com'
-        git commit -am "Previous version was '${{ env.previous_version_tag }}'. Version now '${{ env.version_tag }}'."
+        git add version.json
+        git commit -m "Bump version: ${{ env.previous_version_tag }} → ${{ env.version_tag }}"
         git push
