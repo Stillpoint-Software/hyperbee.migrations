@@ -13,12 +13,12 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CouchbaseNetClient" Version="3.7.2" />
-    <PackageReference Include="FluentAssertions" Version="8.2.0" />
-    <PackageReference Include="Microsoft.Bcl.TimeProvider" Version="9.0.4" />
-    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.4.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
-    <PackageReference Include="MSTest.TestAdapter" Version="3.8.3" />
-    <PackageReference Include="MSTest.TestFramework" Version="3.8.3" />
+    <PackageReference Include="FluentAssertions" Version="8.3.0" />
+    <PackageReference Include="Microsoft.Bcl.TimeProvider" Version="9.0.5" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.5.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="MSTest.TestAdapter" Version="3.9.1" />
+    <PackageReference Include="MSTest.TestFramework" Version="3.9.1" />
     <PackageReference Include="coverlet.collector" Version="6.0.4">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
