@@ -12,7 +12,7 @@
     <EmbeddedResource Include="Resources\statements.json" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="CouchbaseNetClient" Version="3.7.2" />
+    <PackageReference Include="CouchbaseNetClient" Version="3.8.0" />
     <PackageReference Include="FluentAssertions" Version="8.3.0" />
     <PackageReference Include="Microsoft.Bcl.TimeProvider" Version="9.0.5" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.5.0" />
