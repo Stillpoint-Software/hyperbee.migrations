@@ -235,7 +235,10 @@ public static class CouchbaseHelper
         var result = await clusterHelper.Cluster.QueryAsync<int>( statement )
             .ConfigureAwait( false );
 
-        return await result.Rows.FirstOrDefaultAsync().ConfigureAwait( false ) > 0;
+        await foreach ( var value in result.Rows.ConfigureAwait( false ) )
+            return value > 0;
+
+        return false;
     }
 
     private static class Fixes

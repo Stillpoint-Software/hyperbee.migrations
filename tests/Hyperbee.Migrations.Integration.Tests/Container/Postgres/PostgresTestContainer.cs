@@ -1,6 +1,4 @@
-﻿using System.Data;
-using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Networks;
+﻿using DotNet.Testcontainers.Builders;
 using Testcontainers.PostgreSql;
 
 namespace Hyperbee.Migrations.Integration.Tests.Container.Postgres;
@@ -34,7 +32,7 @@ public class PostgresTestContainer
             .WithPassword( "test" )
             .WithPortBinding( 6543, 5432 )
             .WithCleanUp( true )
-            .WithWaitStrategy( Wait.ForUnixContainer().UntilPortIsAvailable( 5432 ) )
+            .WithWaitStrategy( DotNet.Testcontainers.Builders.Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable( 5432 ) )
             .Build();
 
         await postgresContainer.StartAsync( cancellationToken )

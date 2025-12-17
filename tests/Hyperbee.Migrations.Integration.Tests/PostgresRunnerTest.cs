@@ -1,4 +1,7 @@
-﻿//#define INTEGRATIONS
+﻿#define INTEGRATIONS
+
+using Hyperbee.Migrations.Integration.Tests.Container.Postgres;
+
 namespace Hyperbee.Migrations.Integration.Tests;
 
 #if INTEGRATIONS
@@ -25,17 +28,17 @@ public class PostgresRunnerTest
 
         var (stdOut1, _) = await migrationContainer.GetLogsAsync();
 
-        Assert.IsTrue( stdOut1.Contains( "[1000] Initial: Up migration started" ) );
-        Assert.IsTrue( stdOut1.Contains( "[1000] Initial: Up migration completed" ) );
-        Assert.IsTrue( stdOut1.Contains( "[2000] MigrationAction: Up migration started" ) );
-        Assert.IsTrue( stdOut1.Contains( "[2000] MigrationAction: Up migration continuing" ) );
-        Assert.IsTrue( stdOut1.Contains( "[2000] MigrationAction: Up migration completed" ) );
-        Assert.IsTrue( stdOut1.Contains( "Executed 2 migrations" ) );
+        Assert.Contains( "[1000] Initial: Up migration started", stdOut1 );
+        Assert.Contains( "[1000] Initial: Up migration completed", stdOut1 );
+        Assert.Contains( "[2000] MigrationAction: Up migration started", stdOut1 );
+        Assert.Contains( "[2000] MigrationAction: Up migration continuing", stdOut1 );
+        Assert.Contains( "[2000] MigrationAction: Up migration completed", stdOut1 );
+        Assert.Contains( "Executed 2 migrations", stdOut1 );
 
         await migrationContainer.StartAsync();
         var (stdOut2, _) = await migrationContainer.GetLogsAsync();
 
-        Assert.IsTrue( stdOut2.Contains( "Executed 0 migrations" ) );
+        Assert.Contains( "Executed 0 migrations", stdOut2 );
     }
 
     //[TestMethod]

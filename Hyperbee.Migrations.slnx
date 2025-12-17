@@ -1,0 +1,42 @@
+<Solution>
+  <Folder Name="/Samples/">
+    <Project Path="samples/Hyperbee.MigrationRunner.Couchbase/Hyperbee.MigrationRunner.Couchbase.csproj" />
+    <Project Path="samples/Hyperbee.MigrationRunner.MongoDB/Hyperbee.MigrationRunner.MongoDB.csproj" />
+    <Project Path="samples/Hyperbee.MigrationRunner.Postgres/Hyperbee.MigrationRunner.Postgres.csproj" />
+    <Project Path="samples/Hyperbee.Migrations.Couchbase.Samples/Hyperbee.Migrations.Couchbase.Samples.csproj" />
+    <Project Path="samples/Hyperbee.Migrations.MongoDB.Samples/Hyperbee.Migrations.MongoDB.Samples.csproj" />
+    <Project Path="samples/Hyperbee.Migrations.Postgres.Samples/Hyperbee.Migrations.Postgres.Samples.csproj" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Build.targets" />
+    <File Path="Directory.Packages.props" />
+    <File Path="LICENSE.md" />
+    <File Path="nuget.config" />
+    <File Path="README.md" />
+    <File Path="version.json" />
+    <Project Path="docs/docs.shproj" />
+  </Folder>
+  <Folder Name="/Solution Items/.github/">
+    <File Path=".github/dependabot.yml" />
+    <File Path=".github/issue-branch.yml" />
+  </Folder>
+  <Folder Name="/Solution Items/.github/workflows/">
+    <File Path=".github/workflows/create_release.yml" />
+    <File Path=".github/workflows/create_test_report.yml" />
+    <File Path=".github/workflows/format.yml" />
+    <File Path=".github/workflows/issue_branch.yml" />
+    <File Path=".github/workflows/pack_publish.yml" />
+    <File Path=".github/workflows/run_tests.yml" />
+    <File Path="unlist-nuget.yml" />
+    <File Path="unlist_package.yml" />
+  </Folder>
+  <Folder Name="/Solution Tests/">
+    <Project Path="tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj" />
+    <Project Path="tests/Hyperbee.Migrations.Tests/Hyperbee.Migrations.Tests.csproj" />
+  </Folder>
+  <Project Path="src/Hyperbee.Migrations.Providers.Couchbase/Hyperbee.Migrations.Providers.Couchbase.csproj" />
+  <Project Path="src/Hyperbee.Migrations.Providers.MongoDB/Hyperbee.Migrations.Providers.MongoDB.csproj" />
+  <Project Path="src/Hyperbee.Migrations.Providers.Postgres/Hyperbee.Migrations.Providers.Postgres.csproj" />
+  <Project Path="src/Hyperbee.Migrations/Hyperbee.Migrations.csproj" />
+</Solution>

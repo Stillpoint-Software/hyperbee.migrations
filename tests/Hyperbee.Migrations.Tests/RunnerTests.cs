@@ -41,7 +41,7 @@ public class RunnerTests
         await migrationRunner.RunAsync();
 
         // assert
-        Assert.AreEqual( 5, store.Count );
+        Assert.HasCount( 5, store );
         Assert.AreEqual( "record.1.first-migration", store.First().Id );
         Assert.AreEqual( "record.2.second-migration", store.Skip( 1 ).First().Id );
         Assert.AreEqual( "record.7.cron-delay-no-stop-migration", store.Skip( 2 ).First().Id );
@@ -66,7 +66,7 @@ public class RunnerTests
         await migrationRunner.RunAsync();
 
         // assert
-        Assert.AreEqual( 1, store.Count );
+        Assert.HasCount( 1, store );
         Assert.AreEqual( "record.1.first-migration", store.First().Id );
     }
 
@@ -92,7 +92,7 @@ public class RunnerTests
 
 
         // assert
-        Assert.AreEqual( 0, store.Count );
+        Assert.IsEmpty( store );
     }
 
     [TestMethod]
@@ -116,7 +116,7 @@ public class RunnerTests
         await migrationRunner.RunAsync();
 
         // assert
-        Assert.AreEqual( 1, store.Count );
+        Assert.HasCount( 1, store );
         Assert.AreEqual( "record.1.first-migration", store.First().Id );
     }
 
@@ -136,7 +136,7 @@ public class RunnerTests
         await migrationRunner.RunAsync();
 
         // assert
-        Assert.AreEqual( 6, store.Count );
+        Assert.HasCount( 6, store );
         Assert.AreEqual( "record.1.first-migration", store.First().Id );
         Assert.AreEqual( "record.2.second-migration", store.Skip( 1 ).First().Id );
         Assert.AreEqual( "record.3.development-migration", store.Skip( 2 ).First().Id );
@@ -159,7 +159,7 @@ public class RunnerTests
         await migrationRunner.RunAsync();
 
         // assert
-        Assert.AreEqual( 3, store.Count );
+        Assert.HasCount( 3, store );
         Assert.AreEqual( "record.1.first-migration", store.First().Id );
         Assert.AreEqual( "record.2.second-migration", store.Skip( 1 ).First().Id );
         Assert.AreEqual( "record.4.subclass-of-basemigration", store.Skip( 2 ).First().Id );
@@ -184,7 +184,7 @@ public class RunnerTests
         await migrationRunner.RunAsync();
 
         // assert
-        Assert.AreEqual( 6, store.Count );
+        Assert.HasCount( 6, store );
         Assert.AreEqual( "record.1.first-migration", store.First().Id );
         Assert.AreEqual( "record.2.second-migration", store.Skip( 1 ).First().Id );
         Assert.AreEqual( "record.5.has-problems-with-underscores", store.Skip( 2 ).First().Id );

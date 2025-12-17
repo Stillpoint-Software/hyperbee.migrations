@@ -39,7 +39,7 @@ public class MongoDbMigrationContainer
             .WithEnvironment( "Migrations__FromPaths__0", "./Hyperbee.Migrations.MongoDB.Samples.dll" )
             .WithEnvironment( "Migrations__Lock__Enabled", "true" )
             .WithEnvironment( "Migrations__Lock__Name", "ledger_lock" )
-            .WithWaitStrategy( Wait.ForUnixContainer().AddCustomWaitStrategy( new WaitUntilExited() ) )
+            .WithWaitStrategy( DotNet.Testcontainers.Builders.Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable( 27017 ) )
             .Build();
     }
 
@@ -49,14 +49,5 @@ public class MongoDbMigrationContainer
 
         await migrationContainer.StartAsync( CancellationToken.None )
             .ConfigureAwait( false );
-    }
-
-    public class WaitUntilExited : IWaitUntil
-    {
-        public async Task<bool> UntilAsync( IContainer container )
-        {
-            await Task.CompletedTask;
-            return container.State == TestcontainersStates.Exited;
-        }
     }
 }

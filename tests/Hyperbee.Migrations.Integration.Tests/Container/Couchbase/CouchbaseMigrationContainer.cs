@@ -1,4 +1,5 @@
-﻿using DotNet.Testcontainers.Builders;
+﻿
+using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Images;
@@ -39,7 +40,7 @@ public class CouchbaseMigrationContainer
             .WithEnvironment( "Couchbase__Password", CouchbaseBuilder.DefaultPassword )
             .WithEnvironment( "Migrations__FromPaths__0", "./Hyperbee.Migrations.Couchbase.Samples.dll" )
             .WithEnvironment( "Migrations__Lock__Enabled", "true" )
-            .WithWaitStrategy( Wait.ForUnixContainer().AddCustomWaitStrategy( new WaitUntilExited() ) )
+            .WithWaitStrategy( DotNet.Testcontainers.Builders.Wait.ForUnixContainer().UntilHttpRequestIsSucceeded( r => r.ForPort( 8091 ) ) )
             .Build();
     }
 
@@ -49,14 +50,5 @@ public class CouchbaseMigrationContainer
 
         await migrationContainer.StartAsync( CancellationToken.None )
             .ConfigureAwait( false );
-    }
-
-    public class WaitUntilExited : IWaitUntil
-    {
-        public async Task<bool> UntilAsync( IContainer container )
-        {
-            await Task.CompletedTask;
-            return container.State == TestcontainersStates.Exited;
-        }
     }
 }

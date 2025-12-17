@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
@@ -12,8 +12,8 @@
     <EmbeddedResource Include="Resources\3000-MigrationAction\migrationbucket\_default\cc00e1ca6b66b9427db69476e32fb3d6d1b039d776be33472ea30767694fb49e9c.json" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Couchbase.Extensions.DependencyInjection" Version="3.8.1" />
-    <PackageReference Include="CouchbaseNetClient" Version="3.8.1" />
+    <PackageReference Include="Couchbase.Extensions.DependencyInjection"/>
+    <PackageReference Include="CouchbaseNetClient" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Couchbase\Hyperbee.Migrations.Providers.Couchbase.csproj" />
@@ -29,8 +29,8 @@
   </Target>
 
   <ItemGroup>
-    <PackageReference Update="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.0.0" />
-    <PackageReference Update="Microsoft.SourceLink.GitHub" Version="8.0.0">
+    <PackageReference Update="Microsoft.CodeAnalysis.CSharp.Scripting" />
+    <PackageReference Update="Microsoft.SourceLink.GitHub">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

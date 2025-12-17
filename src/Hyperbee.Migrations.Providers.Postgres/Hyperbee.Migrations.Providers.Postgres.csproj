@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <PackageId>Hyperbee.Migrations.Providers.Postgres</PackageId>
@@ -19,11 +19,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.1" />
-    <PackageReference Include="Npgsql" Version="10.0.0" />
-    <PackageReference Include="Npgsql.DependencyInjection" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Hosting"  />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="Npgsql.DependencyInjection"  />
   </ItemGroup>
 
   <ItemGroup>
@@ -41,8 +41,8 @@
       <PackagePath>\</PackagePath>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <PackageReference Update="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.0.0" />
-    <PackageReference Update="Microsoft.SourceLink.GitHub" Version="8.0.0">
+    <PackageReference Update="Microsoft.CodeAnalysis.CSharp.Scripting" />
+    <PackageReference Update="Microsoft.SourceLink.GitHub" >
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

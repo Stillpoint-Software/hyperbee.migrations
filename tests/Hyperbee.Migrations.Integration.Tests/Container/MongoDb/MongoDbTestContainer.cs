@@ -1,6 +1,4 @@
 ﻿using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Networks;
-using MongoDB.Driver;
 using Testcontainers.MongoDb;
 
 namespace Hyperbee.Migrations.Integration.Tests.Container.MongoDb;
@@ -33,7 +31,7 @@ public class MongoDbTestContainer
             .WithPassword( "test" )
             .WithPortBinding( 28017, 27017 )
             .WithCleanUp( true )
-            .WithWaitStrategy( Wait.ForUnixContainer().UntilPortIsAvailable( 27017 ) )
+            .WithWaitStrategy( DotNet.Testcontainers.Builders.Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable( 27017 ) )
             .Build();
 
         await mongoDbContainer.StartAsync( cancellationToken )

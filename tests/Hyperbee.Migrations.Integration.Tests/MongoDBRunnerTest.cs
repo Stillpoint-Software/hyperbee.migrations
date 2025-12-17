@@ -1,4 +1,6 @@
-﻿//#define INTEGRATIONS
+﻿#define INTEGRATIONS
+using Hyperbee.Migrations.Integration.Tests.Container.MongoDb;
+
 namespace Hyperbee.Migrations.Integration.Tests;
 
 #if INTEGRATIONS
@@ -23,17 +25,17 @@ public class MongoDBRunnerTest
 
         var (stdOut1, _) = await migrationContainer.GetLogsAsync();
 
-        Assert.IsTrue( stdOut1.Contains( "[1000] Initial: Up migration started" ) );
-        Assert.IsTrue( stdOut1.Contains( "[1000] Initial: Up migration completed" ) );
-        Assert.IsTrue( stdOut1.Contains( "[2000] MigrationAction: Up migration started" ) );
-        Assert.IsTrue( stdOut1.Contains( "[2000] MigrationAction: Up migration continuing" ) );
-        Assert.IsTrue( stdOut1.Contains( "[2000] MigrationAction: Up migration completed" ) );
-        Assert.IsTrue( stdOut1.Contains( "Executed 2 migrations" ) );
+        Assert.Contains( "[1000] Initial: Up migration started", stdOut1 );
+        Assert.Contains( "[1000] Initial: Up migration completed", stdOut1 );
+        Assert.Contains( "[2000] MigrationAction: Up migration started", stdOut1 );
+        Assert.Contains( "[2000] MigrationAction: Up migration continuing", stdOut1 );
+        Assert.Contains( "[2000] MigrationAction: Up migration completed", stdOut1 );
+        Assert.Contains( "Executed 2 migrations", stdOut1 );
 
         await migrationContainer.StartAsync();
         var (stdOut2, _) = await migrationContainer.GetLogsAsync();
 
-        Assert.IsTrue( stdOut2.Contains( "Executed 0 migrations" ) );
+        Assert.Contains( "Executed 0 migrations", stdOut2 );
     }
 
 
@@ -68,9 +70,22 @@ public class MongoDBRunnerTest
         allStdOut += stdOut4;
 
         // TODO: Hack, there is still a possible issue with timing.
-        Warn.If( !allStdOut.Contains( "Executed 2 migrations" ), "Did not run migrations\n" + allStdOut );
-        Warn.If( !allStdOut.Contains( "Executed 0 migrations" ), "Did not re-run migrations" );
-        Warn.If( !allStdOut.Contains( "The migration lock is unavailable. Skipping migrations." ), "Did not detect migration lock" );
+        // We expect a lock failure to occur somewhere in the concurrent runs.
+        // Assert the "lock path" happened.
+        var lockDetected =
+          allStdOut.Contains( "The migration lock is unavailable. Skipping migrations.", StringComparison.Ordinal ) ||
+          allStdOut.Contains( "CreateLockAsync Lock already exists", StringComparison.Ordinal ) ||
+          allStdOut.Contains( "CreateLockAsync unable to create database lock", StringComparison.Ordinal );
+
+        Assert.IsTrue( lockDetected, "Expected lock failure/skip, but did not find it.\n" + allStdOut );
+
+        //duplicate-key OR lock-exists
+        var lockCauseDetected =
+            allStdOut.Contains( "DuplicateKey", StringComparison.Ordinal ) ||
+            allStdOut.Contains( "E11000 duplicate key error", StringComparison.Ordinal ) ||
+            allStdOut.Contains( "Lock already exists", StringComparison.Ordinal );
+
+        Assert.IsTrue( lockCauseDetected, "Expected lock cause evidence (duplicate key or lock exists), but did not find it.\n" + allStdOut );
     }
 }
 #endif
