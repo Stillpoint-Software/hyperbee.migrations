@@ -40,8 +40,7 @@ public class CouchbaseMigrationContainer
             .WithEnvironment( "Couchbase__Password", CouchbaseBuilder.DefaultPassword )
             .WithEnvironment( "Migrations__FromPaths__0", "./Hyperbee.Migrations.Couchbase.Samples.dll" )
             .WithEnvironment( "Migrations__Lock__Enabled", "true" )
-            .WithWaitStrategy( DotNet.Testcontainers.Builders.Wait.ForUnixContainer().UntilHttpRequestIsSucceeded( r => r.ForPort( 8091 ) ) )
-            .Build();
+                     .Build();
     }
 
     public static async Task RunMigrationsAsync( string connectionString, INetwork network )

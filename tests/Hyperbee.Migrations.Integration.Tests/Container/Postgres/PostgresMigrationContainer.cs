@@ -1,9 +1,7 @@
-﻿using System.Data;
-using DotNet.Testcontainers.Builders;
+﻿using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Images;
-using DotNet.Testcontainers.Networks;
 
 namespace Hyperbee.Migrations.Integration.Tests.Container.Postgres;
 
@@ -40,7 +38,7 @@ public class PostgresMigrationContainer
             .WithEnvironment( "Migrations__FromPaths__0", "./Hyperbee.Migrations.Postgres.Samples.dll" )
             .WithEnvironment( "Migrations__Lock__Enabled", "true" )
             .WithEnvironment( "Migrations__Lock__Name", "ledger_lock" )
-            .WithWaitStrategy( DotNet.Testcontainers.Builders.Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable( 5432 ) )
+            .WithWaitStrategy( DotNet.Testcontainers.Builders.Wait.ForUnixContainer().UntilMessageIsLogged( "Executed", o => o.WithMode( WaitStrategyMode.OneShot ) ) )
             .Build();
     }
 
@@ -51,4 +49,5 @@ public class PostgresMigrationContainer
         await migrationContainer.StartAsync( CancellationToken.None )
             .ConfigureAwait( false );
     }
+
 }

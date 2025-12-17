@@ -1,4 +1,4 @@
-﻿#define INTEGRATIONS
+﻿//#define INTEGRATIONS
 using Hyperbee.Migrations.Integration.Tests.Container.MongoDb;
 
 namespace Hyperbee.Migrations.Integration.Tests;
@@ -54,7 +54,7 @@ public class MongoDBRunnerTest
         var migration3 = migrationContainer3.StartAsync();
 
         await Task.WhenAll( migration1, migration2, migration3 );
-        await Task.Delay( 3000 );
+
         var migration4 = migrationContainer4.StartAsync();
         await migration4;
 

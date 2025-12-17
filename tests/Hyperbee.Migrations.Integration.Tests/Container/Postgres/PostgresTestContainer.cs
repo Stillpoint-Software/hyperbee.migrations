@@ -30,9 +30,9 @@ public class PostgresTestContainer
             .WithDatabase( "postgres" )
             .WithUsername( "test" )
             .WithPassword( "test" )
-            .WithPortBinding( 6543, 5432 )
-            .WithCleanUp( true )
+            .WithPortBinding( containerPort: 5432, hostPort: 6543 )
             .WithWaitStrategy( DotNet.Testcontainers.Builders.Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable( 5432 ) )
+            .WithCleanUp( true )
             .Build();
 
         await postgresContainer.StartAsync( cancellationToken )

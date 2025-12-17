@@ -1,4 +1,4 @@
-﻿#define INTEGRATIONS
+﻿//#define INTEGRATIONS
 
 using Hyperbee.Migrations.Integration.Tests.Container.Postgres;
 
