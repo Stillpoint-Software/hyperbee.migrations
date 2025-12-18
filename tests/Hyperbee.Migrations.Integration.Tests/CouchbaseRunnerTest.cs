@@ -1,4 +1,4 @@
-﻿//#define INTEGRATIONS
+﻿#define INTEGRATIONS
 using Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
 
 namespace Hyperbee.Migrations.Integration.Tests;
@@ -30,7 +30,6 @@ public class CouchbaseRunnerTest
         Assert.Contains( "Creating ledger scope `hyperbee`.`migrations`.", stdOut1 );
         Assert.Contains( "Creating ledger collection `hyperbee`.`migrations`.`ledger`.", stdOut1 );
         Assert.Contains( "Creating ledger primary index `hyperbee`.`migrations`.`ledger`.", stdOut1 );
-
 
         // Check that migrations ran
         Assert.Contains( "CREATE BUCKET `migrationbucket`", stdOut1 );

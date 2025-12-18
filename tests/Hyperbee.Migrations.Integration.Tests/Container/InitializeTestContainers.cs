@@ -11,7 +11,7 @@ public class InitializeTestContainers
     public static async Task Initialize( TestContext context )
     {
         await MongoDbTestContainer.Initialize( context );
-        //  await PostgresTestContainer.Initialize( context );
-        // await CouchbaseTestContainer.Initialize( context );
+        await PostgresTestContainer.Initialize( context );
+        await CouchbaseTestContainer.Initialize( context );
     }
 }

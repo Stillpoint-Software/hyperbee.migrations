@@ -60,10 +60,8 @@ public class MongoDbMigrationContainer
     {
         public async Task<bool> UntilAsync( IContainer container )
         {
-            var state = await container.GetExitCodeAsync( CancellationToken.None );
-            return true; // Container has exited
-            //await Task.CompletedTask;
-            //return container.State == TestcontainersStates.Exited;
+            await Task.CompletedTask;
+            return container.State == TestcontainersStates.Exited;
         }
     }
 }

@@ -29,7 +29,7 @@ public class CouchbaseTestContainer
             .WithNetwork( network )
             .WithNetworkAliases( "db" )
 
-            //.WithPortBinding( 80, 80 )
+            .WithPortBinding( 80, 80 )
             .WithPortBinding( 11210, 11210 )
             .WithPortBinding( 8091, 8091 )
             .WithPortBinding( 8092, 8092 )
