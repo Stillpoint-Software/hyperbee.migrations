@@ -1,4 +1,6 @@
-﻿//#define INTEGRATIONS
+﻿#define INTEGRATIONS
+using Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
+
 namespace Hyperbee.Migrations.Integration.Tests;
 
 #if INTEGRATIONS
@@ -25,26 +27,25 @@ public class CouchbaseRunnerTest
         var (stdOut1, _) = await migrationContainer.GetLogsAsync();
 
         // Check that migration collection is configured
-        Assert.IsTrue( stdOut1.Contains( "Creating ledger scope `hyperbee`.`migrations`." ) );
-        Assert.IsTrue( stdOut1.Contains( "Creating ledger collection `hyperbee`.`migrations`.`ledger`." ) );
-        Assert.IsTrue( stdOut1.Contains( "Creating ledger primary index `hyperbee`.`migrations`.`ledger`." ) );
-
+        Assert.Contains( "Creating ledger scope `hyperbee`.`migrations`.", stdOut1 );
+        Assert.Contains( "Creating ledger collection `hyperbee`.`migrations`.`ledger`.", stdOut1 );
+        Assert.Contains( "Creating ledger primary index `hyperbee`.`migrations`.`ledger`.", stdOut1 );
 
         // Check that migrations ran
-        Assert.IsTrue( stdOut1.Contains( "CREATE BUCKET `migrationbucket`" ) );
-        Assert.IsTrue( stdOut1.Contains( "CREATE PRIMARY INDEX idx_migrationbucket_primary ON `migrationbucket`" ) );
-        Assert.IsTrue( stdOut1.Contains( "CREATE INDEX idx_migrationbucket_typeName ON `migrationbucket`" ) );
-        Assert.IsTrue( stdOut1.Contains( "BUILD INDEX ON `migrationbucket`" ) );
-        Assert.IsTrue( stdOut1.Contains( "UPSERT `0c81e0a030c64b8c80cbd05adf25e522/f90bcd5525b442dda8a5ee83e0987ec3` TO migrationbucket SCOPE _default COLLECTION _default" ) );
-        Assert.IsTrue( stdOut1.Contains( "[1000] CreateInitialBuckets: Up migration completed" ) );
-        Assert.IsTrue( stdOut1.Contains( "[2000] SecondaryAction: Up migration completed" ) );
-        Assert.IsTrue( stdOut1.Contains( "[3000] MigrationAction: Up migration completed" ) );
-        Assert.IsTrue( stdOut1.Contains( "Executed 3 migrations" ) );
+        Assert.Contains( "CREATE BUCKET `migrationbucket`", stdOut1 );
+        Assert.Contains( "CREATE PRIMARY INDEX idx_migrationbucket_primary ON `migrationbucket`", stdOut1 );
+        Assert.Contains( "CREATE INDEX idx_migrationbucket_typeName ON `migrationbucket`", stdOut1 );
+        Assert.Contains( "BUILD INDEX ON `migrationbucket`", stdOut1 );
+        Assert.Contains( "UPSERT `0c81e0a030c64b8c80cbd05adf25e522/f90bcd5525b442dda8a5ee83e0987ec3` TO migrationbucket SCOPE _default COLLECTION _default", stdOut1 );
+        Assert.Contains( "[1000] CreateInitialBuckets: Up migration completed", stdOut1 );
+        Assert.Contains( "[2000] SecondaryAction: Up migration completed", stdOut1 );
+        Assert.Contains( "[3000] MigrationAction: Up migration completed", stdOut1 );
+        Assert.Contains( "Executed 3 migrations", stdOut1 );
 
         await migrationContainer.StartAsync();
         var (stdOut2, _) = await migrationContainer.GetLogsAsync();
 
-        Assert.IsTrue( stdOut2.Contains( "Executed 0 migrations" ) );
+        Assert.Contains( "Executed 0 migrations", stdOut2 );
     }
 
     [TestMethod]

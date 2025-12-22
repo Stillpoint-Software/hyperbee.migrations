@@ -1,38 +1,45 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <!-- <Nullable>enable</Nullable> -->
-
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <DefineConstants>INTEGRATIONS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Couchbase.Extensions.DependencyInjection" Version="3.7.2" />
-    <PackageReference Include="CouchbaseNetClient" Version="3.7.2" />
-    <PackageReference Include="coverlet.collector" Version="6.0.4">
+    <PackageReference Include="Couchbase.Extensions.DependencyInjection" />
+    <PackageReference Include="CouchbaseNetClient" />
+    <PackageReference Include="coverlet.collector">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="MongoDB.Driver" Version="3.4.0" />
-    <PackageReference Include="MSTest.TestFramework" Version="3.9.1" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-    <PackageReference Include="MSTest.TestAdapter" Version="3.9.1" />
-    <PackageReference Include="Npgsql" Version="9.0.3" />
-    <PackageReference Include="Testcontainers" Version="4.5.0" />
-    <PackageReference Include="Testcontainers.Couchbase" Version="4.5.0" />
-    <PackageReference Include="Testcontainers.MongoDb" Version="4.5.0" />
-    <PackageReference Include="Testcontainers.PostgreSql" Version="4.5.0" />
+    <PackageReference Include="MongoDB.Driver"  />
+    <PackageReference Include="MSTest.TestFramework" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="MSTest.TestAdapter" />
+    <PackageReference Include="Npgsql"  />
+    <PackageReference Include="Testcontainers"  />
+    <PackageReference Include="Testcontainers.Couchbase"  />
+    <PackageReference Include="Testcontainers.MongoDb"/>
+    <PackageReference Include="Testcontainers.PostgreSql"  />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+    <Using Include="System.Data" />
+    <Using Include="DotNet.Testcontainers.Networks" />
+    <Using Include="MongoDB.Driver" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Update="Microsoft.SourceLink.GitHub" Version="8.0.0">
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Postgres\Hyperbee.Migrations.Providers.Postgres.csproj" />
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.MongoDB\Hyperbee.Migrations.Providers.MongoDB.csproj" />
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Couchbase\Hyperbee.Migrations.Providers.Couchbase.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="Microsoft.CodeAnalysis.CSharp.Scripting" />
+    <PackageReference Update="Microsoft.SourceLink.GitHub" >
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

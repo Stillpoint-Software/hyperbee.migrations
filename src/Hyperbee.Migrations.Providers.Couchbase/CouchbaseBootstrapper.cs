@@ -225,7 +225,12 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
         var result = await clusterHelper.Cluster.QueryAsync<int>( "SELECT RAW count(*) FROM system:indexes WHERE is_primary" )
             .ConfigureAwait( false );
 
-        var _ = await result.Rows.FirstOrDefaultAsync( operationCancelToken )
-            .ConfigureAwait( false );
+        await foreach ( var row in result.Rows
+            .WithCancellation( operationCancelToken )
+            .ConfigureAwait( false ) )
+        {
+            _ = row;
+            break;
+        }
     }
 }

@@ -124,7 +124,7 @@ public class CouchbaseTestContainer
         }
 
         // As long as we do not expose the bucket API, we do not need to iterate over all of them.
-        var waitUntilBucketIsCreated = buckets.Aggregate( Wait.ForUnixContainer(), ( waitStrategy, bucket )
+        var waitUntilBucketIsCreated = buckets.Aggregate( DotNet.Testcontainers.Builders.Wait.ForUnixContainer(), ( waitStrategy, bucket )
             => waitStrategy.UntilHttpRequestIsSucceeded( request
                 => request
                     .ForPath( "/pools/default/buckets/" + bucket )
