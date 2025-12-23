@@ -35,20 +35,12 @@
 
   <!-- Pull README & LICENSE into the package root -->
   <ItemGroup Condition="'$(IsPackable)' == 'true'">
-    <None Include="$(MSBuildThisFileDirectory)README.md"
-          Pack="true"
-          PackagePath="\"
-    Link="README.md" />
-
-    <None Include="$(MSBuildThisFileDirectory)LICENSE"
-          Pack="true"
-          PackagePath="\"
-    Link="LICENSE" />
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Link="README.md" />
+    <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="\" Link="LICENSE" />
   </ItemGroup>
   <!-- Global project properies -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
-    <TargetFrameworks>net10.0</TargetFrameworks>
   </PropertyGroup>
 </Project>

@@ -38,8 +38,13 @@ public class CouchbaseMigrationContainer
             .WithEnvironment( "Couchbase__Password", CouchbaseBuilder.DefaultPassword )
             .WithEnvironment( "Migrations__FromPaths__0", "./Hyperbee.Migrations.Couchbase.Samples.dll" )
             .WithEnvironment( "Migrations__Lock__Enabled", "true" )
+            .WithEnvironment( "Migrations__ClusterReadyTimeout", "00:02:00" ) // 2 minute timeout for testing
+            .WithCreateParameterModifier( p => p.HostConfig.LogConfig = new Docker.DotNet.Models.LogConfig
+            {
+                Type = "json-file"
+            } )
             .WithWaitStrategy( DotNet.Testcontainers.Builders.Wait.ForUnixContainer()
-                .AddCustomWaitStrategy( new WaitUntilExited() ) )
+                .UntilMessageIsLogged( "Application is shutting down", o => o.WithMode( WaitStrategyMode.OneShot ).WithTimeout( TimeSpan.FromMinutes( 10 ) ) ) )
             .Build();
     }
 

@@ -44,8 +44,7 @@ public class MongoDbMigrationContainer
             {
                 Type = "json-file"
             } )
-            .WithWaitStrategy( DotNet.Testcontainers.Builders.Wait.ForUnixContainer().AddCustomWaitStrategy( new WaitUntilExited() ) )
-
+            .WithWaitStrategy( DotNet.Testcontainers.Builders.Wait.ForUnixContainer().UntilMessageIsLogged( "Application is shutting down", o => o.WithMode( WaitStrategyMode.OneShot ) ) )
             .Build();
     }
 
@@ -56,6 +55,7 @@ public class MongoDbMigrationContainer
         await migrationContainer.StartAsync( CancellationToken.None )
             .ConfigureAwait( false );
     }
+
     public class WaitUntilExited : IWaitUntil
     {
         public async Task<bool> UntilAsync( IContainer container )

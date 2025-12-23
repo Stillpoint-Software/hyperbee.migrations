@@ -20,10 +20,13 @@ public class MongoDBRunnerTest
     [TestMethod]
     public async Task Should_Succeed_WhenRunningUpTwice()
     {
-        var migrationContainer = await MongoDbMigrationContainer.BuildMigrationsAsync( Client, Network );
-        await migrationContainer.StartAsync();
+        var migrationImage = await MongoDbMigrationContainer.BuildMigrationImageAsync();
 
-        var (stdOut1, _) = await migrationContainer.GetLogsAsync();
+        // First run
+        var migrationContainer1 = await MongoDbMigrationContainer.BuildMigrationsAsync( Client, Network, migrationImage );
+        await migrationContainer1.StartAsync();
+
+        var (stdOut1, _) = await migrationContainer1.GetLogsAsync();
 
         Assert.Contains( "[1000] Initial: Up migration started", stdOut1 );
         Assert.Contains( "[1000] Initial: Up migration completed", stdOut1 );
@@ -32,8 +35,10 @@ public class MongoDBRunnerTest
         Assert.Contains( "[2000] MigrationAction: Up migration completed", stdOut1 );
         Assert.Contains( "Executed 2 migrations", stdOut1 );
 
-        await migrationContainer.StartAsync();
-        var (stdOut2, _) = await migrationContainer.GetLogsAsync();
+        // Second run - create new container
+        var migrationContainer2 = await MongoDbMigrationContainer.BuildMigrationsAsync( Client, Network, migrationImage );
+        await migrationContainer2.StartAsync();
+        var (stdOut2, _) = await migrationContainer2.GetLogsAsync();
 
         Assert.Contains( "Executed 0 migrations", stdOut2 );
     }

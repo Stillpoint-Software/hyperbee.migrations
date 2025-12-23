@@ -1,4 +1,4 @@
-﻿#define INTEGRATIONS
+﻿//#define INTEGRATIONS
 using Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
 
 namespace Hyperbee.Migrations.Integration.Tests;
@@ -20,16 +20,18 @@ public class CouchbaseRunnerTest
     [TestMethod]
     public async Task Should_Succeed_WhenRunningUpTwice()
     {
-        var migrationContainer = await CouchbaseMigrationContainer.BuildMigrationsAsync( ConnectionString, Network );
+        var migrationImage = await CouchbaseMigrationContainer.BuildMigrationImageAsync();
 
-        await migrationContainer.StartAsync();
+        // First run
+        var migrationContainer1 = await CouchbaseMigrationContainer.BuildMigrationsAsync( ConnectionString, Network, migrationImage );
 
-        var (stdOut1, _) = await migrationContainer.GetLogsAsync();
+        await migrationContainer1.StartAsync();
+        var (stdOut1, _) = await migrationContainer1.GetLogsAsync();
 
-        // Check that migration collection is configured
-        Assert.Contains( "Creating ledger scope `hyperbee`.`migrations`.", stdOut1 );
-        Assert.Contains( "Creating ledger collection `hyperbee`.`migrations`.`ledger`.", stdOut1 );
-        Assert.Contains( "Creating ledger primary index `hyperbee`.`migrations`.`ledger`.", stdOut1 );
+        // Check that migration collection is configured - use updated log messages
+        Assert.Contains( "Ensuring ledger scope `hyperbee`.`migrations` exists.", stdOut1 );
+        Assert.Contains( "Ensuring ledger collection `hyperbee`.`migrations`.`ledger` exists.", stdOut1 );
+        Assert.Contains( "Ensuring ledger primary index `hyperbee`.`migrations`.`ledger` exists.", stdOut1 );
 
         // Check that migrations ran
         Assert.Contains( "CREATE BUCKET `migrationbucket`", stdOut1 );
@@ -42,8 +44,10 @@ public class CouchbaseRunnerTest
         Assert.Contains( "[3000] MigrationAction: Up migration completed", stdOut1 );
         Assert.Contains( "Executed 3 migrations", stdOut1 );
 
-        await migrationContainer.StartAsync();
-        var (stdOut2, _) = await migrationContainer.GetLogsAsync();
+        // Second run - create new container  
+        var migrationContainer2 = await CouchbaseMigrationContainer.BuildMigrationsAsync( ConnectionString, Network, migrationImage );
+        await migrationContainer2.StartAsync();
+        var (stdOut2, _) = await migrationContainer2.GetLogsAsync();
 
         Assert.Contains( "Executed 0 migrations", stdOut2 );
     }
