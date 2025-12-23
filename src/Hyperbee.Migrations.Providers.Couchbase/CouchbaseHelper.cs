@@ -75,11 +75,11 @@ public static class CouchbaseHelper
         {
             // Log and rethrow to surface the specific error
             Console.WriteLine( $"CreateScopeAsync failed: {ex.Message}" );
-            
+
             // Check if it's an "already exists" error and suppress it
             if ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "scope already exists" ) )
                 return;
-                
+
             throw;
         }
     }

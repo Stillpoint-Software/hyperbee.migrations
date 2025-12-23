@@ -110,7 +110,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         catch ( Exception ex )
         {
             _logger.LogError( ex, "Failed to create ledger scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName );
-            
+
             // Don't fail for scope creation issues - try to continue
             _logger.LogWarning( "Continuing despite scope creation failure." );
         }
@@ -131,7 +131,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         catch ( Exception ex )
         {
             _logger.LogError( ex, "Failed to create ledger collection `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
-            
+
             // Don't fail for collection creation issues - try to continue
             _logger.LogWarning( "Continuing despite collection creation failure." );
         }
@@ -142,14 +142,14 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         try
         {
             _logger.LogInformation( "Waiting for N1QL visibility of ledger collection..." );
-            
+
             await WaitHelper.WaitUntilAsync(
                 async _ => await clusterHelper.CollectionExistsQueryAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
                 TimeSpan.FromSeconds( 30 ), // Shorter timeout for N1QL check
                 new PauseRetryStrategy( TimeSpan.FromMilliseconds( 500 ) ), // Shorter retry intervals
                 cancellationToken
             );
-            
+
             _logger.LogInformation( "Ledger collection is visible to N1QL." );
         }
         catch ( Exception ex )
@@ -174,7 +174,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         catch ( Exception ex )
         {
             _logger.LogError( ex, "Failed to create ledger primary index `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
-            
+
             // Don't fail for index creation issues - try to continue
             _logger.LogWarning( "Continuing despite primary index creation failure." );
         }
