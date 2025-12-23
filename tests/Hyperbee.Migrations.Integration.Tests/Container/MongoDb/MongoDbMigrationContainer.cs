@@ -1,4 +1,5 @@
-﻿using DotNet.Testcontainers.Builders;
+﻿using System;
+using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Images;
@@ -39,7 +40,11 @@ public class MongoDbMigrationContainer
             .WithEnvironment( "Migrations__FromPaths__0", "./Hyperbee.Migrations.MongoDB.Samples.dll" )
             .WithEnvironment( "Migrations__Lock__Enabled", "true" )
             .WithEnvironment( "Migrations__Lock__Name", "ledger_lock" )
-            .WithWaitStrategy( Wait.ForUnixContainer().AddCustomWaitStrategy( new WaitUntilExited() ) )
+            .WithCreateParameterModifier( p => p.HostConfig.LogConfig = new Docker.DotNet.Models.LogConfig
+            {
+                Type = "json-file"
+            } )
+            .WithWaitStrategy( DotNet.Testcontainers.Builders.Wait.ForUnixContainer().UntilMessageIsLogged( "Application is shutting down", o => o.WithMode( WaitStrategyMode.OneShot ) ) )
             .Build();
     }
 

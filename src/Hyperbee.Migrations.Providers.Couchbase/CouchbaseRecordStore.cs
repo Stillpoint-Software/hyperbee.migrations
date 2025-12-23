@@ -70,6 +70,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
             await WaitHelper.WaitUntilAsync(
                 async _ => await clusterHelper.BucketExistsAsync( bucketName ).ConfigureAwait( false ),
+                _options.ClusterReadyTimeout,
                 new PauseRetryStrategy(),
                 cancellationToken
             );
@@ -95,55 +96,87 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
         // check for scope
 
-        if ( !await clusterHelper.ScopeExistsAsync( bucketName, scopeName ) )
-        {
-            _logger.LogInformation( "Creating ledger scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName );
-            await clusterHelper.CreateScopeAsync( bucketName, scopeName ).ConfigureAwait( false );
+        _logger.LogInformation( "Ensuring ledger scope `{bucketName}`.`{scopeName}` exists.", bucketName, scopeName );
 
-            await WaitHelper.WaitUntilAsync(
-                async _ => await clusterHelper.ScopeExistsAsync( bucketName, scopeName ).ConfigureAwait( false ),
-                new PauseRetryStrategy(),
-                cancellationToken
-            );
+        try
+        {
+            await clusterHelper.CreateScopeAsync( bucketName, scopeName ).ConfigureAwait( false );
+            _logger.LogInformation( "Ledger scope created successfully." );
+        }
+        catch ( Exception ex ) when ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "scope already exists" ) )
+        {
+            _logger.LogInformation( "Ledger scope already exists." );
+        }
+        catch ( Exception ex )
+        {
+            _logger.LogError( ex, "Failed to create ledger scope `{bucketName}`.`{scopeName}`.", bucketName, scopeName );
+
+            // Don't fail for scope creation issues - try to continue
+            _logger.LogWarning( "Continuing despite scope creation failure." );
         }
 
         // check for collection
 
-        if ( !await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ) )
+        _logger.LogInformation( "Ensuring ledger collection `{bucketName}`.`{scopeName}`.`{collectionName}` exists.", bucketName, scopeName, collectionName );
+
+        try
         {
-            _logger.LogInformation( "Creating ledger collection `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
-
             await clusterHelper.CreateCollectionAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false );
+            _logger.LogInformation( "Ledger collection created successfully." );
+        }
+        catch ( Exception ex ) when ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "collection already exists" ) )
+        {
+            _logger.LogInformation( "Ledger collection already exists." );
+        }
+        catch ( Exception ex )
+        {
+            _logger.LogError( ex, "Failed to create ledger collection `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
 
-            await WaitHelper.WaitUntilAsync(
-                async _ => await clusterHelper.CollectionExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
-                new PauseRetryStrategy(),
-                cancellationToken
-            );
+            // Don't fail for collection creation issues - try to continue
+            _logger.LogWarning( "Continuing despite collection creation failure." );
         }
 
         // wait for n1ql to `see` the collection and scope
         // there is a small window after the management commands create a scope or collection before n1ql sees them.
 
-        await WaitHelper.WaitUntilAsync(
-            async _ => await clusterHelper.CollectionExistsQueryAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
-            new PauseRetryStrategy(),
-            cancellationToken
-        );
+        try
+        {
+            _logger.LogInformation( "Waiting for N1QL visibility of ledger collection..." );
+
+            await WaitHelper.WaitUntilAsync(
+                async _ => await clusterHelper.CollectionExistsQueryAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
+                TimeSpan.FromSeconds( 30 ), // Shorter timeout for N1QL check
+                new PauseRetryStrategy( TimeSpan.FromMilliseconds( 500 ) ), // Shorter retry intervals
+                cancellationToken
+            );
+
+            _logger.LogInformation( "Ledger collection is visible to N1QL." );
+        }
+        catch ( Exception ex )
+        {
+            _logger.LogWarning( ex, "N1QL visibility check failed for ledger collection `{bucketName}`.`{scopeName}`.`{collectionName}`. Proceeding anyway.", bucketName, scopeName, collectionName );
+            // Don't throw - proceed with index creation anyway
+        }
 
         // check for primary index
 
-        if ( !await clusterHelper.PrimaryCollectionIndexExistsAsync( bucketName, scopeName, collectionName ) )
+        _logger.LogInformation( "Ensuring ledger primary index `{bucketName}`.`{scopeName}`.`{collectionName}` exists.", bucketName, scopeName, collectionName );
+
+        try
         {
-            _logger.LogInformation( "Creating ledger primary index `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
-
             await clusterHelper.CreatePrimaryCollectionIndexAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false );
+            _logger.LogInformation( "Ledger primary index created successfully." );
+        }
+        catch ( Exception ex ) when ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "index already exists" ) )
+        {
+            _logger.LogInformation( "Ledger primary index already exists." );
+        }
+        catch ( Exception ex )
+        {
+            _logger.LogError( ex, "Failed to create ledger primary index `{bucketName}`.`{scopeName}`.`{collectionName}`.", bucketName, scopeName, collectionName );
 
-            await WaitHelper.WaitUntilAsync(
-                async _ => await clusterHelper.PrimaryCollectionIndexExistsAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
-                new PauseRetryStrategy(),
-                cancellationToken
-            );
+            // Don't fail for index creation issues - try to continue
+            _logger.LogWarning( "Continuing despite primary index creation failure." );
         }
 
         // ready

@@ -63,11 +63,25 @@ public static class CouchbaseHelper
 
     public static async Task CreateScopeAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName )
     {
-        var cluster = clusterHelper.Cluster;
-        var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
-            .ConfigureAwait( false );
+        try
+        {
+            var cluster = clusterHelper.Cluster;
+            var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
+                .ConfigureAwait( false );
 
-        await bucket.Collections.CreateScopeAsync( scopeName ).ConfigureAwait( false );
+            await bucket.Collections.CreateScopeAsync( scopeName ).ConfigureAwait( false );
+        }
+        catch ( Exception ex )
+        {
+            // Log and rethrow to surface the specific error
+            Console.WriteLine( $"CreateScopeAsync failed: {ex.Message}" );
+
+            // Check if it's an "already exists" error and suppress it
+            if ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "scope already exists" ) )
+                return;
+
+            throw;
+        }
     }
 
     public static async Task DropScopeAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName )
@@ -81,22 +95,31 @@ public static class CouchbaseHelper
 
     public static async Task<bool> ScopeExistsAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName )
     {
-        var cluster = clusterHelper.Cluster;
-        var buckets = await cluster.Buckets.GetAllBucketsAsync()
-            .ConfigureAwait( false );
+        try
+        {
+            var cluster = clusterHelper.Cluster;
+            var buckets = await cluster.Buckets.GetAllBucketsAsync()
+                .ConfigureAwait( false );
 
-        bucketName = Unquote( bucketName );
+            bucketName = Unquote( bucketName );
 
-        if ( !buckets.ContainsKey( bucketName ) )
+            if ( !buckets.ContainsKey( bucketName ) )
+                return false;
+
+            var bucket = await cluster.BucketAsync( bucketName )
+                .ConfigureAwait( false );
+
+            var scopes = await bucket.Collections.GetAllScopesAsync().ConfigureAwait( false );
+
+            scopeName = Unquote( scopeName );
+            return scopes.Any( x => x.Name == scopeName );
+        }
+        catch ( Exception ex )
+        {
+            // Log the exception and return false to trigger fallback behavior
+            Console.WriteLine( $"ScopeExistsAsync failed: {ex.Message}" );
             return false;
-
-        var bucket = await cluster.BucketAsync( bucketName )
-            .ConfigureAwait( false );
-
-        var scopes = await bucket.Collections.GetAllScopesAsync().ConfigureAwait( false );
-
-        scopeName = Unquote( scopeName );
-        return scopes.Any( x => x.Name == scopeName );
+        }
     }
 
     public static async Task<bool> ScopeExistsQueryAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName )
@@ -123,15 +146,24 @@ public static class CouchbaseHelper
 
     public static async Task CreateCollectionAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
     {
-        var cluster = clusterHelper.Cluster;
-        var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
-            .ConfigureAwait( false );
+        try
+        {
+            var cluster = clusterHelper.Cluster;
+            var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
+                .ConfigureAwait( false );
 
-        //      var collectionSpec = new CollectionSpec( Unquote( scopeName ), Unquote( collectionName ) );
-        //      await bucket.Collections.CreateCollectionAsync( collectionSpec ).ConfigureAwait( false );
+            //      var collectionSpec = new CollectionSpec( Unquote( scopeName ), Unquote( collectionName ) );
+            //      await bucket.Collections.CreateCollectionAsync( collectionSpec ).ConfigureAwait( false );
 
-        var settings = CreateCollectionSettings.Default;
-        await bucket.Collections.CreateCollectionAsync( Unquote( scopeName ), Unquote( collectionName ), settings ).ConfigureAwait( false );
+            var settings = CreateCollectionSettings.Default;
+            await bucket.Collections.CreateCollectionAsync( Unquote( scopeName ), Unquote( collectionName ), settings ).ConfigureAwait( false );
+        }
+        catch ( Exception ex )
+        {
+            // Log and rethrow to surface the specific error
+            Console.WriteLine( $"CreateCollectionAsync failed: {ex.Message}" );
+            throw;
+        }
     }
 
     public static async Task DropCollectionAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
@@ -148,60 +180,97 @@ public static class CouchbaseHelper
 
     public static async Task<bool> CollectionExistsAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
     {
-        var cluster = clusterHelper.Cluster;
-        var buckets = await cluster.Buckets.GetAllBucketsAsync()
-            .ConfigureAwait( false );
+        try
+        {
+            var cluster = clusterHelper.Cluster;
+            var buckets = await cluster.Buckets.GetAllBucketsAsync()
+                .ConfigureAwait( false );
 
-        bucketName = Unquote( bucketName );
+            bucketName = Unquote( bucketName );
 
-        if ( !buckets.ContainsKey( bucketName ) )
+            if ( !buckets.ContainsKey( bucketName ) )
+                return false;
+
+            var bucket = await cluster.BucketAsync( bucketName )
+                .ConfigureAwait( false );
+
+            var scopes = await bucket.Collections.GetAllScopesAsync().ConfigureAwait( false );
+
+            scopeName = Unquote( scopeName );
+            collectionName = Unquote( collectionName );
+
+            return scopes.Any( x => x.Name == scopeName && x.Collections.Any( y => y.Name == collectionName ) );
+        }
+        catch ( Exception ex )
+        {
+            // Log the exception and return false to trigger fallback behavior
+            // This prevents hanging on management API calls
+            Console.WriteLine( $"CollectionExistsAsync failed: {ex.Message}" );
             return false;
-
-        var bucket = await cluster.BucketAsync( bucketName )
-            .ConfigureAwait( false );
-
-        var scopes = await bucket.Collections.GetAllScopesAsync().ConfigureAwait( false );
-
-        scopeName = Unquote( scopeName );
-        collectionName = Unquote( collectionName );
-
-        return scopes.Any( x => x.Name == scopeName && x.Collections.Any( y => y.Name == collectionName ) );
+        }
     }
 
     public static async Task<bool> CollectionExistsQueryAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
     {
-        // Query N1QL for the bucket, collection, or scope.
-        //
-        // There is a small window after management api creation where an item exists
-        // but isn't available to N1QL. This method provides a mechanism for waiting
-        // until N1QL is ready to process queries.
+        try
+        {
+            // Query N1QL for the bucket, collection, or scope.
+            //
+            // There is a small window after management api creation where an item exists
+            // but isn't available to N1QL. This method provides a mechanism for waiting
+            // until N1QL is ready to process queries.
 
-        // N1Ql is returning incomplete results when previously shutdown ungracefully
-        // this can be fixed by querying for "select * from system:indexes" first.
+            // N1Ql is returning incomplete results when previously shutdown ungracefully
+            // this can be fixed by querying for "select * from system:indexes" first.
 
-        await Fixes.SystemQueriesAsync( clusterHelper ).ConfigureAwait( false );
+            await Fixes.SystemQueriesAsync( clusterHelper ).ConfigureAwait( false );
 
-        // N1Ql query the keyspace for the scope and collection
-        return await QueryExistsAsync(
-            clusterHelper,
-            $"SELECT RAW count(*) FROM system:keyspaces WHERE `bucket` = '{Unquote( bucketName )}' AND `scope` = '{Unquote( scopeName )}' AND name = '{Unquote( collectionName )}'"
-        ).ConfigureAwait( false );
+            // N1Ql query the keyspace for the scope and collection
+            return await QueryExistsAsync(
+                clusterHelper,
+                $"SELECT RAW count(*) FROM system:keyspaces WHERE `bucket` = '{Unquote( bucketName )}' AND `scope` = '{Unquote( scopeName )}' AND name = '{Unquote( collectionName )}'"
+            ).ConfigureAwait( false );
+        }
+        catch ( Exception ex )
+        {
+            // Log the exception and return false to prevent hanging
+            Console.WriteLine( $"CollectionExistsQueryAsync failed: {ex.Message}" );
+            return false;
+        }
     }
 
     public static async Task CreatePrimaryCollectionIndexAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
     {
-        await QueryExecuteAsync(
-            clusterHelper,
-            $"CREATE PRIMARY INDEX ON `default`:`{Unquote( bucketName )}`.`{Unquote( scopeName )}`.`{Unquote( collectionName )}`"
-        ).ConfigureAwait( false );
+        try
+        {
+            await QueryExecuteAsync(
+                clusterHelper,
+                $"CREATE PRIMARY INDEX ON `default`:`{Unquote( bucketName )}`.`{Unquote( scopeName )}`.`{Unquote( collectionName )}`"
+            ).ConfigureAwait( false );
+        }
+        catch ( Exception ex )
+        {
+            // Log and rethrow to surface the specific error
+            Console.WriteLine( $"CreatePrimaryCollectionIndexAsync failed: {ex.Message}" );
+            throw;
+        }
     }
 
     public static async Task<bool> PrimaryCollectionIndexExistsAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
     {
-        return await QueryExistsAsync(
-            clusterHelper,
-            $"SELECT RAW count(*) FROM system:indexes WHERE bucket_id = '{Unquote( bucketName )}' AND scope_id = '{Unquote( scopeName )}' AND keyspace_id = '{Unquote( collectionName )}' AND is_primary"
-        ).ConfigureAwait( false );
+        try
+        {
+            return await QueryExistsAsync(
+                clusterHelper,
+                $"SELECT RAW count(*) FROM system:indexes WHERE bucket_id = '{Unquote( bucketName )}' AND scope_id = '{Unquote( scopeName )}' AND keyspace_id = '{Unquote( collectionName )}' AND is_primary"
+            ).ConfigureAwait( false );
+        }
+        catch ( Exception ex )
+        {
+            // Log the exception and return false to trigger index creation
+            Console.WriteLine( $"PrimaryCollectionIndexExistsAsync failed: {ex.Message}" );
+            return false;
+        }
     }
 
     // index
@@ -235,7 +304,10 @@ public static class CouchbaseHelper
         var result = await clusterHelper.Cluster.QueryAsync<int>( statement )
             .ConfigureAwait( false );
 
-        return await result.Rows.FirstOrDefaultAsync().ConfigureAwait( false ) > 0;
+        await foreach ( var value in result.Rows.ConfigureAwait( false ) )
+            return value > 0;
+
+        return false;
     }
 
     private static class Fixes

@@ -6,7 +6,7 @@ namespace Hyperbee.Migrations.Tests
     [TestClass]
     public class KeyspaceParserTests
     {
-        [DataTestMethod]
+        [TestMethod]
         [DataRow( "bucket" )]
         [DataRow( "`bucket`" )]
         public void Should_parse_1_dimensional_keyspace( string keyspace )
@@ -25,7 +25,7 @@ namespace Hyperbee.Migrations.Tests
             Assert.IsNull( result.CollectionName );
         }
 
-        [DataTestMethod]
+        [TestMethod]
         [DataRow( "bucket.collection" )]
         [DataRow( "bucket.`collection`" )]
         [DataRow( "`bucket`.collection" )]
@@ -46,7 +46,7 @@ namespace Hyperbee.Migrations.Tests
             Assert.IsNull( result.ScopeName );
         }
 
-        [DataTestMethod]
+        [TestMethod]
         [DataRow( "bucket.scope.collection" )]
         [DataRow( "bucket.scope.`collection`" )]
         [DataRow( "bucket.`scope`.collection" )]
@@ -71,7 +71,7 @@ namespace Hyperbee.Migrations.Tests
             Assert.IsNull( result.Namespace );
         }
 
-        [DataTestMethod]
+        [TestMethod]
         [DataRow( "namespace:bucket.scope.collection" )]
         [DataRow( "`namespace`:`bucket`.`scope`.`collection`" )]
         public void Should_parse_4_dimensional_keyspace( string keyspace )
