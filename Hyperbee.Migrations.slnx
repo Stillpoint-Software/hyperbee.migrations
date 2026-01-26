@@ -31,8 +31,8 @@
     <File Path="unlist_package.yml" />
   </Folder>
   <Folder Name="/Solution Tests/">
-    <Project Path="tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj" />
-    <Project Path="tests/Hyperbee.Migrations.Tests/Hyperbee.Migrations.Tests.csproj" />
+    <Project Path="test/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj" />
+    <Project Path="test/Hyperbee.Migrations.Tests/Hyperbee.Migrations.Tests.csproj" />
   </Folder>
   <Project Path="src/Hyperbee.Migrations.Providers.Couchbase/Hyperbee.Migrations.Providers.Couchbase.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.MongoDB/Hyperbee.Migrations.Providers.MongoDB.csproj" />
