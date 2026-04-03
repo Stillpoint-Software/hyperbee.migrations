@@ -186,10 +186,10 @@ INSERT INTO database.collection
 **Testing Strategy:** Unit tests for record store logic, options, parser. Integration tests deferred (Testcontainers for Aerospike).
 
 **Completion Criteria:**
-- [ ] Aerospike provider project builds
-- [ ] Record store implements `IMigrationRecordStore`
-- [ ] DI registration follows established pattern
-- [ ] Unit tests pass
+- [x] Aerospike provider project builds
+- [x] Record store implements `IMigrationRecordStore`
+- [x] DI registration follows established pattern
+- [x] Unit tests pass
 
 ### Task 2.1: Aerospike Provider Project Scaffold
 
@@ -202,14 +202,14 @@ INSERT INTO database.collection
 **Completion Criteria:** Project compiles, is part of the solution.
 
 **Subtasks:**
-- [ ] Determine Aerospike .NET client NuGet package name and version
-- [ ] Add Aerospike client to `Directory.Packages.props`
-- [ ] Create `src/Hyperbee.Migrations.Providers.Aerospike/Hyperbee.Migrations.Providers.Aerospike.csproj` with references to `Hyperbee.Migrations`, Aerospike client, Parlot
-- [ ] Create directory structure: `Parsers/`, `Resources/`, `Extensions/`
-- [ ] Add project to solution file
-- [ ] Verify `dotnet build` succeeds
+- [x] Determine Aerospike .NET client NuGet package name and version — `Aerospike.Client` 8.2.0
+- [x] Add Aerospike client to `Directory.Packages.props`
+- [x] Create `src/Hyperbee.Migrations.Providers.Aerospike/Hyperbee.Migrations.Providers.Aerospike.csproj` with references to `Hyperbee.Migrations`, Aerospike client, Parlot
+- [x] Create directory structure: `Parsers/`, `Resources/`, `Extensions/`
+- [x] Add project to solution file
+- [x] Verify `dotnet build` succeeds
 
-`Status: Not Started`
+`Status: **Done** — Project scaffolded with Aerospike.Client 8.2.0, builds clean across all TFMs.`
 
 ### Task 2.2: Aerospike Migration Options & Record Store
 
@@ -224,16 +224,16 @@ INSERT INTO database.collection
 **Test strategy:** Unit tests verifying options defaults, record store initialization logic.
 
 **Subtasks:**
-- [ ] Create `AerospikeMigrationOptions.cs` — properties: `Namespace`, `MigrationSet` (default "SchemaMigrations"), `LockName` (default "migration_lock"), `LockMaxLifetime` (default 1 hour), `ConnectionString`
-- [ ] Create `AerospikeRecordStore.cs` implementing `IMigrationRecordStore`:
-  - `InitializeAsync()` — verify namespace connectivity
+- [x] Create `AerospikeMigrationOptions.cs` — properties: `Namespace`, `MigrationSet` (default "SchemaMigrations"), `LockName` (default "migration_lock"), `LockMaxLifetime` (default 1 hour)
+- [x] Create `AerospikeRecordStore.cs` implementing `IMigrationRecordStore`:
+  - `InitializeAsync()` — verify client connectivity
   - `ExistsAsync(recordId)` — check if record exists in migration set
   - `WriteAsync(recordId)` — put record with Name and ExecutedAt bins
   - `DeleteAsync(recordId)` — delete record from migration set
-  - `CreateLockAsync()` — advisory lock using a dedicated record with expiration (TTL)
-- [ ] Create `tests/Hyperbee.Migrations.Tests/AerospikeOptionsTests.cs` — test defaults and Deconstruct
+  - `CreateLockAsync()` — CREATE_ONLY with TTL expiration, KEY_EXISTS_ERROR handling
+- [x] Create `tests/Hyperbee.Migrations.Tests/AerospikeOptionsTests.cs` — 3 tests: defaults, deconstruct, custom values
 
-`Status: Not Started`
+`Status: **Done** — Record store with TTL-based locking, 3 options tests passing.`
 
 ### Task 2.3: Aerospike DI Registration
 
@@ -246,16 +246,19 @@ INSERT INTO database.collection
 **Completion Criteria:** DI registration compiles, follows established pattern.
 
 **Subtasks:**
-- [ ] Create `ServiceCollectionExtensions.cs` with `AddAerospikeMigrations()` overloads
-- [ ] Register: `AerospikeMigrationOptions` (singleton factory), `IMigrationRecordStore` → `AerospikeRecordStore` (singleton), `MigrationRunner` (singleton), `AerospikeResourceRunner<>` (transient)
-- [ ] Support assembly loading from configuration (`Migrations:FromAssemblies`, `Migrations:FromPaths`)
+- [x] Create `ServiceCollectionExtensions.cs` with `AddAerospikeMigrations()` overloads
+- [x] Register: `AerospikeMigrationOptions` (singleton factory), `IMigrationRecordStore` → `AerospikeRecordStore` (singleton), `MigrationRunner` (singleton), `AerospikeResourceRunner<>` (transient)
+- [x] Support assembly loading from configuration (`Migrations:FromAssemblies`, `Migrations:FromPaths`)
 
-`Status: Not Started`
+`Status: **Done** — DI registration follows MongoDB pattern exactly.`
 
 **Phase 2 Completion:**
 - Snapshot: `plan/resource-migrations/phase-2`
-- Summary: _pending_
-- Learnings: _pending_
+- Summary: Aerospike provider project scaffolded with record store, options, DI registration, and resource runner placeholder. 58/58 tests passing.
+- Learnings:
+  - Aerospike .NET client uses positional `CancellationToken` parameters (not named) — differs from typical .NET async patterns
+  - `IAsyncClient` interface is the right abstraction for DI (not `AsyncClient` concrete class)
+  - Aerospike TTL-based record expiration maps well to the distributed lock pattern
 
 ---
 
@@ -434,6 +437,8 @@ Key Parlot patterns: `Terms.Keyword()` for AQL keywords, `Terms.Identifier()` fo
 | 1 | 1 | Style | MSTest v4 removed `[ExpectedException]` — use try/catch pattern for exception tests |
 | 2 | 1 | Positive | Parlot `Terms.Text(caseInsensitive: true)` works well for SQL keywords without needing `Terms.Keyword()` |
 | 3 | 1 | Positive | Static `BuildParser()` caching the `Parser<T>` is the right pattern — avoids grammar rebuild per call |
+| 4 | 2 | Style | Aerospike .NET client uses positional CancellationToken (not named) — differs from typical .NET async patterns |
+| 5 | 2 | Positive | Aerospike TTL-based record expiration maps well to distributed lock pattern — simpler than MongoDB's manual expiry check |
 
 ---
 
@@ -443,9 +448,9 @@ Key Parlot patterns: `Terms.Keyword()` for AQL keywords, `Terms.Identifier()` fo
 |-------|--------|-------|
 | Phase 0 | **Done** | Branch created, plan committed |
 | Phase 1 | **Done** | MongoDB parser + resource runner (20 new tests) |
-| Phase 2 | Not Started | Aerospike provider scaffold |
+| Phase 2 | **Done** | Aerospike provider scaffold (3 new tests) |
 | Phase 3 | Not Started | Aerospike parser + resource runner |
 
-**Current Task:** Phase 2, Task 2.1 — Aerospike Provider Project Scaffold
-**Next Action:** Create Aerospike provider project, add NuGet references
+**Current Task:** Phase 3, Task 3.1 — Aerospike Statement Types & Directive Model
+**Next Action:** Create statement types, directive model, index type enum
 **Blockers:** None

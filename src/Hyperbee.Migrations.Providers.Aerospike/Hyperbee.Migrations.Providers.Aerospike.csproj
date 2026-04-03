@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Hyperbee.Migrations.Providers.Aerospike</PackageId>
+    <IsPackable>true</IsPackable>
+    <Authors>Stillpoint Software, Inc.</Authors>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>.NET;Migrations;Aerospike</PackageTags>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageProjectUrl>https://github.com/Stillpoint-Software/Hyperbee.Migrations/</PackageProjectUrl>
+    <PackageReleaseNotes>https://github.com/Stillpoint-Software/Hyperbee.Migrations/releases/latest</PackageReleaseNotes>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <Copyright>Stillpoint Software, Inc.</Copyright>
+    <Title>Hyperbee Migrations Aerospike Provider</Title>
+    <Description>Hyperbee Migrations Aerospike Provider adds Aerospike support to Hyperbee Migrations.</Description>
+    <RepositoryUrl>https://github.com/Stillpoint-Software/Hyperbee.Migrations</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aerospike.Client" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Parlot" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\assets\icon.png" Pack="true" Visible="false" PackagePath="/" />
+    <None Include="..\..\LICENSE">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <PackageReference Update="Microsoft.CodeAnalysis.CSharp.Scripting" />
+    <PackageReference Update="Microsoft.SourceLink.GitHub">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>
