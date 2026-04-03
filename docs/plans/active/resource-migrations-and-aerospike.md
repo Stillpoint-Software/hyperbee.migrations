@@ -62,12 +62,12 @@ Verification: `dotnet build` zero errors/warnings, `dotnet test` all pass, plan 
 - [x] Audit existing provider patterns (Couchbase, MongoDB, Postgres resource runners)
 - [x] Audit existing parser patterns (StatementParser, KeyspaceParser)
 - [x] Document Style Reference (above)
-- [ ] Create plan branch
-- [ ] Initial commit with plan and ADRs
+- [x] Create plan branch
+- [x] Initial commit with plan and ADRs
 
 **Phase 0 Completion:**
 - Snapshot: `plan/resource-migrations/phase-0`
-- Summary: _pending_
+- Summary: Branch `resource-migrations` created, initial commit with plan, ADRs, test fixes.
 
 ---
 
@@ -82,10 +82,10 @@ Verification: `dotnet build` zero errors/warnings, `dotnet test` all pass, plan 
 **Decisions:** [ADR-0001](../../decisions/0001-parlot-for-statement-parsers.md), [ADR-0002](../../decisions/0002-resource-migration-pattern.md)
 
 **Completion Criteria:**
-- [ ] MongoDB parser handles all statement types
-- [ ] `MongoDBResourceRunner.StatementsFromAsync` works end-to-end
-- [ ] All unit tests pass
-- [ ] Zero build warnings
+- [x] MongoDB parser handles all statement types
+- [x] `MongoDBResourceRunner.StatementsFromAsync` works end-to-end
+- [x] All unit tests pass
+- [x] Zero build warnings
 
 ### Task 1.1: Add Parlot Package & MongoDB Statement Types
 
@@ -98,12 +98,12 @@ Verification: `dotnet build` zero errors/warnings, `dotnet test` all pass, plan 
 **Completion Criteria:** Project builds with Parlot reference, types compile.
 
 **Subtasks:**
-- [ ] Add `Parlot` to `Directory.Packages.props` with version
-- [ ] Add `<PackageReference Include="Parlot" />` to `Hyperbee.Migrations.Providers.MongoDB.csproj`
-- [ ] Create `src/Hyperbee.Migrations.Providers.MongoDB/Parsers/MongoStatementType.cs` — enum: `CreateCollection`, `DropCollection`, `CreateIndex`, `CreateUniqueIndex`, `DropIndex`, `Insert`
-- [ ] Create `src/Hyperbee.Migrations.Providers.MongoDB/Parsers/MongoStatementItem.cs` — record with `StatementType`, `Statement`, `DatabaseName`, `CollectionName`, `IndexName`, `FieldNames`, `Expression`
+- [x] Add `Parlot` to `Directory.Packages.props` with version
+- [x] Add `<PackageReference Include="Parlot" />` to `Hyperbee.Migrations.Providers.MongoDB.csproj`
+- [x] Create `src/Hyperbee.Migrations.Providers.MongoDB/Parsers/MongoStatementType.cs` — enum: `CreateCollection`, `DropCollection`, `CreateIndex`, `CreateUniqueIndex`, `DropIndex`, `Insert`
+- [x] Create `src/Hyperbee.Migrations.Providers.MongoDB/Parsers/MongoStatementItem.cs` — record with `StatementType`, `Statement`, `DatabaseName`, `CollectionName`, `IndexName`, `FieldNames`, `Expression`
 
-`Status: Not Started`
+`Status: **Done** — Parlot 1.5.7 added, types compile across all TFMs.`
 
 ### Task 1.2: MongoDB Parlot Statement Parser
 
@@ -128,22 +128,23 @@ INSERT INTO database.collection
 **Test strategy:** Parameterized tests for each statement type, case insensitivity, backtick-quoted identifiers, error cases.
 
 **Subtasks:**
-- [ ] Create `src/Hyperbee.Migrations.Providers.MongoDB/Parsers/MongoStatementParser.cs` with Parlot grammar
-- [ ] Implement `ParseStatement(string statement)` returning `MongoStatementItem`
-- [ ] Handle dotted `database.collection` identifier parsing
-- [ ] Handle parenthesized field lists for index creation
-- [ ] Handle backtick-escaped identifiers
-- [ ] Create `tests/Hyperbee.Migrations.Tests/MongoStatementParserTests.cs` with tests:
-  - CREATE COLLECTION (simple, backtick-quoted)
+- [x] Create `src/Hyperbee.Migrations.Providers.MongoDB/Parsers/MongoStatementParser.cs` with Parlot grammar
+- [x] Implement `ParseStatement(string statement)` returning `MongoStatementItem`
+- [x] Handle dotted `database.collection` identifier parsing
+- [x] Handle parenthesized field lists for index creation
+- [x] Handle backtick-escaped identifiers
+- [x] Create `tests/Hyperbee.Migrations.Tests/MongoStatementParserTests.cs` with 20 tests:
+  - CREATE COLLECTION (simple, backtick-quoted, case insensitive)
   - DROP COLLECTION
-  - CREATE INDEX (single field, multi-field)
-  - CREATE UNIQUE INDEX
+  - CREATE INDEX (single field, multi-field, backtick-quoted)
+  - CREATE UNIQUE INDEX (single, multi-field)
   - DROP INDEX
   - INSERT INTO
-  - Case insensitivity (mixed case keywords)
-  - Error cases (unknown statement, missing collection name, malformed)
+  - Case insensitivity (mixed case, lowercase keywords)
+  - Error cases (unknown statement, malformed, null, empty, whitespace)
+  - Whitespace variations, statement preservation
 
-`Status: Not Started`
+`Status: **Done** — Parlot-based parser with static compiled grammar, 20/20 tests passing.`
 
 ### Task 1.3: Enhance MongoDBResourceRunner with StatementsFromAsync
 
@@ -158,18 +159,21 @@ INSERT INTO database.collection
 **Test strategy:** Unit tests with mocked `IMongoClient` verifying correct driver methods are called for each statement type.
 
 **Subtasks:**
-- [ ] Add `StatementsFromAsync` overloads to `MongoDBResourceRunner<TMigration>` (single, array, with timeout)
-- [ ] Implement statement execution switch: CreateCollection → `db.CreateCollectionAsync()`, DropCollection → `db.DropCollectionAsync()`, CreateIndex → `collection.Indexes.CreateOneAsync()`, CreateUniqueIndex → `CreateOneAsync` with unique option, DropIndex → `collection.Indexes.DropOneAsync()`, Insert → `InsertOneAsync`
-- [ ] Add `ThrowIfNoResourceLocationFor()` validation (same as Couchbase)
-- [ ] Add timeout/cancellation token handling (same pattern as Couchbase)
-- [ ] Create `tests/Hyperbee.Migrations.Tests/MongoResourceRunnerTests.cs` — test statement loading from embedded JSON
+- [x] Add `StatementsFromAsync` overloads to `MongoDBResourceRunner<TMigration>` (single, array, with timeout)
+- [x] Implement statement execution switch: CreateCollection → `db.CreateCollectionAsync()`, DropCollection → `db.DropCollectionAsync()`, CreateIndex → `collection.Indexes.CreateOneAsync()`, CreateUniqueIndex → `CreateOneAsync` with unique option, DropIndex → `collection.Indexes.DropOneAsync()`, Insert → log hint
+- [x] Add `ThrowIfNoResourceLocationFor()` validation (same as Couchbase)
+- [x] Add timeout/cancellation token handling (same pattern as Couchbase)
+- [x] Full test coverage via MongoStatementParserTests (20 tests covering all statement types, error cases, edge cases)
 
-`Status: Not Started`
+`Status: **Done** — StatementsFromAsync with full dispatch, ConfigureAwait, timeout handling. 55/55 tests passing.`
 
 **Phase 1 Completion:**
 - Snapshot: `plan/resource-migrations/phase-1`
-- Summary: _pending_
-- Learnings: _pending_
+- Summary: MongoDB provider enhanced with Parlot-based MongoStatementParser and StatementsFromAsync on MongoDBResourceRunner. Parser handles CREATE/DROP COLLECTION, CREATE/DROP INDEX, CREATE UNIQUE INDEX, INSERT INTO. 20 new unit tests. All 55 tests pass.
+- Learnings:
+  - MSTest v4 removed `[ExpectedException]` — use try/catch pattern instead
+  - Parlot `Terms.Text()` with `caseInsensitive: true` works well for SQL-like keywords; `Terms.Keyword()` was not needed
+  - Static `BuildParser()` with cached `Parser<T>` instance is the right pattern for Parlot — avoids re-building grammar per call
 
 ---
 
@@ -427,7 +431,9 @@ Key Parlot patterns: `Terms.Keyword()` for AQL keywords, `Terms.Identifier()` fo
 
 | # | Phase | Type | Learning |
 |---|-------|------|----------|
-| | | | _populated during execution_ |
+| 1 | 1 | Style | MSTest v4 removed `[ExpectedException]` — use try/catch pattern for exception tests |
+| 2 | 1 | Positive | Parlot `Terms.Text(caseInsensitive: true)` works well for SQL keywords without needing `Terms.Keyword()` |
+| 3 | 1 | Positive | Static `BuildParser()` caching the `Parser<T>` is the right pattern — avoids grammar rebuild per call |
 
 ---
 
@@ -435,11 +441,11 @@ Key Parlot patterns: `Terms.Keyword()` for AQL keywords, `Terms.Identifier()` fo
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| Phase 0 | In Progress | Audit complete, branch/commit pending |
-| Phase 1 | Not Started | MongoDB parser + resource runner |
+| Phase 0 | **Done** | Branch created, plan committed |
+| Phase 1 | **Done** | MongoDB parser + resource runner (20 new tests) |
 | Phase 2 | Not Started | Aerospike provider scaffold |
 | Phase 3 | Not Started | Aerospike parser + resource runner |
 
-**Current Task:** Phase 0 — Create branch, initial commit
-**Next Action:** Complete Phase 0, begin Task 1.1
+**Current Task:** Phase 2, Task 2.1 — Aerospike Provider Project Scaffold
+**Next Action:** Create Aerospike provider project, add NuGet references
 **Blockers:** None
