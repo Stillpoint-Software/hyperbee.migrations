@@ -177,10 +177,10 @@ public class AerospikeStatementParserTests
         Assert.AreEqual( statement, result.Statement );
     }
 
-    // Directive properties default to false
+    // Flags: RECREATE and WAIT
 
     [TestMethod]
-    public void Should_have_false_directives_by_default()
+    public void Should_have_false_flags_by_default()
     {
         var result = _parser.ParseStatement( "CREATE INDEX idx_test ON test.users (name)" );
 
@@ -188,17 +188,44 @@ public class AerospikeStatementParserTests
         Assert.IsFalse( result.WaitReady );
     }
 
-    // Directive properties can be set via with expression
+    [TestMethod]
+    public void Should_parse_recreate_flag()
+    {
+        var result = _parser.ParseStatement( "CREATE INDEX RECREATE idx_test ON test.users (name)" );
+
+        Assert.IsTrue( result.Recreate );
+        Assert.IsFalse( result.WaitReady );
+        Assert.AreEqual( "idx_test", result.IndexName );
+    }
 
     [TestMethod]
-    public void Should_support_directive_properties()
+    public void Should_parse_wait_flag()
     {
-        var result = _parser.ParseStatement( "CREATE INDEX idx_test ON test.users (name)" );
-        var withDirectives = result with { Recreate = true, WaitReady = true };
+        var result = _parser.ParseStatement( "CREATE INDEX WAIT idx_test ON test.users (name)" );
 
-        Assert.IsTrue( withDirectives.Recreate );
-        Assert.IsTrue( withDirectives.WaitReady );
-        Assert.AreEqual( result.StatementType, withDirectives.StatementType );
+        Assert.IsFalse( result.Recreate );
+        Assert.IsTrue( result.WaitReady );
+        Assert.AreEqual( "idx_test", result.IndexName );
+    }
+
+    [TestMethod]
+    public void Should_parse_recreate_and_wait_flags()
+    {
+        var result = _parser.ParseStatement( "CREATE INDEX RECREATE WAIT idx_test ON test.users (name) STRING" );
+
+        Assert.IsTrue( result.Recreate );
+        Assert.IsTrue( result.WaitReady );
+        Assert.AreEqual( "idx_test", result.IndexName );
+        Assert.AreEqual( AerospikeIndexType.String, result.IndexType );
+    }
+
+    [TestMethod]
+    public void Should_parse_flags_case_insensitive()
+    {
+        var result = _parser.ParseStatement( "create index recreate wait idx_test on test.users (name)" );
+
+        Assert.IsTrue( result.Recreate );
+        Assert.IsTrue( result.WaitReady );
     }
 
     // Whitespace handling

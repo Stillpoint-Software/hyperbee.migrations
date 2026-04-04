@@ -25,8 +25,11 @@ public class AerospikeStatementParser
         var delete = Terms.Text( "DELETE", caseInsensitive: true );
         var from = Terms.Text( "FROM", caseInsensitive: true );
         var on = Terms.Text( "ON", caseInsensitive: true );
-        var values = Terms.Text( "VALUES", caseInsensitive: true );
-        var where = Terms.Text( "WHERE", caseInsensitive: true );
+
+        // index flag keywords
+
+        var recreate = Terms.Text( "RECREATE", caseInsensitive: true );
+        var wait = Terms.Text( "WAIT", caseInsensitive: true );
 
         // index type keywords
 
@@ -66,11 +69,18 @@ public class AerospikeStatementParser
             geoType.Then( static _ => AerospikeIndexType.Geo2DSphere )
         );
 
-        // CREATE INDEX index_name ON namespace.set (bin_name) [STRING|NUMERIC|GEO2DSPHERE]
+        // optional flags: [RECREATE] [WAIT] in any order, parsed as two optional flags
+
+        var recreateFlag = ZeroOrOne( recreate.Then( static _ => true ) );
+        var waitFlag = ZeroOrOne( wait.Then( static _ => true ) );
+
+        // CREATE INDEX [RECREATE] [WAIT] index_name ON namespace.set (bin_name) [STRING|NUMERIC|GEO2DSPHERE]
 
         var createIndex = create
             .SkipAnd( index )
-            .SkipAnd( identifier )
+            .SkipAnd( recreateFlag )
+            .And( waitFlag )
+            .And( identifier )
             .AndSkip( on )
             .And( dottedRef )
             .And( parenBinName )
@@ -78,12 +88,16 @@ public class AerospikeStatementParser
             .Then( static x => new AerospikeStatementItem(
                 AerospikeStatementType.CreateIndex,
                 default,
-                x.Item2.Namespace,
-                x.Item2.Set,
-                x.Item1.ToString(),
-                x.Item3,
-                x.Item4 == default ? AerospikeIndexType.String : x.Item4
-            ) );
+                x.Item4.Namespace,
+                x.Item4.Set,
+                x.Item3.ToString(),
+                x.Item5,
+                x.Item6 == default ? AerospikeIndexType.String : x.Item6
+            )
+            {
+                Recreate = x.Item1,
+                WaitReady = x.Item2
+            } );
 
         // DROP INDEX namespace index_name
         // Note: AQL uses `DROP INDEX namespace index_name` (no dot, no ON)

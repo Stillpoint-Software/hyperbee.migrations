@@ -1,6 +1,4 @@
-using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 using Aerospike.Client;
 using Hyperbee.Migrations.Providers.Aerospike.Parsers;
 using Hyperbee.Migrations.Resources;
@@ -52,23 +50,15 @@ public class AerospikeResourceRunner<TMigration>
                 var json = ResourceHelper.GetResource<TMigration>( $"{migrationName}.{resourceName}" );
                 var node = JsonNode.Parse( json );
 
+                var statements = node!["statements"]!
+                    .AsArray()
+                    .Select( x => x["statement"]?.ToString() )
+                    .Where( x => x != null );
+
                 var parser = new AerospikeStatementParser();
 
-                foreach ( var item in node!["statements"]!.AsArray() )
-                {
-                    var statement = item["statement"]?.ToString();
-
-                    if ( statement == null )
-                        continue;
-
-                    var parsed = parser.ParseStatement( statement );
-
-                    // apply directives from JSON properties
-                    var recreate = item["recreate"]?.GetValue<bool>() ?? false;
-                    var waitReady = item["waitReady"]?.GetValue<bool>() ?? false;
-
-                    yield return parsed with { Recreate = recreate, WaitReady = waitReady };
-                }
+                foreach ( var statement in statements )
+                    yield return parser.ParseStatement( statement );
             }
         }
 
