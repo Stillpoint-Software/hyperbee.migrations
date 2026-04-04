@@ -1,5 +1,6 @@
-﻿//#define INTEGRATIONS
+//#define INTEGRATIONS
 using Hyperbee.Migrations.Integration.Tests.Container.MongoDb;
+using MongoDB.Bson;
 
 namespace Hyperbee.Migrations.Integration.Tests;
 
@@ -34,6 +35,15 @@ public class MongoDBRunnerTest
         Assert.Contains( "[2000] MigrationAction: Up migration continuing", stdOut1 );
         Assert.Contains( "[2000] MigrationAction: Up migration completed", stdOut1 );
         Assert.Contains( "Executed 2 migrations", stdOut1 );
+
+        // Verify resource migrations: document seeding
+        Assert.Contains( "Resource:", stdOut1 );
+
+        // Verify data was actually written to MongoDB
+        var db = Client.GetDatabase( "administration" );
+        var collection = db.GetCollection<BsonDocument>( "users" );
+        var count = await collection.CountDocumentsAsync( new BsonDocument() );
+        Assert.IsTrue( count > 0, "Users collection should have seeded documents" );
 
         // Second run - create new container
         var migrationContainer2 = await MongoDbMigrationContainer.BuildMigrationsAsync( Client, Network, migrationImage );
