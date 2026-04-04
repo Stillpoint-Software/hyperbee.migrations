@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/Samples/">
+    <Project Path="samples/Hyperbee.MigrationRunner.Aerospike/Hyperbee.MigrationRunner.Aerospike.csproj" />
     <Project Path="samples/Hyperbee.MigrationRunner.Couchbase/Hyperbee.MigrationRunner.Couchbase.csproj" />
     <Project Path="samples/Hyperbee.MigrationRunner.MongoDB/Hyperbee.MigrationRunner.MongoDB.csproj" />
     <Project Path="samples/Hyperbee.MigrationRunner.Postgres/Hyperbee.MigrationRunner.Postgres.csproj" />
+    <Project Path="samples/Hyperbee.Migrations.Aerospike.Samples/Hyperbee.Migrations.Aerospike.Samples.csproj" />
     <Project Path="samples/Hyperbee.Migrations.Couchbase.Samples/Hyperbee.Migrations.Couchbase.Samples.csproj" />
     <Project Path="samples/Hyperbee.Migrations.MongoDB.Samples/Hyperbee.Migrations.MongoDB.Samples.csproj" />
     <Project Path="samples/Hyperbee.Migrations.Postgres.Samples/Hyperbee.Migrations.Postgres.Samples.csproj" />

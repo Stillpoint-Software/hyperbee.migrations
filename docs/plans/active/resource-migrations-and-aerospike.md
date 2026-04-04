@@ -406,15 +406,15 @@ Key Parlot patterns: `Terms.Keyword()` for AQL keywords, `Terms.Identifier()` fo
 **Completion Criteria:** Sample project builds, demonstrates all resource migration capabilities.
 
 **Subtasks:**
-- [ ] Create `samples/Hyperbee.Migrations.Aerospike.Samples/` with migration classes and embedded resources
-- [ ] Create `samples/Hyperbee.MigrationRunner.Aerospike/` with Program.cs, MainService.cs, StartupExtensions.cs, appsettings.json
-- [ ] Create sample migrations:
-  - `1000-CreateInitialSets` — statements.json with CREATE INDEX + @WAITREADY, document seeding
-  - `2000-AddSecondaryIndexes` — statements.json with CREATE INDEX + various types
-- [ ] Create sample embedded resources (statements.json, document JSON files)
-- [ ] Add Dockerfile for integration test container
+- [x] Create `samples/Hyperbee.Migrations.Aerospike.Samples/` with migration classes and embedded resources
+- [x] Create `samples/Hyperbee.MigrationRunner.Aerospike/` with Program.cs, MainService.cs, StartupExtensions.cs, appsettings.json
+- [x] Create sample migrations:
+  - `1000-CreateInitialSets` — statements.json with CREATE INDEX + @WAITREADY
+  - `2000-AddSecondaryIndexes` — statements.json with GEO2DSPHERE + STRING indexes, document seeding
+- [x] Create sample embedded resources (statements.json, user1.json document)
+- [x] Add Dockerfile for integration test container
 
-`Status: Deferred — Core provider complete, samples to be added in follow-up`
+`Status: **Done** — Full sample runner with 2 migrations, statements + document resources, Dockerfile.`
 
 **Phase 3 Completion:**
 - Snapshot: `plan/resource-migrations/phase-3`
@@ -451,6 +451,6 @@ Key Parlot patterns: `Terms.Keyword()` for AQL keywords, `Terms.Identifier()` fo
 | Phase 2 | **Done** | Aerospike provider scaffold (3 new tests) |
 | Phase 3 | **Done** | Aerospike parser + resource runner (22 new tests, samples deferred) |
 
-**Current Task:** Complete — all core phases done
-**Next Action:** Add sample Aerospike runner (Task 3.4) when ready
+**Current Task:** All phases complete
+**Next Action:** None — plan complete, ready for PR
 **Blockers:** None

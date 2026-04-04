@@ -1,0 +1,12 @@
+{
+  "statements": [
+    {
+      "statement": "CREATE INDEX idx_email ON test.users (email) STRING",
+      "waitReady": true
+    },
+    {
+      "statement": "CREATE INDEX idx_active ON test.users (active) NUMERIC",
+      "waitReady": true
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "statements": [
+    {
+      "statement": "CREATE INDEX idx_location ON test.users (location) GEO2DSPHERE",
+      "waitReady": true,
+      "recreate": false
+    },
+    {
+      "statement": "CREATE INDEX idx_name ON test.users (name) STRING",
+      "waitReady": true
+    }
+  ]
+}

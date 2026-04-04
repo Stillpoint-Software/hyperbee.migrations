@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Resources\1000-CreateInitialSets\statements.json" />
+    <None Remove="Resources\2000-AddSecondaryIndexes\statements.json" />
+    <None Remove="Resources\2000-AddSecondaryIndexes\test\users\user1.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\1000-CreateInitialSets\statements.json" />
+    <EmbeddedResource Include="Resources\2000-AddSecondaryIndexes\statements.json" />
+    <EmbeddedResource Include="Resources\2000-AddSecondaryIndexes\test\users\user1.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Aerospike\Hyperbee.Migrations.Providers.Aerospike.csproj" />
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
+  </ItemGroup>
+
+  <!-- Target to exclude README.md from publish output -->
+  <Target Name="ExcludeReadmeFromPublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ExcludedReadmeFiles Include="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'README.md'" />
+      <ResolvedFileToPublish Remove="@(ExcludedReadmeFiles)" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Update="Microsoft.CodeAnalysis.CSharp.Scripting" />
+    <PackageReference Update="Microsoft.SourceLink.GitHub">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>
