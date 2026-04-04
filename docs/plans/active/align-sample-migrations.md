@@ -304,9 +304,9 @@ Integration tests assert on migration class names in log output. All four test f
 
 ### Task 7.1: Delete Stale `.todo.md`
 
-- [ ] Delete `docs/site/.todo.md`
+- [x] Deleted `docs/site/.todo.md`
 
-**Status: Not Started**
+**Status: **Done****
 
 ### Task 7.2: Add Aerospike Documentation Page
 
@@ -314,26 +314,17 @@ Create `docs/site/aerospike.md` following the same structure as the existing pro
 
 **Subtasks:**
 
-- [ ] Introduction — Hyperbee.Migrations.Providers.Aerospike overview
-- [ ] Configuration — `AddAerospikeProvider()`, `AddAerospikeMigrations()`, namespace/set/lock options
-- [ ] Migrations — code-based migration example with `IAsyncClient` and `IAerospikeClient` injection
-- [ ] Resource Migrations — `AerospikeResourceRunner<T>`: `StatementsFromAsync` (AQL), `DocumentsFromAsync` (JSON records), directive support (`@RECREATE`, `@WAITREADY`)
-- [ ] Profiles — same pattern as other providers
-- [ ] Cron Settings — `MigrationCronHelper` usage
-- [ ] Journaling — same pattern
+- [x] Full Aerospike docs page created with all sections (intro, config, code migrations, resource migrations, profiles, cron, journaling)
 
-**Status: Not Started**
+**Status: **Done****
 
 ### Task 7.3: Update Root README
 
 **Subtasks:**
 
-- [ ] Add Aerospike to the list of supported databases
-- [ ] Add resource migrations as a key feature (embedded SQL, N1QL, AQL, MongoDB commands, JSON document seeding)
-- [ ] Update project structure description to reflect `runners/` and `samples/` separation
-- [ ] Ensure build/run instructions are current
+- [x] Added Aerospike, resource migrations feature, project structure table, removed stale Help link
 
-**Status: Not Started**
+**Status: **Done****
 
 ### Task 7.4: Update Existing Provider Documentation
 
@@ -341,12 +332,10 @@ Update each provider's docs page to cover resource migration features that are c
 
 **Subtasks:**
 
-- [ ] **Couchbase** (`couchbase.md`) — add `StatementsFromAsync` section (N1QL via resource files), update `DocumentsFromAsync` examples, reference new sample migration names
-- [ ] **MongoDB** (`mongodb.md`) — add `StatementsFromAsync` section (MongoDB commands via statements.json, new Parlot parser), update `DocumentsFromAsync` examples, reference new sample migration names
-- [ ] **PostgreSQL** (`postgresql.md`) — update resource runner examples (`SqlFromAsync`, `AllSqlFromAsync`), reference new sample migration names
-- [ ] Update `migration-runner.md` — add Aerospike to record store list, update sample runner references to `runners/` path, update command-line options for all providers
+- [x] All provider docs updated with new sample names, resource migration sections, and Aerospike references
+- [x] migration-runner.md updated with Aerospike in record store list and runners/ paths
 
-**Status: Not Started**
+**Status: **Done****
 
 ### Task 7.5: Add Runner READMEs
 
@@ -354,21 +343,9 @@ Add a README.md to each MigrationRunner project explaining what it is, how to co
 
 **Subtasks:**
 
-- [ ] `runners/Hyperbee.MigrationRunner.Aerospike/README.md` — connection config, namespace/set setup, CLI usage, Docker usage
-- [ ] `runners/Hyperbee.MigrationRunner.Couchbase/README.md` — connection config, bucket/scope/collection setup, CLI usage, Docker usage
-- [ ] `runners/Hyperbee.MigrationRunner.MongoDB/README.md` — connection config, database/collection setup, CLI usage, Docker usage
-- [ ] `runners/Hyperbee.MigrationRunner.Postgres/README.md` — connection config, schema/table setup, CLI usage, Docker usage
+- [x] All 4 runner READMEs created with consistent template (prereqs, config, local/Docker run, CLI args, sample link)
 
-Each README should follow a consistent template:
-1. What this runner is (one-liner)
-2. Prerequisites (database instance)
-3. Configuration (appsettings.json keys)
-4. Running locally (`dotnet run`)
-5. Running with Docker
-6. CLI arguments reference
-7. Relationship to companion `.Samples` project
-
-**Status: Not Started**
+**Status: **Done****
 
 ---
 
@@ -389,8 +366,8 @@ Each README should follow a consistent template:
 | Phase 4 (MongoDB) | **Done** |
 | Phase 5 (PostgreSQL) | **Done** |
 | Phase 6 (Tests) | **Done** |
-| Phase 7 (Documentation) | Not Started |
+| Phase 7 (Documentation) | **Done** |
 
-**Current task**: Phase 7 — Documentation
-**Next action**: Task 7.1 — Delete stale .todo.md
+**Current task**: All phases complete
+**Next action**: Commit and review
 **Blockers**: None
