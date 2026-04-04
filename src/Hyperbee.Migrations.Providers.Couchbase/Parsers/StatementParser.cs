@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using Couchbase.Management.Buckets;
 using Parlot;
 using Parlot.Fluent;
@@ -50,6 +49,18 @@ public class StatementParser
         var update = Terms.Text( "UPDATE", caseInsensitive: true );
         var build = Terms.Text( "BUILD", caseInsensitive: true );
 
+        // bucket option keywords
+
+        var type = Terms.Text( "TYPE", caseInsensitive: true );
+        var ramquota = Terms.Text( "RAMQUOTA", caseInsensitive: true );
+        var flush = Terms.Text( "FLUSH", caseInsensitive: true );
+        var enabled = Terms.Text( "ENABLED", caseInsensitive: true );
+        var replicas = Terms.Text( "REPLICAS", caseInsensitive: true );
+
+        var couchbaseType = Terms.Text( "COUCHBASE", caseInsensitive: true );
+        var memcachedType = Terms.Text( "MEMCACHED", caseInsensitive: true );
+        var ephemeralType = Terms.Text( "EPHEMERAL", caseInsensitive: true );
+
         // terminals
 
         var dot = Terms.Char( '.' );
@@ -63,11 +74,9 @@ public class StatementParser
 
         // keyspace components - build up from identifiers
 
-        // namespace:  (optional prefix ending with colon)
         var namespacePrefix = identifier.AndSkip( colon )
             .Then( static x => x.ToString() );
 
-        // dotted parts: a.b or a.b.c
         var oneIdent = identifier.Then( static x => x.ToString() );
 
         var twoPart = identifier.AndSkip( dot ).And( identifier )
@@ -77,7 +86,6 @@ public class StatementParser
             .Then( static x => (x.Item1.ToString(), x.Item2.ToString(), x.Item3.ToString()) );
 
         // keyspace-ref: [namespace:]bucket[.scope.collection]
-        // Parse the most specific form first
 
         var keyspaceNs3 = namespacePrefix.And( threePart )
             .Then( static x => new KeyspaceRef( x.Item1, x.Item2.Item1, x.Item2.Item2, x.Item2.Item3 ) );
@@ -99,13 +107,57 @@ public class StatementParser
 
         var keyspaceRef = OneOf( keyspaceNs3, keyspace3, keyspaceNs2, keyspace2, keyspaceNs1, keyspace1 );
 
-        // partial keyspace for collections (can be just a collection name)
-
         var partialKeyspace = OneOf( keyspaceNs3, keyspace3, keyspaceNs2, keyspace2, keyspaceNs1, keyspace1 );
 
+        // bucket options: [TYPE COUCHBASE|MEMCACHED|EPHEMERAL] [RAMQUOTA <int>] [FLUSH ENABLED] [REPLICAS <int>]
+        // each option is optional and parsed independently
+
+        var bucketType = type.SkipAnd( OneOf(
+            couchbaseType.Then( static _ => BucketType.Couchbase ),
+            memcachedType.Then( static _ => BucketType.Memcached ),
+            ephemeralType.Then( static _ => BucketType.Ephemeral )
+        ) );
+
+        var bucketRamQuota = ramquota.SkipAnd( Terms.Integer() );
+
+        var bucketFlush = flush.SkipAnd( enabled ).Then( static _ => true );
+
+        var bucketReplicas = replicas.SkipAnd( Terms.Integer() );
+
+        // CREATE BUCKET keyspace [TYPE ...] [RAMQUOTA ...] [FLUSH ENABLED] [REPLICAS ...]
+
+        var createBucket = create
+            .SkipAnd( bucket )
+            .SkipAnd( keyspaceRef )
+            .And( ZeroOrOne( bucketType ) )
+            .And( ZeroOrOne( bucketRamQuota ) )
+            .And( ZeroOrOne( bucketFlush ) )
+            .And( ZeroOrOne( bucketReplicas ) )
+            .Then( static x =>
+            {
+                var keyspace = x.Item1;
+                var settings = new BucketSettings
+                {
+                    Name = keyspace.BucketName,
+                    BucketType = x.Item2 == default ? BucketType.Couchbase : x.Item2,
+                    RamQuotaMB = x.Item3 == 0 ? 256 : (int) x.Item3,
+                    FlushEnabled = x.Item4,
+                    NumReplicas = (int) x.Item5
+                };
+
+                return new StatementItem(
+                    StatementType.CreateBucket,
+                    default,
+                    keyspace,
+                    null,
+                    null
+                )
+                {
+                    BucketSettings = settings
+                };
+            } );
+
         // CREATE PRIMARY INDEX [name] ON keyspace
-        // Must come before CREATE INDEX
-        // The optional name must not match the keyword ON
 
         var indexNameNotOn = identifier
             .Then( static x => x.ToString() )
@@ -137,19 +189,6 @@ public class StatementParser
                 default,
                 x.Item2,
                 x.Item1.ToString().Trim( '`' ),
-                null
-            ) );
-
-        // CREATE BUCKET keyspace [TYPE ...] [RAMQUOTA ...] [FLUSH ...] [REPLICAS ...]
-
-        var createBucket = create
-            .SkipAnd( bucket )
-            .SkipAnd( keyspaceRef )
-            .Then( static x => new StatementItem(
-                StatementType.CreateBucket,
-                default,
-                x,
-                null,
                 null
             ) );
 
@@ -245,7 +284,7 @@ public class StatementParser
             ) );
 
         // top-level: ORDER MATTERS
-        // createPrimaryIndex before createIndex (both start with CREATE INDEX-ish)
+        // createPrimaryIndex before createIndex (both start with CREATE)
         // createIndex before createBucket/createScope/createCollection
 
         return OneOf(
@@ -271,50 +310,6 @@ public class StatementParser
             throw new NotSupportedException( $"Unknown statement or syntax error. `{statement}`" );
         }
 
-        // Attach the original statement and parse bucket settings if needed
-        result = result with { Statement = statement };
-
-        if ( result.StatementType == StatementType.CreateBucket )
-        {
-            result = result with { BucketSettings = ParseBucketSettings( result.Keyspace, statement ) };
-        }
-
-        return result;
-    }
-
-    private static readonly IReadOnlyDictionary<string, BucketType> BucketTypes = new Dictionary<string, BucketType>( StringComparer.OrdinalIgnoreCase )
-    {
-        ["Couchbase"] = BucketType.Couchbase,
-        ["Ephemeral"] = BucketType.Ephemeral,
-        ["Memcached"] = BucketType.Memcached
-    };
-
-    private static BucketSettings ParseBucketSettings( KeyspaceRef keyspace, string statement )
-    {
-        var settings = new BucketSettings
-        {
-            Name = keyspace.BucketName,
-            BucketType = BucketType.Couchbase,
-            RamQuotaMB = 256,
-            FlushEnabled = true
-        };
-
-        // match TYPE, RAMQUOTA, FLUSH ENABLED, REPLICAS anywhere in the statement
-        var typeMatch = Regex.Match( statement, @"\bTYPE\s+(?<type>COUCHBASE|MEMCACHED|EPHEMERAL)\b", RegexOptions.IgnoreCase );
-        if ( typeMatch.Success && BucketTypes.TryGetValue( typeMatch.Groups["type"].Value, out var bucketType ) )
-            settings.BucketType = bucketType;
-
-        var quotaMatch = Regex.Match( statement, @"\bRAMQUOTA\s+(?<quota>\d+)", RegexOptions.IgnoreCase );
-        if ( quotaMatch.Success )
-            settings.RamQuotaMB = int.Parse( quotaMatch.Groups["quota"].ValueSpan );
-
-        if ( Regex.IsMatch( statement, @"\bFLUSH\s+ENABLED\b", RegexOptions.IgnoreCase ) )
-            settings.FlushEnabled = true;
-
-        var replicasMatch = Regex.Match( statement, @"\bREPLICAS\s+(?<replicas>\d+)", RegexOptions.IgnoreCase );
-        if ( replicasMatch.Success )
-            settings.NumReplicas = int.Parse( replicasMatch.Groups["replicas"].ValueSpan );
-
-        return settings;
+        return result with { Statement = statement };
     }
 }
