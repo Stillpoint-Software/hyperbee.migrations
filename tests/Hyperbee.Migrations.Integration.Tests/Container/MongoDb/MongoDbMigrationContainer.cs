@@ -17,7 +17,7 @@ public class MongoDbMigrationContainer
             .WithDeleteIfExists( true )
             .WithCleanUp( true )
             .WithName( "mongo-db-migrations" )
-            .WithDockerfile( "samples/Hyperbee.MigrationRunner.MongoDB/Dockerfile" )
+            .WithDockerfile( "runners/Hyperbee.MigrationRunner.MongoDB/Dockerfile" )
             .WithDockerfileDirectory( location.DirectoryPath )
             .Build();
 

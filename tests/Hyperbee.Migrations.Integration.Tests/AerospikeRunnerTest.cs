@@ -32,19 +32,18 @@ public class AerospikeRunnerTest
         var (stdOut1, _) = await migrationContainer1.GetLogsAsync();
 
         // Check that migrations ran
-        Assert.Contains( "[1000] CreateInitialSets: Up migration started", stdOut1 );
-        Assert.Contains( "[1000] CreateInitialSets: Up migration completed", stdOut1 );
+        Assert.Contains( "[1000] CreateInitialSchema: Up migration started", stdOut1 );
+        Assert.Contains( "[1000] CreateInitialSchema: Up migration completed", stdOut1 );
         Assert.Contains( "[2000] AddSecondaryIndexes: Up migration started", stdOut1 );
         Assert.Contains( "[2000] AddSecondaryIndexes: Up migration completed", stdOut1 );
         Assert.Contains( "Executed 2 migrations", stdOut1 );
 
         // Verify resource migrations: index creation with WAIT
-        Assert.Contains( "CREATE INDEX idx_email ON test.users (email) String", stdOut1 );
-        Assert.Contains( "CREATE INDEX idx_active ON test.users (active) Numeric", stdOut1 );
-        Assert.Contains( "CREATE INDEX idx_location ON test.users (location) Geo2DSphere", stdOut1 );
-        Assert.Contains( "CREATE INDEX idx_role ON test.users (role) String", stdOut1 );
-        Assert.Contains( "CREATE INDEX idx_category ON test.products (category) String", stdOut1 );
-        Assert.Contains( "CREATE INDEX idx_price ON test.products (price) Numeric", stdOut1 );
+        Assert.Contains( "CREATE INDEX idx_users_email ON test.users (email) String", stdOut1 );
+        Assert.Contains( "CREATE INDEX idx_users_active ON test.users (active) Numeric", stdOut1 );
+        Assert.Contains( "CREATE INDEX idx_users_role ON test.users (role) String", stdOut1 );
+        Assert.Contains( "CREATE INDEX idx_products_category ON test.products (category) String", stdOut1 );
+        Assert.Contains( "CREATE INDEX idx_products_price ON test.products (price) Numeric", stdOut1 );
 
         // Verify resource migrations: document seeding
         Assert.Contains( "UPSERT 'user-admin' TO test.users", stdOut1 );
@@ -68,9 +67,9 @@ public class AerospikeRunnerTest
         Assert.IsNotNull( node, "Cluster should have at least one node" );
 
         var indexInfo = Info.Request( node, "sindex/test" );
-        Assert.Contains( "idx_email", indexInfo );
-        Assert.Contains( "idx_active", indexInfo );
-        Assert.Contains( "idx_category", indexInfo );
+        Assert.Contains( "idx_users_email", indexInfo );
+        Assert.Contains( "idx_users_active", indexInfo );
+        Assert.Contains( "idx_products_category", indexInfo );
 
         // Second run - should be idempotent
         var migrationContainer2 = await AerospikeMigrationContainer.BuildMigrationsAsync( Network, migrationImage );

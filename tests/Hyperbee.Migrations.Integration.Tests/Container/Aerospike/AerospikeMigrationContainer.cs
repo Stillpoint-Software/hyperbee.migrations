@@ -14,7 +14,7 @@ public class AerospikeMigrationContainer
             .WithDeleteIfExists( true )
             .WithCleanUp( true )
             .WithName( "aerospike-migrations" )
-            .WithDockerfile( "samples/Hyperbee.MigrationRunner.Aerospike/Dockerfile" )
+            .WithDockerfile( "runners/Hyperbee.MigrationRunner.Aerospike/Dockerfile" )
             .WithDockerfileDirectory( location.DirectoryPath )
             .Build();
 

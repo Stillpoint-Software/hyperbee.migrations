@@ -1,7 +1,0 @@
-{
-  "id": "prod-001",
-  "name": "Widget",
-  "price": 29.99,
-  "category": "hardware",
-  "inStock": true
-}

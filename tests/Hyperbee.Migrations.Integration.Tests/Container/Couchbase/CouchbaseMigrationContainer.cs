@@ -15,7 +15,7 @@ public class CouchbaseMigrationContainer
             .WithDeleteIfExists( true )
             .WithCleanUp( true )
             .WithName( "couchbase-db-migrations" )
-            .WithDockerfile( "samples/Hyperbee.MigrationRunner.Couchbase/Dockerfile" )
+            .WithDockerfile( "runners/Hyperbee.MigrationRunner.Couchbase/Dockerfile" )
             .WithDockerfileDirectory( location.DirectoryPath )
             .Build();
 

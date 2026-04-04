@@ -34,14 +34,11 @@ public class CouchbaseRunnerTest
         Assert.Contains( "Ensuring ledger primary index `hyperbee`.`migrations`.`ledger` exists.", stdOut1 );
 
         // Check that migrations ran
-        Assert.Contains( "CREATE BUCKET `migrationbucket`", stdOut1 );
-        Assert.Contains( "CREATE PRIMARY INDEX idx_migrationbucket_primary ON `migrationbucket`", stdOut1 );
-        Assert.Contains( "CREATE INDEX idx_migrationbucket_typeName ON `migrationbucket`", stdOut1 );
-        Assert.Contains( "BUILD INDEX ON `migrationbucket`", stdOut1 );
-        Assert.Contains( "UPSERT `0c81e0a030c64b8c80cbd05adf25e522/f90bcd5525b442dda8a5ee83e0987ec3` TO migrationbucket SCOPE _default COLLECTION _default", stdOut1 );
-        Assert.Contains( "[1000] CreateInitialBuckets: Up migration completed", stdOut1 );
-        Assert.Contains( "[2000] SecondaryAction: Up migration completed", stdOut1 );
-        Assert.Contains( "[3000] MigrationAction: Up migration completed", stdOut1 );
+        Assert.Contains( "CREATE BUCKET `sample`", stdOut1 );
+        Assert.Contains( "CREATE PRIMARY INDEX idx_sample_primary ON `sample`", stdOut1 );
+        Assert.Contains( "[1000] CreateInitialSchema: Up migration completed", stdOut1 );
+        Assert.Contains( "[2000] AddSecondaryIndexes: Up migration completed", stdOut1 );
+        Assert.Contains( "[3000] SeedData: Up migration completed", stdOut1 );
         Assert.Contains( "Executed 3 migrations", stdOut1 );
 
         // Second run - create new container  

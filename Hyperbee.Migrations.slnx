@@ -1,13 +1,15 @@
 <Solution>
+  <Folder Name="/Runners/">
+    <Project Path="runners/Hyperbee.MigrationRunner.Aerospike/Hyperbee.MigrationRunner.Aerospike.csproj" />
+    <Project Path="runners/Hyperbee.MigrationRunner.Couchbase/Hyperbee.MigrationRunner.Couchbase.csproj" />
+    <Project Path="runners/Hyperbee.MigrationRunner.MongoDB/Hyperbee.MigrationRunner.MongoDB.csproj" />
+    <Project Path="runners/Hyperbee.MigrationRunner.Postgres/Hyperbee.MigrationRunner.Postgres.csproj" />
+  </Folder>
   <Folder Name="/Samples/">
-    <Project Path="samples/Hyperbee.MigrationRunner.Aerospike/Hyperbee.MigrationRunner.Aerospike.csproj" />
-    <Project Path="samples/Hyperbee.MigrationRunner.Couchbase/Hyperbee.MigrationRunner.Couchbase.csproj" />
-    <Project Path="samples/Hyperbee.MigrationRunner.MongoDB/Hyperbee.MigrationRunner.MongoDB.csproj" />
-    <Project Path="samples/Hyperbee.MigrationRunner.Postgres/Hyperbee.MigrationRunner.Postgres.csproj" />
-    <Project Path="samples/Hyperbee.Migrations.Aerospike.Samples/Hyperbee.Migrations.Aerospike.Samples.csproj" />
-    <Project Path="samples/Hyperbee.Migrations.Couchbase.Samples/Hyperbee.Migrations.Couchbase.Samples.csproj" />
-    <Project Path="samples/Hyperbee.Migrations.MongoDB.Samples/Hyperbee.Migrations.MongoDB.Samples.csproj" />
-    <Project Path="samples/Hyperbee.Migrations.Postgres.Samples/Hyperbee.Migrations.Postgres.Samples.csproj" />
+    <Project Path="runners/samples/Hyperbee.Migrations.Aerospike.Samples/Hyperbee.Migrations.Aerospike.Samples.csproj" />
+    <Project Path="runners/samples/Hyperbee.Migrations.Couchbase.Samples/Hyperbee.Migrations.Couchbase.Samples.csproj" />
+    <Project Path="runners/samples/Hyperbee.Migrations.MongoDB.Samples/Hyperbee.Migrations.MongoDB.Samples.csproj" />
+    <Project Path="runners/samples/Hyperbee.Migrations.Postgres.Samples/Hyperbee.Migrations.Postgres.Samples.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="Directory.Build.props" />
@@ -33,8 +35,8 @@
     <File Path="unlist_package.yml" />
   </Folder>
   <Folder Name="/Solution Tests/">
-    <Project Path="test/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj" />
-    <Project Path="test/Hyperbee.Migrations.Tests/Hyperbee.Migrations.Tests.csproj" />
+    <Project Path="tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj" />
+    <Project Path="tests/Hyperbee.Migrations.Tests/Hyperbee.Migrations.Tests.csproj" />
   </Folder>
   <Project Path="src/Hyperbee.Migrations.Providers.Aerospike/Hyperbee.Migrations.Providers.Aerospike.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.Couchbase/Hyperbee.Migrations.Providers.Couchbase.csproj" />

@@ -30,12 +30,13 @@ public class PostgresRunnerTest
 
         var (stdOut1, _) = await migrationContainer1.GetLogsAsync();
 
-        Assert.Contains( "[1000] Initial: Up migration started", stdOut1 );
-        Assert.Contains( "[1000] Initial: Up migration completed", stdOut1 );
-        Assert.Contains( "[2000] MigrationAction: Up migration started", stdOut1 );
-        Assert.Contains( "[2000] MigrationAction: Up migration continuing", stdOut1 );
-        Assert.Contains( "[2000] MigrationAction: Up migration completed", stdOut1 );
-        Assert.Contains( "Executed 2 migrations", stdOut1 );
+        Assert.Contains( "[1000] CreateInitialSchema: Up migration started", stdOut1 );
+        Assert.Contains( "[1000] CreateInitialSchema: Up migration completed", stdOut1 );
+        Assert.Contains( "[2000] AddSecondaryIndexes: Up migration started", stdOut1 );
+        Assert.Contains( "[2000] AddSecondaryIndexes: Up migration completed", stdOut1 );
+        Assert.Contains( "[3000] SeedData: Up migration started", stdOut1 );
+        Assert.Contains( "[3000] SeedData: Up migration completed", stdOut1 );
+        Assert.Contains( "Executed 3 migrations", stdOut1 );
 
         // Second run - create new container
         var migrationContainer2 = await PostgresMigrationContainer.BuildMigrationsAsync( Connection, Network, migrationImage );

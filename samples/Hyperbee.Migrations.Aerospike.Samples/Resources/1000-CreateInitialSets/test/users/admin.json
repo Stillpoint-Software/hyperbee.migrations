@@ -1,8 +1,0 @@
-{
-  "id": "user-admin",
-  "name": "Admin User",
-  "email": "admin@example.com",
-  "active": 1,
-  "role": "admin",
-  "createdTimestamp": "2024-01-01T00:00:00Z"
-}

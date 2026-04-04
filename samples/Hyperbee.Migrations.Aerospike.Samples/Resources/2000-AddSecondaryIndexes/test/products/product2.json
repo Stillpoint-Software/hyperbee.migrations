@@ -1,7 +1,0 @@
-{
-  "id": "prod-002",
-  "name": "Gadget",
-  "price": 49.99,
-  "category": "electronics",
-  "inStock": true
-}

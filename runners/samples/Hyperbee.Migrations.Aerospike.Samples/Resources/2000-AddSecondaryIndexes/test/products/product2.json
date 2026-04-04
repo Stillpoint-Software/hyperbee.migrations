@@ -1,0 +1,8 @@
+{
+  "id": "prod-002",
+  "name": "Gadget",
+  "category": "electronics",
+  "price": 49.99,
+  "active": 1,
+  "createdDate": "2024-03-15T12:00:00Z"
+}

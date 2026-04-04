@@ -14,7 +14,7 @@ public class PostgresMigrationContainer
             .WithDeleteIfExists( true )
             .WithCleanUp( true )
             .WithName( "postgres-db-migrations" )
-            .WithDockerfile( "samples/Hyperbee.MigrationRunner.Postgres/Dockerfile" )
+            .WithDockerfile( "runners/Hyperbee.MigrationRunner.Postgres/Dockerfile" )
             .WithDockerfileDirectory( location.DirectoryPath )
             .Build();
 
