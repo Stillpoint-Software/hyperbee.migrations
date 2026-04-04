@@ -1,4 +1,5 @@
-﻿using Couchbase.Extensions.DependencyInjection;
+using Couchbase.Extensions.DependencyInjection;
+using Couchbase.Query;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Couchbase.Samples.Migrations;
@@ -17,7 +18,25 @@ public class SecondaryAction : Migration
 
     public override async Task UpAsync( CancellationToken cancellationToken = default )
     {
-        // N1Ql migration
-        await Task.CompletedTask;
+        // code migration: use the injected cluster provider to run N1QL directly
+
+        var cluster = await _clusterProvider.GetClusterAsync().ConfigureAwait( false );
+        var options = new QueryOptions().CancellationToken( cancellationToken );
+
+        _logger.LogInformation( "Running N1QL code migration" );
+
+        // create a secondary index using N1QL
+        await cluster.QueryAsync<dynamic>(
+            "CREATE INDEX idx_migrationbucket_createdTimestamp ON `migrationbucket`(`createdTimestamp`) WITH { \"defer_build\": true }",
+            options
+        ).ConfigureAwait( false );
+
+        // build deferred indexes
+        await cluster.QueryAsync<dynamic>(
+            "BUILD INDEX ON `migrationbucket`(idx_migrationbucket_createdTimestamp)",
+            options
+        ).ConfigureAwait( false );
+
+        _logger.LogInformation( "N1QL code migration completed" );
     }
 }
