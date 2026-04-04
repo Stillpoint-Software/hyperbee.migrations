@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Aerospike Provider
-nav_order: 7
+nav_order: 8
 ---
 
 # Aerospike Provider

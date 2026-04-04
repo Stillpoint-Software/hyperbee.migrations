@@ -1,7 +1,7 @@
 ---
 layout: default
 title: PostgreSQL Provider
-nav_order: 10
+nav_order: 11
 ---
 
 # PostgreSQL Provider

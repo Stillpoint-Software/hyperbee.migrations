@@ -68,48 +68,14 @@ idempotency:
   secondary indexes
 - **Couchbase** -- Use `IF NOT EXISTS` in N1QL statements
 
-## Lifecycle Methods (Start/Stop)
+## Lifecycle Methods and Continuous Migrations
 
-Migrations can define optional start and stop methods for conditional execution.
-These are useful for time-gated migrations, health checks, or polling scenarios.
+Migrations can define optional `StartMethod` and `StopMethod` methods that
+control when a migration runs and whether it loops. This enables continuous,
+scheduled, and conditional migrations.
 
-```csharp
-[Migration(2000, "StartMethod", "StopMethod")]
-public class ScheduledMigration : Migration
-{
-    private int _count = 0;
-
-    public override async Task UpAsync(CancellationToken cancellationToken = default)
-    {
-        // migration logic
-    }
-
-    public async Task<bool> StartMethod()
-    {
-        _count++;
-        var helper = new MigrationCronHelper();
-        return await helper.CronDelayAsync("0 2 * * *"); // run at 2 AM
-    }
-
-    public Task<bool> StopMethod()
-    {
-        return Task.FromResult(_count > 3); // stop after 3 executions
-    }
-}
-```
-
-## Cron-Based Execution
-
-`MigrationCronHelper.CronDelayAsync(cronExpression)` delays execution until
-the next cron occurrence. It uses the Cronos library for cron parsing.
-
-The standard cron format is `minute hour day month weekday`. Examples:
-
-| Expression    | Schedule          |
-|---------------|-------------------|
-| `0 * * * *`   | Hourly            |
-| `0 2 * * *`   | Daily at 2 AM     |
-| `* * * * *`   | Every minute      |
+See the dedicated [Continuous Migrations](continuous-migrations.md) page for
+the full execution model, patterns, and cron scheduling.
 
 ## Disabling Journaling
 

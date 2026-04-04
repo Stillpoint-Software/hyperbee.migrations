@@ -54,6 +54,7 @@ they only run once.
 | [Concepts](concepts.md) | Core concepts: migration types, versioning, idempotency, profiles, locking |
 | [Getting Started](getting-started.md) | Step-by-step setup for each provider |
 | [Code Migrations](code-migrations.md) | Writing C# code migrations with dependency injection |
+| [Continuous Migrations](continuous-migrations.md) | Long-running, scheduled, and repeating migrations |
 | [Resource Migrations](resource-migrations.md) | Declarative migrations with embedded resource files |
 | [Runners](runners.md) | Standalone runners, CLI reference, Docker |
 | [Aerospike](aerospike.md) | Aerospike provider reference |
