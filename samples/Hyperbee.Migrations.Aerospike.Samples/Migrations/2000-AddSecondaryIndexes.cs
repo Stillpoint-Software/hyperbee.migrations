@@ -7,13 +7,15 @@ public class AddSecondaryIndexes( AerospikeResourceRunner<AddSecondaryIndexes> r
 {
     public override async Task UpAsync( CancellationToken cancellationToken = default )
     {
-        // create additional indexes and seed data
+        // create additional indexes for users and products
         await resourceRunner.StatementsFromAsync( [
             "statements.json"
         ], cancellationToken );
 
+        // seed user and product data
         await resourceRunner.DocumentsFromAsync( [
-            "test/users"
+            "test/users",
+            "test/products"
         ], cancellationToken );
     }
 }

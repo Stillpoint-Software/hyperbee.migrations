@@ -4,7 +4,13 @@
       "statement": "CREATE INDEX WAIT idx_location ON test.users (location) GEO2DSPHERE"
     },
     {
-      "statement": "CREATE INDEX WAIT idx_name ON test.users (name) STRING"
+      "statement": "CREATE INDEX WAIT idx_role ON test.users (role) STRING"
+    },
+    {
+      "statement": "CREATE INDEX WAIT idx_category ON test.products (category) STRING"
+    },
+    {
+      "statement": "CREATE INDEX WAIT idx_price ON test.products (price) NUMERIC"
     }
   ]
 }

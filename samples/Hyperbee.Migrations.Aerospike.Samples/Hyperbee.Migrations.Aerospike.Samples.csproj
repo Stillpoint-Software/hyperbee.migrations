@@ -6,14 +6,24 @@
 
   <ItemGroup>
     <None Remove="Resources\1000-CreateInitialSets\statements.json" />
+    <None Remove="Resources\1000-CreateInitialSets\test\users\admin.json" />
+    <None Remove="Resources\1000-CreateInitialSets\test\users\user1.json" />
+    <None Remove="Resources\1000-CreateInitialSets\test\users\user2.json" />
     <None Remove="Resources\2000-AddSecondaryIndexes\statements.json" />
     <None Remove="Resources\2000-AddSecondaryIndexes\test\users\user1.json" />
+    <None Remove="Resources\2000-AddSecondaryIndexes\test\products\product1.json" />
+    <None Remove="Resources\2000-AddSecondaryIndexes\test\products\product2.json" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\1000-CreateInitialSets\statements.json" />
+    <EmbeddedResource Include="Resources\1000-CreateInitialSets\test\users\admin.json" />
+    <EmbeddedResource Include="Resources\1000-CreateInitialSets\test\users\user1.json" />
+    <EmbeddedResource Include="Resources\1000-CreateInitialSets\test\users\user2.json" />
     <EmbeddedResource Include="Resources\2000-AddSecondaryIndexes\statements.json" />
     <EmbeddedResource Include="Resources\2000-AddSecondaryIndexes\test\users\user1.json" />
+    <EmbeddedResource Include="Resources\2000-AddSecondaryIndexes\test\products\product1.json" />
+    <EmbeddedResource Include="Resources\2000-AddSecondaryIndexes\test\products\product2.json" />
   </ItemGroup>
 
   <ItemGroup>

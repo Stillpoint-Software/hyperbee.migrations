@@ -7,10 +7,14 @@ public class CreateInitialSets( AerospikeResourceRunner<CreateInitialSets> resou
 {
     public override async Task UpAsync( CancellationToken cancellationToken = default )
     {
-        // run a `resource` migration to create initial indexes.
-        // the @WAITREADY directive ensures indexes are built before proceeding.
+        // create initial indexes (WAIT ensures indexes are built before proceeding)
         await resourceRunner.StatementsFromAsync( [
             "statements.json"
+        ], cancellationToken );
+
+        // seed initial user data
+        await resourceRunner.DocumentsFromAsync( [
+            "test/users"
         ], cancellationToken );
     }
 }
