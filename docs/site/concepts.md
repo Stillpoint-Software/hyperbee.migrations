@@ -246,7 +246,8 @@ convention `Record.{version}.{normalized-class-name}`.
 
 ## Migration Attribute Reference
 
-The `MigrationAttribute` supports several constructor overloads:
+The `MigrationAttribute` supports several constructor overloads and a named
+`Cron` property:
 
 ```csharp
 // Simple -- version only
@@ -255,7 +256,7 @@ The `MigrationAttribute` supports several constructor overloads:
 // With profiles
 [Migration(1000, "development", "staging")]
 
-// With lifecycle methods (start/stop cron expressions)
+// With lifecycle methods
 [Migration(1000, "StartMethod", "StopMethod")]
 
 // With lifecycle methods and journaling disabled
@@ -263,12 +264,19 @@ The `MigrationAttribute` supports several constructor overloads:
 
 // Full: lifecycle, journaling, and profiles
 [Migration(1000, "StartMethod", "StopMethod", true, "production")]
+
+// Cron-scheduled migration (runs when due based on last execution time)
+[Migration(1000, Cron = "0 2 * * *")]
 ```
 
 | Parameter     | Type       | Default | Description                                      |
 |---------------|------------|---------|--------------------------------------------------|
 | `version`     | `long`     | --      | Unique version number (required)                 |
-| `startMethod` | `string`   | `null`  | Cron expression or method for start scheduling   |
-| `stopMethod`  | `string`   | `null`  | Cron expression or method for stop scheduling    |
+| `startMethod` | `string`   | `null`  | Method name for start lifecycle (legacy)         |
+| `stopMethod`  | `string`   | `null`  | Method name for stop lifecycle (legacy)          |
 | `journal`     | `bool`     | `true`  | Whether to record the migration after execution  |
 | `profiles`    | `string[]` | `[]`    | Profiles that activate this migration            |
+| `Cron`        | `string`   | `null`  | Cron expression for scheduled recurring execution|
+
+See [Continuous Migrations](continuous-migrations.md) for detailed scheduling
+and lifecycle documentation.

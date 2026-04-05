@@ -90,6 +90,23 @@ internal class PostgresRecordStore : IMigrationRecordStore
         return id != null;
     }
 
+    public async Task<MigrationRecord> ReadAsync( string recordId )
+    {
+        _logger.LogDebug( "Running {action} with `{recordId}`", nameof( ReadAsync ), recordId );
+
+        var command = _dataSource.CreateCommand( GetMigrationRecordFull( recordId ) );
+        await using var reader = await command.ExecuteReaderAsync();
+
+        if ( !await reader.ReadAsync() )
+            return null;
+
+        return new MigrationRecord
+        {
+            Id = reader.GetString( 0 ),
+            RunOn = new DateTimeOffset( reader.GetDateTime( 1 ), TimeSpan.Zero )
+        };
+    }
+
     public async Task DeleteAsync( string recordId )
     {
         _logger.LogDebug( "Running {action} with `{recordId}`", nameof( DeleteAsync ), recordId );
@@ -128,6 +145,8 @@ internal class PostgresRecordStore : IMigrationRecordStore
          """;
 
     private string GetMigrationRecord( string recordId ) => $"SELECT record_id FROM {MigrationTableName} WHERE record_id = '{recordId}'";
+
+    private string GetMigrationRecordFull( string recordId ) => $"SELECT record_id, run_on FROM {MigrationTableName} WHERE record_id = '{recordId}'";
 
     private string InsertMigrationRecord( string recordId ) => $"INSERT INTO {MigrationTableName} (record_id, run_on) VALUES ('{recordId}', NOW())";
 

@@ -68,14 +68,14 @@ idempotency:
   secondary indexes
 - **Couchbase** -- Use `IF NOT EXISTS` in N1QL statements
 
-## Lifecycle Methods and Continuous Migrations
+## Scheduled and Continuous Migrations
 
-Migrations can define optional `StartMethod` and `StopMethod` methods that
-control when a migration runs and whether it loops. This enables continuous,
-scheduled, and conditional migrations.
+Migrations can run on a recurring schedule using the `Cron` attribute property,
+or implement `IContinuousMigration` for custom lifecycle control with full
+CancellationToken support.
 
 See the dedicated [Continuous Migrations](continuous-migrations.md) page for
-the full execution model, patterns, and cron scheduling.
+cron scheduling, the IContinuousMigration interface, and execution patterns.
 
 ## Disabling Journaling
 

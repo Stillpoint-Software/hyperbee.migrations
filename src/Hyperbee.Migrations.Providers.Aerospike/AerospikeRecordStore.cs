@@ -108,6 +108,24 @@ internal class AerospikeRecordStore : IMigrationRecordStore
         return record != null;
     }
 
+    public async Task<MigrationRecord> ReadAsync( string recordId )
+    {
+        _logger.LogDebug( "Running {action} with `{recordId}`", nameof( ReadAsync ), recordId );
+
+        var key = new Key( _options.Namespace, _options.MigrationSet, recordId );
+        var record = await _client.Get( null, CancellationToken.None, key ).ConfigureAwait( false );
+
+        if ( record == null )
+            return null;
+
+        var executedAt = record.GetLong( "ExecutedAt" );
+        return new MigrationRecord
+        {
+            Id = recordId,
+            RunOn = DateTimeOffset.FromUnixTimeSeconds( executedAt )
+        };
+    }
+
     public async Task DeleteAsync( string recordId )
     {
         _logger.LogDebug( "Running {action} with `{recordId}`", nameof( DeleteAsync ), recordId );

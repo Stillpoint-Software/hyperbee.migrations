@@ -216,6 +216,23 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         return check.Exists;
     }
 
+    public async Task<MigrationRecord> ReadAsync( string recordId )
+    {
+        var collection = await GetCollectionAsync()
+            .ConfigureAwait( false );
+
+        var check = await collection.ExistsAsync( recordId )
+            .ConfigureAwait( false );
+
+        if ( !check.Exists )
+            return null;
+
+        var result = await collection.GetAsync( recordId )
+            .ConfigureAwait( false );
+
+        return result.ContentAs<MigrationRecord>();
+    }
+
     public async Task DeleteAsync( string recordId )
     {
         var collection = await GetCollectionAsync()

@@ -94,6 +94,16 @@ internal class MongoDBRecordStore : IMigrationRecordStore
         return record != null;
     }
 
+    public async Task<MigrationRecord> ReadAsync( string recordId )
+    {
+        _logger.LogDebug( "Running {action} with `{recordId}`", nameof( ReadAsync ), recordId );
+
+        var db = _client.GetDatabase( _options.DatabaseName );
+        var collection = db.GetCollection<MigrationRecord>( _options.CollectionName );
+        using var cursor = await collection.FindAsync( x => x.Id == recordId );
+        return await cursor.FirstOrDefaultAsync();
+    }
+
     public async Task DeleteAsync( string recordId )
     {
         _logger.LogDebug( "Running {action} with `{recordId}`", nameof( DeleteAsync ), recordId );

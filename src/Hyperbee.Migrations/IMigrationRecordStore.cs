@@ -10,6 +10,7 @@ public interface IMigrationRecordStore
     Task<IDisposable> CreateLockAsync();
 
     Task<bool> ExistsAsync( string recordId );
+    Task<MigrationRecord> ReadAsync( string recordId );
     Task DeleteAsync( string recordId );
     Task WriteAsync( string recordId );
 }

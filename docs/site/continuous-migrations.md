@@ -6,112 +6,62 @@ nav_order: 5
 
 # Continuous Migrations
 
-Hyperbee Migrations supports long-running and repeating migrations through a
-loop-based execution model built into the migration runner. Using lifecycle
-methods (`StartMethod` and `StopMethod`) and optional cron scheduling, a single
-migration can execute repeatedly on a schedule, poll for conditions, or run
-until a stopping criterion is met.
+Not all migrations are one-time schema changes. Some need to run on a schedule,
+poll for readiness, or repeat until a condition is met. Hyperbee Migrations
+supports these scenarios through three approaches, each suited to different
+use cases.
 
-## How It Works
+## Three Approaches
 
-The runner wraps each migration in a `while` loop. On every iteration:
+| Approach | Best For | Blocking? | How It Works |
+|----------|----------|-----------|--------------|
+| [Cron Attribute](#cron-scheduled-migrations) | Recurring tasks on a schedule | No | Runner checks if due, runs if yes, skips if not |
+| [IContinuousMigration](#icontinuousmigration-interface) | Custom lifecycle with cancellation | Looping | Type-safe Start/Stop with CancellationToken |
+| [String-based lifecycle](#string-based-lifecycle-legacy) | Legacy/simple cases | Looping | Reflection-based Start/Stop methods |
 
-1. **StartMethod** is called. If it returns `false`, the loop waits and retries.
-   If it returns `true` (or is not defined), the migration proceeds.
-2. **UpAsync** (or `DownAsync`) executes the migration logic.
-3. **StopMethod** is called. If it returns `true` (or is not defined), the loop
-   exits and the migration is marked complete. If it returns `false`, the loop
-   continues back to step 1.
+---
 
-```
-while (stopProcess == false):
-    |
-    +-- StartMethod() --> false? loop back (wait/retry)
-    |                 --> true?  continue
-    |
-    +-- UpAsync()
-    |
-    +-- StopMethod()  --> true?  exit loop, record migration
-                      --> false? loop back to StartMethod
-```
+## Cron-Scheduled Migrations
 
-When neither StartMethod nor StopMethod is defined, the migration runs exactly
-once -- the default behavior.
-
-## Defining Lifecycle Methods
-
-Lifecycle methods are specified by name in the `[Migration]` attribute and
-discovered via reflection at runtime.
+The recommended approach for recurring migrations. Add a `Cron` property to
+the migration attribute, and the runner will check whether the migration is
+due based on its last execution time.
 
 ```csharp
-[Migration(2000, "StartMethod", "StopMethod")]
-public class MyRepeatingMigration : Migration
+[Migration(2000, Cron = "0 2 * * *")]
+public class NightlyCleanup : Migration
 {
     public override async Task UpAsync(CancellationToken cancellationToken = default)
     {
-        // This executes on every loop iteration
-    }
-
-    public async Task<bool> StartMethod()
-    {
-        // Return true to proceed to UpAsync
-        // Return false to skip this iteration (loop retries)
-        return await Task.FromResult(true);
-    }
-
-    public Task<bool> StopMethod()
-    {
-        // Return true to exit the loop (migration complete)
-        // Return false to continue looping
-        return Task.FromResult(true);
+        // Runs once per day at 2:00 AM UTC -- only when the runner is invoked
     }
 }
 ```
 
-**Method signature requirements:**
-- Must return `Task<bool>`
-- Must take zero parameters
-- Must match the name specified in the attribute exactly
+### How It Works
 
-## Cron-Based Scheduling
+1. The runner calls `ReadAsync(recordId)` to get the migration's last run time
+2. `MigrationCronHelper.IsDue(cronExpression, lastRunOn)` checks whether the
+   next cron occurrence after the last run has passed
+3. If due: execute `UpAsync`, then update the record with the current timestamp
+4. If not due: skip the migration entirely (non-blocking)
+5. If never run before: always due (first execution)
 
-The `MigrationCronHelper` integrates with the lifecycle model to create
-time-gated migrations. It blocks the runner until the next cron occurrence,
-then returns `true` to proceed.
+The runner completes in seconds -- it does not block or wait. To run
+migrations on a recurring basis, invoke the runner periodically using a hosted
+service timer, Kubernetes CronJob, Windows Task Scheduler, or similar.
 
-```csharp
-[Migration(3000, "StartMethod", "StopMethod")]
-public class HourlyCleanup : Migration
-{
-    private int _executionCount = 0;
-
-    public override async Task UpAsync(CancellationToken cancellationToken = default)
-    {
-        // Cleanup logic that runs every hour
-    }
-
-    public async Task<bool> StartMethod()
-    {
-        _executionCount++;
-        var helper = new MigrationCronHelper();
-        return await helper.CronDelayAsync("0 * * * *"); // block until next hour
-    }
-
-    public Task<bool> StopMethod()
-    {
-        // Run 24 times (once per hour for a day), then stop
-        return Task.FromResult(_executionCount >= 24);
-    }
-}
+```
+External scheduler (every 15 min) --> Runner starts
+  --> Migration 1000 (one-time, recorded): skip
+  --> Migration 2000 (cron hourly, last ran 45 min ago): due, run it
+  --> Migration 3000 (cron daily, last ran 3 hours ago): not due, skip
+  --> Runner exits in <1 second
 ```
 
-**How `CronDelayAsync` works:**
-1. Parses the cron expression using the Cronos library
-2. Calculates the next occurrence from the current UTC time
-3. Calls `Task.Delay()` to block until that time
-4. Returns `true` (always proceeds to UpAsync)
+### Cron Format
 
-**Cron format:** Standard five-field format -- `minute hour day month weekday`
+Standard five-field format: `minute hour day month weekday`
 
 | Expression    | Schedule               |
 |---------------|------------------------|
@@ -121,140 +71,225 @@ public class HourlyCleanup : Migration
 | `0 0 * * 0`   | Weekly on Sunday       |
 | `*/5 * * * *` | Every 5 minutes        |
 
-## Journaling and Continuous Migrations
+### Using IsDue Directly
 
-The `journal` parameter controls whether the migration is recorded after
-completion. This is critical for continuous migration behavior:
-
-**Journaled (default):** The migration record is written only after StopMethod
-returns `true`. On subsequent runner executions, the migration is skipped
-because it is already recorded.
+You can also use the `IsDue` helper in custom code:
 
 ```csharp
-// Runs its loop once, then never again
-[Migration(1000, "StartMethod", "StopMethod")]
+// Returns true if the cron schedule is due based on last run time
+var isDue = MigrationCronHelper.IsDue("0 * * * *", lastRunTimestamp);
+
+// null lastRunOn means never run -- always returns true
+var isDue = MigrationCronHelper.IsDue("0 * * * *", null); // true
 ```
 
-**Non-journaled:** The migration record is never written. The migration runs
-its full loop every time the runner executes.
+---
+
+## IContinuousMigration Interface
+
+For migrations that need custom lifecycle control -- polling for readiness,
+looping a fixed number of times, or coordinating with external systems.
+This approach provides compile-time safety and CancellationToken support.
 
 ```csharp
-// Runs its loop on every runner execution
-[Migration(1000, "StartMethod", "StopMethod", false)]
+[Migration(3000)]
+public class BatchProcessor : Migration, IContinuousMigration
+{
+    private int _batch;
+
+    public override async Task UpAsync(CancellationToken cancellationToken = default)
+    {
+        // Process batch -- runs on each loop iteration
+    }
+
+    public Task<bool> StartAsync(CancellationToken cancellationToken = default)
+    {
+        // Return true to proceed to UpAsync
+        // Return false to skip this iteration (loop retries)
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> StopAsync(CancellationToken cancellationToken = default)
+    {
+        _batch++;
+        // Return true to exit the loop (migration complete)
+        // Return false to continue looping
+        return Task.FromResult(_batch >= 10);
+    }
+}
 ```
 
-## Common Patterns
+### Execution Flow
 
-### Poll Until Ready
+```
+while (stopProcess == false):
+    |
+    +-- StartAsync(ct) --> false? loop back
+    |                  --> true?  continue
+    |
+    +-- UpAsync(ct)
+    |
+    +-- StopAsync(ct)  --> true?  exit loop, record migration
+                       --> false? loop back to StartAsync
+```
 
-Wait for an external condition before proceeding with a one-time migration.
+### Interface Definition
 
 ```csharp
-[Migration(1000, "WaitForService", null)]
-public class MigrateWhenReady : Migration
+public interface IContinuousMigration
+{
+    Task<bool> StartAsync(CancellationToken cancellationToken = default);
+    Task<bool> StopAsync(CancellationToken cancellationToken = default);
+}
+```
+
+Both methods receive the runner's CancellationToken, so they can honor
+application shutdown signals.
+
+### Example: Poll Until Ready
+
+```csharp
+[Migration(1000)]
+public class WaitForDependency : Migration, IContinuousMigration
 {
     private readonly IHealthChecker _health;
 
-    public MigrateWhenReady(IHealthChecker health) => _health = health;
+    public WaitForDependency(IHealthChecker health) => _health = health;
 
     public override async Task UpAsync(CancellationToken cancellationToken = default)
     {
-        // Run once after the service is healthy
+        // Runs once after the dependency is healthy
     }
 
-    public async Task<bool> WaitForService()
+    public async Task<bool> StartAsync(CancellationToken cancellationToken = default)
     {
-        var ready = await _health.IsReadyAsync();
+        var ready = await _health.IsReadyAsync(cancellationToken);
         if (!ready)
-            await Task.Delay(TimeSpan.FromSeconds(10));
+            await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
         return ready;
     }
-}
-```
 
-### Repeating Task with Counter
-
-Execute a migration a fixed number of times.
-
-```csharp
-[Migration(2000, "Start", "Stop")]
-public class BatchProcessor : Migration
-{
-    private int _batch = 0;
-
-    public override async Task UpAsync(CancellationToken cancellationToken = default)
+    public Task<bool> StopAsync(CancellationToken cancellationToken = default)
     {
-        // Process batch _batch
-    }
-
-    public Task<bool> Start() => Task.FromResult(true);
-
-    public Task<bool> Stop()
-    {
-        _batch++;
-        return Task.FromResult(_batch >= 10); // 10 batches
+        return Task.FromResult(true); // run once after ready
     }
 }
 ```
 
-### Scheduled Recurring Task
+---
 
-Run on a cron schedule until a condition is met.
+## String-Based Lifecycle (Legacy)
+
+The original approach, preserved for backwards compatibility. Lifecycle methods
+are specified by name in the attribute and discovered via reflection.
 
 ```csharp
-[Migration(3000, "OnSchedule", "CheckComplete", false)]
-public class ScheduledSync : Migration
+[Migration(4000, "StartMethod", "StopMethod")]
+public class LegacyRepeating : Migration
 {
-    private readonly ISyncService _sync;
-
-    public ScheduledSync(ISyncService sync) => _sync = sync;
+    private int _count;
 
     public override async Task UpAsync(CancellationToken cancellationToken = default)
     {
-        await _sync.SyncAsync(cancellationToken);
+        // migration logic
     }
 
+    public Task<bool> StartMethod()
+    {
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> StopMethod()
+    {
+        _count++;
+        return Task.FromResult(_count >= 3);
+    }
+}
+```
+
+**Limitations compared to IContinuousMigration:**
+- No CancellationToken -- methods cannot honor shutdown signals
+- String-based discovery -- typos fail silently at runtime
+- No compile-time validation of method signatures
+
+If a migration implements `IContinuousMigration`, the interface methods take
+precedence over string-based StartMethod/StopMethod.
+
+### Blocking Cron with CronDelayAsync
+
+The legacy `CronDelayAsync` method blocks the runner until the next cron
+occurrence. This is still available but not recommended for long intervals.
+
+```csharp
+[Migration(5000, "OnSchedule", "CheckDone")]
+public class BlockingSchedule : Migration
+{
     public async Task<bool> OnSchedule()
     {
         var helper = new MigrationCronHelper();
-        return await helper.CronDelayAsync("*/30 * * * *"); // every 30 minutes
+        return await helper.CronDelayAsync("0 * * * *", cancellationToken);
     }
-
-    public async Task<bool> CheckComplete()
-    {
-        return await _sync.IsFullySyncedAsync();
-    }
+    // ...
 }
 ```
 
+For recurring tasks, prefer the `Cron` attribute approach instead -- it is
+non-blocking and does not hold the runner or database lock.
+
+---
+
+## Journaling
+
+The `journal` parameter controls whether the migration record is written
+after completion:
+
+- **`journal: true` (default):** Record is written when the migration completes.
+  One-time and IContinuousMigration loops are recorded after StopAsync returns
+  true. Cron migrations update the record timestamp each time they run.
+
+- **`journal: false`:** Record is never written. The migration runs every time
+  the runner executes, regardless of previous runs.
+
+```csharp
+// Cron migration: re-runs on schedule, record tracks last run time
+[Migration(1000, Cron = "0 * * * *")]
+
+// Non-journaled: runs every time, no cron check needed
+[Migration(2000, journal: false)]
+```
+
+---
+
 ## Pattern Reference
 
-| Pattern | StartMethod | StopMethod | Journal | Behavior |
-|---------|-------------|------------|---------|----------|
-| One-time migration | None | None | true | Runs once, recorded, never repeats |
-| Conditional gate | Custom poll | None | true | Waits for condition, runs once, recorded |
-| Fixed loop count | `return true` | Counter check | true | Loops N times, recorded, never repeats |
-| Scheduled loop | Cron delay | Counter/condition | true | Runs on schedule until done, recorded |
-| Recurring task | Cron delay | Condition check | false | Runs every runner execution on schedule |
-| Always-run setup | None | None | false | Runs every time, no looping |
+| Pattern | Approach | Attribute | Behavior |
+|---------|----------|-----------|----------|
+| One-time | Default | `[Migration(1)]` | Run once, record, never again |
+| Scheduled | Cron | `[Migration(1, Cron = "0 2 * * *")]` | Non-blocking, runs when due |
+| Poll-then-run | Interface | `IContinuousMigration` | Loops until StartAsync returns true, runs once |
+| Fixed iterations | Interface | `IContinuousMigration` | Loops N times via StopAsync counter |
+| Legacy loop | String | `[Migration(1, "Start", "Stop")]` | Reflection-based loop |
+| Always-run | Default | `[Migration(1, journal: false)]` | Runs every time, no record |
 
 ## Important Considerations
 
-- **Blocking behavior:** `CronDelayAsync` and `Task.Delay` block the entire
-  migration runner. No other migrations execute while a migration is waiting
-  in its StartMethod. Plan accordingly.
+- **Cron migrations are non-blocking.** The runner checks due-ness and moves
+  on. To run migrations on a schedule, invoke the runner periodically from an
+  external scheduler or hosted service.
 
-- **Sequential execution:** Migrations with loops run sequentially. A migration
-  at version 2000 will not start until the migration at version 1000 has
-  completed its entire loop (StopMethod returned `true`).
+- **IContinuousMigration loops are blocking.** The runner does not proceed to
+  the next migration until StopAsync returns true. Use CancellationToken to
+  allow graceful shutdown.
 
-- **Instance state:** StartMethod and StopMethod run on the same migration
-  instance as UpAsync, so instance fields (like counters) are preserved across
-  loop iterations within a single runner execution.
+- **Sequential execution.** Migrations run in version order. A looping migration
+  at version 2000 blocks version 3000 until it completes.
 
-- **No parameters:** Lifecycle methods must have the signature `Task<bool>()`
-  with no parameters. They cannot receive CancellationToken or other arguments.
+- **Instance state is preserved** across loop iterations within a single runner
+  execution. Instance fields (counters, flags) work as expected.
 
-- **String-based discovery:** Method names are matched by string at runtime via
-  reflection. There is no compile-time validation -- a typo in the attribute
-  will cause the method to not be found (logged as an error, returns false).
+- **Cron migrations use upsert semantics.** Each execution deletes the old
+  record and writes a new one with the current timestamp.
+
+- **CancellationToken** is passed to `StartAsync`, `StopAsync`, and `UpAsync`
+  for IContinuousMigration. The legacy string-based methods do not receive it.
+  `CronDelayAsync` accepts an optional CancellationToken parameter.

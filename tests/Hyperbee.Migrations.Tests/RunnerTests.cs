@@ -41,12 +41,14 @@ public class RunnerTests
         await migrationRunner.RunAsync();
 
         // assert
-        Assert.HasCount( 5, store );
+        Assert.HasCount( 7, store );
         Assert.AreEqual( "record.1.first-migration", store.First().Id );
         Assert.AreEqual( "record.2.second-migration", store.Skip( 1 ).First().Id );
         Assert.AreEqual( "record.7.cron-delay-no-stop-migration", store.Skip( 2 ).First().Id );
         Assert.AreEqual( "record.8.cron-delay-with-stop-migration", store.Skip( 3 ).First().Id );
         Assert.AreEqual( "record.9.stop-migration", store.Skip( 4 ).First().Id );
+        Assert.AreEqual( "record.10.cron-migration", store.Skip( 5 ).First().Id );
+        Assert.AreEqual( "record.11.interface-continuous-migration", store.Skip( 6 ).First().Id );
 
     }
 
@@ -136,13 +138,15 @@ public class RunnerTests
         await migrationRunner.RunAsync();
 
         // assert
-        Assert.HasCount( 6, store );
+        Assert.HasCount( 8, store );
         Assert.AreEqual( "record.1.first-migration", store.First().Id );
         Assert.AreEqual( "record.2.second-migration", store.Skip( 1 ).First().Id );
         Assert.AreEqual( "record.3.development-migration", store.Skip( 2 ).First().Id );
         Assert.AreEqual( "record.7.cron-delay-no-stop-migration", store.Skip( 3 ).First().Id );
         Assert.AreEqual( "record.8.cron-delay-with-stop-migration", store.Skip( 4 ).First().Id );
         Assert.AreEqual( "record.9.stop-migration", store.Skip( 5 ).First().Id );
+        Assert.AreEqual( "record.10.cron-migration", store.Skip( 6 ).First().Id );
+        Assert.AreEqual( "record.11.interface-continuous-migration", store.Skip( 7 ).First().Id );
     }
 
     public async Task Migrations_run_with_up_direction_with_inheritance()
@@ -184,13 +188,15 @@ public class RunnerTests
         await migrationRunner.RunAsync();
 
         // assert
-        Assert.HasCount( 6, store );
+        Assert.HasCount( 8, store );
         Assert.AreEqual( "record.1.first-migration", store.First().Id );
         Assert.AreEqual( "record.2.second-migration", store.Skip( 1 ).First().Id );
         Assert.AreEqual( "record.5.has-problems-with-underscores", store.Skip( 2 ).First().Id );
         Assert.AreEqual( "record.7.cron-delay-no-stop-migration", store.Skip( 3 ).First().Id );
         Assert.AreEqual( "record.8.cron-delay-with-stop-migration", store.Skip( 4 ).First().Id );
         Assert.AreEqual( "record.9.stop-migration", store.Skip( 5 ).First().Id );
+        Assert.AreEqual( "record.10.cron-migration", store.Skip( 6 ).First().Id );
+        Assert.AreEqual( "record.11.interface-continuous-migration", store.Skip( 7 ).First().Id );
     }
 
 
@@ -206,6 +212,128 @@ public class RunnerTests
 
         // assert
         Assert.IsTrue( results );
+    }
+
+    [TestMethod]
+    public void IsDue_returns_true_when_never_run()
+    {
+        // a migration that has never run should be due
+        var result = MigrationCronHelper.IsDue( "0 * * * *", null );
+
+        Assert.IsTrue( result );
+    }
+
+    [TestMethod]
+    public void IsDue_returns_false_when_recently_run()
+    {
+        // ran 5 minutes ago with an hourly cron -- not due yet
+        var lastRun = DateTimeOffset.UtcNow.AddMinutes( -5 );
+        var result = MigrationCronHelper.IsDue( "0 * * * *", lastRun );
+
+        Assert.IsFalse( result );
+    }
+
+    [TestMethod]
+    public void IsDue_returns_true_when_past_due()
+    {
+        // ran 2 hours ago with an hourly cron -- due
+        var lastRun = DateTimeOffset.UtcNow.AddHours( -2 );
+        var result = MigrationCronHelper.IsDue( "0 * * * *", lastRun );
+
+        Assert.IsTrue( result );
+    }
+
+    [TestMethod]
+    public async Task Cron_migration_skips_when_not_due()
+    {
+        // arrange: pre-populate ALL non-cron migrations so they are skipped,
+        // and set cron migration as having run just now
+        var store = new List<(string Id, MigrationRecord Record)>
+        {
+            ("record.1.first-migration", new MigrationRecord { Id = "record.1.first-migration" }),
+            ("record.2.second-migration", new MigrationRecord { Id = "record.2.second-migration" }),
+            ("record.7.cron-delay-no-stop-migration", new MigrationRecord { Id = "record.7.cron-delay-no-stop-migration" }),
+            ("record.8.cron-delay-with-stop-migration", new MigrationRecord { Id = "record.8.cron-delay-with-stop-migration" }),
+            ("record.9.stop-migration", new MigrationRecord { Id = "record.9.stop-migration" }),
+            ("record.10.cron-migration", new MigrationRecord { Id = "record.10.cron-migration", RunOn = DateTimeOffset.UtcNow }),
+            ("record.11.interface-continuous-migration", new MigrationRecord { Id = "record.11.interface-continuous-migration" })
+        };
+        var recordStore = InitializeStore( store );
+        var options = GetMigrationOptions();
+
+        var logger = Substitute.For<ILogger<MigrationRunner>>();
+        var storeCountBefore = store.Count;
+        var migrationRunner = new MigrationRunner( recordStore, options, logger );
+
+        // act
+        await migrationRunner.RunAsync();
+
+        // assert: store should not have changed (no new records written, no delete+write for cron)
+        Assert.AreEqual( storeCountBefore, store.Count );
+    }
+
+    [TestMethod]
+    public async Task Cron_migration_runs_when_due()
+    {
+        // arrange: pre-populate ALL non-cron migrations so they are skipped,
+        // and set cron migration as having run 2 hours ago (hourly cron, so it is due)
+        var store = new List<(string Id, MigrationRecord Record)>
+        {
+            ("record.1.first-migration", new MigrationRecord { Id = "record.1.first-migration" }),
+            ("record.2.second-migration", new MigrationRecord { Id = "record.2.second-migration" }),
+            ("record.7.cron-delay-no-stop-migration", new MigrationRecord { Id = "record.7.cron-delay-no-stop-migration" }),
+            ("record.8.cron-delay-with-stop-migration", new MigrationRecord { Id = "record.8.cron-delay-with-stop-migration" }),
+            ("record.9.stop-migration", new MigrationRecord { Id = "record.9.stop-migration" }),
+            ("record.10.cron-migration", new MigrationRecord { Id = "record.10.cron-migration", RunOn = DateTimeOffset.UtcNow.AddHours( -2 ) }),
+            ("record.11.interface-continuous-migration", new MigrationRecord { Id = "record.11.interface-continuous-migration" })
+        };
+        var recordStore = InitializeStore( store );
+        var options = GetMigrationOptions();
+
+        var logger = Substitute.For<ILogger<MigrationRunner>>();
+        var migrationRunner = new MigrationRunner( recordStore, options, logger );
+
+        // act
+        await migrationRunner.RunAsync();
+
+        // assert: cron migration should have run (delete+write = store count stays same but record updated)
+        // the runner deletes the old record then writes a new one, so verify WriteAsync was called
+        await recordStore.Received().WriteAsync( "record.10.cron-migration" );
+    }
+
+    [TestMethod]
+    public async Task Interface_continuous_migration_receives_cancellation_token()
+    {
+        // arrange: pre-populate ALL other migrations so only migration 11 runs
+        var store = new List<(string Id, MigrationRecord Record)>
+        {
+            ("record.1.first-migration", new MigrationRecord { Id = "record.1.first-migration" }),
+            ("record.2.second-migration", new MigrationRecord { Id = "record.2.second-migration" }),
+            ("record.7.cron-delay-no-stop-migration", new MigrationRecord { Id = "record.7.cron-delay-no-stop-migration" }),
+            ("record.8.cron-delay-with-stop-migration", new MigrationRecord { Id = "record.8.cron-delay-with-stop-migration" }),
+            ("record.9.stop-migration", new MigrationRecord { Id = "record.9.stop-migration" }),
+            ("record.10.cron-migration", new MigrationRecord { Id = "record.10.cron-migration", RunOn = DateTimeOffset.UtcNow })
+        };
+        var recordStore = InitializeStore( store );
+        var options = GetMigrationOptions();
+
+        var logger = Substitute.For<ILogger<MigrationRunner>>();
+
+        var upBefore = Interface_Continuous_Migration.TotalUpCount;
+        var startBefore = Interface_Continuous_Migration.TotalStartCount;
+        var stopBefore = Interface_Continuous_Migration.TotalStopCount;
+        Interface_Continuous_Migration.ReceivedCancellationToken = false;
+
+        var migrationRunner = new MigrationRunner( recordStore, options, logger );
+
+        // act
+        await migrationRunner.RunAsync( _cancellationTokenSource.Token );
+
+        // assert: interface methods were called, cancellation token was passed
+        Assert.IsTrue( Interface_Continuous_Migration.ReceivedCancellationToken );
+        Assert.AreEqual( 2, Interface_Continuous_Migration.TotalUpCount - upBefore ); // looped twice (StopAsync returns true on _loopCount >= 2)
+        Assert.AreEqual( 2, Interface_Continuous_Migration.TotalStartCount - startBefore );
+        Assert.AreEqual( 2, Interface_Continuous_Migration.TotalStopCount - stopBefore );
     }
 
 
@@ -228,6 +356,11 @@ public class RunnerTests
         recordStore.CreateLockAsync().Returns( Task.FromResult( new FakeLock() ) );
 
         recordStore.ExistsAsync( Arg.Any<string>() ).Returns( args => Task.FromResult( store.Any( x => x.Id == args.Arg<string>() ) ) );
+        recordStore.ReadAsync( Arg.Any<string>() ).Returns( args =>
+        {
+            var match = store.FirstOrDefault( x => x.Id == args.Arg<string>() );
+            return Task.FromResult( match.Record );
+        } );
         recordStore.DeleteAsync( Arg.Any<string>() ).Returns( args =>
         {
             var record = store.FirstOrDefault( x => x.Id == args.Arg<string>() );
@@ -357,5 +490,52 @@ public class Stop_Migration : Migration
 public abstract class BaseMigration : Migration
 {
     public override Task UpAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
+}
+
+// cron-based migration: runs when due based on last execution time (hourly)
+[Migration( 10, Cron = "0 * * * *" )]
+public class Cron_Migration : Migration
+{
+    public static int ExecutionCount;
+
+    public override Task UpAsync( CancellationToken cancellationToken = default )
+    {
+        ExecutionCount++;
+        return Task.CompletedTask;
+    }
+}
+
+// interface-based continuous migration
+[Migration( 11 )]
+public class Interface_Continuous_Migration : Migration, IContinuousMigration
+{
+    // static counters for cross-test verification
+    public static int TotalStartCount;
+    public static int TotalStopCount;
+    public static int TotalUpCount;
+    public static bool ReceivedCancellationToken;
+
+    // instance counter for loop control (reset per migration instance)
+    private int _loopCount;
+
+    public override Task UpAsync( CancellationToken cancellationToken = default )
+    {
+        TotalUpCount++;
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> StartAsync( CancellationToken cancellationToken = default )
+    {
+        TotalStartCount++;
+        ReceivedCancellationToken = cancellationToken.CanBeCanceled;
+        return Task.FromResult( true );
+    }
+
+    public Task<bool> StopAsync( CancellationToken cancellationToken = default )
+    {
+        _loopCount++;
+        TotalStopCount++;
+        return Task.FromResult( _loopCount >= 2 ); // loop twice per instance
+    }
 }
 

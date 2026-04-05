@@ -8,6 +8,7 @@ public class MigrationAttribute : Attribute
     public string StartMethod { get; set; }
     public string StopMethod { get; set; }
     public bool Journal { get; set; }
+    public string Cron { get; set; }
 
     public MigrationAttribute( long version, params string[] profiles ) : this( version, null, null, true, profiles ) { }
 
