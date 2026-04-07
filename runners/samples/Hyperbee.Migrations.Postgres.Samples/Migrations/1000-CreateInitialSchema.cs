@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Providers.Postgres.Resources;
+﻿using Hyperbee.Migrations.Providers.Postgres.Resources;
 
 namespace Hyperbee.Migrations.Postgres.Samples.Migrations;
 

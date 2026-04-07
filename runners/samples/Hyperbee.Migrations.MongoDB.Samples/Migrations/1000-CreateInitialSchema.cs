@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Providers.MongoDB.Resources;
+﻿using Hyperbee.Migrations.Providers.MongoDB.Resources;
 
 namespace Hyperbee.Migrations.MongoDB.Samples.Migrations;
 

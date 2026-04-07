@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Providers.Aerospike;
+﻿using Hyperbee.Migrations.Providers.Aerospike;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 [TestClass]

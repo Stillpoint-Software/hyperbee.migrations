@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Providers.Aerospike.Resources;
+﻿using Hyperbee.Migrations.Providers.Aerospike.Resources;
 
 namespace Hyperbee.Migrations.Aerospike.Samples.Migrations;
 

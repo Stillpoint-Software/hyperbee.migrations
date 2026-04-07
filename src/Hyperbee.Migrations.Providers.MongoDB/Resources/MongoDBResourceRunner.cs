@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 using Hyperbee.Migrations.Providers.MongoDB.Parsers;
 using Hyperbee.Migrations.Resources;
 using Hyperbee.Migrations.Wait;

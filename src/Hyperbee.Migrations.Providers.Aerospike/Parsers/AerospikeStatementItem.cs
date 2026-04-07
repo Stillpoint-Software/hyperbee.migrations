@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Providers.Aerospike.Parsers;
+﻿namespace Hyperbee.Migrations.Providers.Aerospike.Parsers;
 
 public record AerospikeStatementItem(
     AerospikeStatementType StatementType,

@@ -1,4 +1,4 @@
-//#define INTEGRATIONS
+﻿//#define INTEGRATIONS
 using Aerospike.Client;
 using Hyperbee.Migrations.Integration.Tests.Container.Aerospike;
 

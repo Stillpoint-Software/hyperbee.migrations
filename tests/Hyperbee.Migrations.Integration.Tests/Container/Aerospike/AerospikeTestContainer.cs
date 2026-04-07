@@ -1,4 +1,4 @@
-using Aerospike.Client;
+﻿using Aerospike.Client;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 

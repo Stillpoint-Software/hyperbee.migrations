@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Integration.Tests.Container.Aerospike;
+﻿using Hyperbee.Migrations.Integration.Tests.Container.Aerospike;
 using Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
 using Hyperbee.Migrations.Integration.Tests.Container.MongoDb;
 using Hyperbee.Migrations.Integration.Tests.Container.Postgres;

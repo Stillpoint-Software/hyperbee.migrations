@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations;
+﻿namespace Hyperbee.Migrations;
 
 public interface IContinuousMigration
 {

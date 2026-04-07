@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Providers.MongoDB.Parsers;
+﻿namespace Hyperbee.Migrations.Providers.MongoDB.Parsers;
 
 public enum MongoStatementType
 {

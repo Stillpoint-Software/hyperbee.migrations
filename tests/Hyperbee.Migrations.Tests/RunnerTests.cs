@@ -269,7 +269,7 @@ public class RunnerTests
         await migrationRunner.RunAsync();
 
         // assert: store should not have changed (no new records written, no delete+write for cron)
-        Assert.AreEqual( storeCountBefore, store.Count );
+        Assert.HasCount( storeCountBefore, store );
     }
 
     [TestMethod]

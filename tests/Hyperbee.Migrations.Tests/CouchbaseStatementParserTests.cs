@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Couchbase.Management.Buckets;
 using Hyperbee.Migrations.Providers.Couchbase.Parsers;
 using Microsoft.VisualStudio.TestTools.UnitTesting;

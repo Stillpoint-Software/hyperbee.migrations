@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 using Aerospike.Client;
 using Hyperbee.Migrations.Providers.Aerospike.Parsers;
 using Hyperbee.Migrations.Resources;

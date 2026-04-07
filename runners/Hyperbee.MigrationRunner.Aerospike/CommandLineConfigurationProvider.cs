@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 
 // Enhancement to microsoft's CommandLineConfigurationProvider with array support
 

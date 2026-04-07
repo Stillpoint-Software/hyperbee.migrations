@@ -1,4 +1,4 @@
-using Couchbase.Extensions.DependencyInjection;
+﻿using Couchbase.Extensions.DependencyInjection;
 using Couchbase.KeyValue;
 using Microsoft.Extensions.Logging;
 

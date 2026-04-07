@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Hyperbee.Migrations.Providers.Aerospike.Parsers;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Runtime.Loader;
 using Hyperbee.Migrations.Providers.Aerospike.Resources;
 using Microsoft.Extensions.Configuration;
