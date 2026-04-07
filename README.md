@@ -15,7 +15,9 @@ The Cron Helper uses HangFire Cronos.
 ### Features include:
 
 * Easy integration
-* Supports **Couchbase**, **MongoDB** and **Postgresql**
+* Supports **Aerospike**, **Couchbase**, **MongoDB** and **PostgreSQL**
+* Resource Migrations
+    * Migrations can be defined as embedded resource files (SQL, N1QL, AQL, MongoDB commands, JSON documents) alongside code-based migrations, enabling database changes without recompilation.
 * Preventing simultaneous migrations
     * By default, Hyperbee Migrations prevents parallel migration runner execution.
 * Profiles 
@@ -53,6 +55,15 @@ public class PeopleHaveFullNames : Migration // #2 inherit from Migration
 
 ```
 
+### Project Structure
+
+| Path | Description |
+|------|-------------|
+| `src/` | Core migration libraries and provider implementations |
+| `runners/` | Provider-specific migration runners |
+| `runners/samples/` | Sample migrations for each provider |
+| `tests/` | Unit and integration tests |
+
 # Build Requirements
 
 * To build and run this project, **.NET 8, 9 or 10 SDK** is required.
@@ -69,7 +80,3 @@ public class PeopleHaveFullNames : Migration // #2 inherit from Migration
 |------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `develop`  | [![Build status](https://github.com/Stillpoint-Software/hyperbee.migrations/actions/workflows/pack_publish.yml/badge.svg?branch=develop)](https://github.com/Stillpoint-Software/hyperbee.migration/actions/workflows/pack_publish.yml)  |
 | `main`     | [![Build status](https://github.com/Stillpoint-Software/hyperbee.migrations/actions/workflows/pack_publish.yml/badge.svg)](https://github.com/Stillpoint-Software/hyperbee.migration/actions/workflows/pack_publish.yml)                 |
-
-
-# Help
- See [Todo](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/todo.md)

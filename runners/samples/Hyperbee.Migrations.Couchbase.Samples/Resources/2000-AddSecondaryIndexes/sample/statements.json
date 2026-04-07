@@ -1,0 +1,22 @@
+{
+  "statements": [
+    {
+      "statement": "CREATE INDEX `idx_users_email` ON `sample`(`email`) WHERE `userId` IS NOT MISSING USING GSI WITH {'defer_build':true}"
+    },
+    {
+      "statement": "CREATE INDEX `idx_users_active` ON `sample`(`active`) WHERE `userId` IS NOT MISSING USING GSI WITH {'defer_build':true}"
+    },
+    {
+      "statement": "CREATE INDEX `idx_users_role` ON `sample`(`role`) WHERE `userId` IS NOT MISSING USING GSI WITH {'defer_build':true}"
+    },
+    {
+      "statement": "CREATE INDEX `idx_products_category` ON `sample`(`category`) WHERE `productId` IS NOT MISSING USING GSI WITH {'defer_build':true}"
+    },
+    {
+      "statement": "CREATE INDEX `idx_products_price` ON `sample`(`price`) WHERE `productId` IS NOT MISSING USING GSI WITH {'defer_build':true}"
+    },
+    {
+      "statement": "BUILD INDEX ON `sample` ( ( SELECT RAW name FROM system:indexes WHERE keyspace_id = 'sample' AND state = 'deferred' ));"
+    }
+  ]
+}

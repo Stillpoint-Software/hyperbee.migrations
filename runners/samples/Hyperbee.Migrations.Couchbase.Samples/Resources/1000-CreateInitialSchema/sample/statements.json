@@ -1,0 +1,10 @@
+{
+  "statements": [
+    {
+      "statement": "CREATE PRIMARY INDEX `idx_sample_primary` ON `sample` WITH {'defer_build':true}"
+    },
+    {
+      "statement": "BUILD INDEX ON `sample` ( ( SELECT RAW name FROM system:indexes WHERE keyspace_id = 'sample' AND state = 'deferred' ));"
+    }
+  ]
+}

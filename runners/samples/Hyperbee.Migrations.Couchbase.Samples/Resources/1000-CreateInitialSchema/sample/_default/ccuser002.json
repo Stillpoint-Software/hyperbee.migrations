@@ -1,0 +1,8 @@
+{
+  "userId": 2,
+  "name": "John Doe",
+  "email": "john@example.com",
+  "active": true,
+  "role": "user",
+  "createdDate": "2024-01-15T10:30:00Z"
+}

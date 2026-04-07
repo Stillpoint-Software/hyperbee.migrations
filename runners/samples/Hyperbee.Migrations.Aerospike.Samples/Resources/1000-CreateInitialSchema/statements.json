@@ -1,0 +1,10 @@
+{
+  "statements": [
+    {
+      "statement": "CREATE INDEX WAIT idx_users_email ON test.users (email) STRING"
+    },
+    {
+      "statement": "CREATE INDEX WAIT idx_users_active ON test.users (active) NUMERIC"
+    }
+  ]
+}

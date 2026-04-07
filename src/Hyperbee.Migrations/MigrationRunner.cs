@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Reflection;
+using Hyperbee.Migrations.Helper;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations;
@@ -68,19 +69,37 @@ public class MigrationRunner
             // determine if the migration should be run
 
             var recordId = _options.Conventions.GetRecordId( migration );
+            var version = attribute!.Version;
+            var name = migration.GetType().Name;
+            var hasCron = !string.IsNullOrEmpty( attribute.Cron );
 
-            var exists = await _recordStore.ExistsAsync( recordId ).ConfigureAwait( false );
+            // cron-based scheduling: check if due based on last run time
 
-            switch ( direction )
+            if ( hasCron && direction == Direction.Up )
             {
-                case Direction.Up when exists:
-                case Direction.Down when !exists:
+                var record = await _recordStore.ReadAsync( recordId ).ConfigureAwait( false );
+
+                if ( !MigrationCronHelper.IsDue( attribute.Cron, record?.RunOn ) )
+                {
+                    _logger.LogDebug( "[{version}] {name}: cron schedule not due, skipping", version, name );
                     continue;
+                }
+            }
+            else
+            {
+                // standard one-time migration: skip if already recorded
+
+                var exists = await _recordStore.ExistsAsync( recordId ).ConfigureAwait( false );
+
+                switch ( direction )
+                {
+                    case Direction.Up when exists:
+                    case Direction.Down when !exists:
+                        continue;
+                }
             }
 
             // run the migration
-            var version = attribute!.Version;
-            var name = migration.GetType().Name;
 
             var migrationItem = new MigrationItem
             {
@@ -91,19 +110,38 @@ public class MigrationRunner
                 CancellationToken = cancellationToken
             };
 
-            var stopProcess = false;
-
-            while ( stopProcess == false )
+            if ( hasCron )
             {
-                if ( await StartMigration( migrationItem ) )
-                {
-                    _logger.LogInformation( "[{version}] {name}: {direction} migration started", version, name, direction );
-                    stopProcess = await ProcessJobAsync( migrationItem, _recordStore, cancellationToken ).ConfigureAwait( false );
-                }
+                // cron migrations: execute once (non-blocking), update record
 
-                if ( stopProcess == false )
+                _logger.LogInformation( "[{version}] {name}: {direction} migration started (cron)", version, name, direction );
+
+                await migrationItem.Migration.UpAsync( cancellationToken ).ConfigureAwait( false );
+
+                // delete existing record before writing new one (upsert)
+                if ( await _recordStore.ExistsAsync( recordId ).ConfigureAwait( false ) )
+                    await _recordStore.DeleteAsync( recordId ).ConfigureAwait( false );
+
+                await _recordStore.WriteAsync( recordId ).ConfigureAwait( false );
+            }
+            else
+            {
+                // lifecycle migrations: loop until stop
+
+                var stopProcess = false;
+
+                while ( stopProcess == false )
                 {
-                    _logger.LogInformation( "[{version}] {name}: {direction} migration continuing", version, name, direction );
+                    if ( await StartMigration( migrationItem, cancellationToken ) )
+                    {
+                        _logger.LogInformation( "[{version}] {name}: {direction} migration started", version, name, direction );
+                        stopProcess = await ProcessJobAsync( migrationItem, _recordStore, cancellationToken ).ConfigureAwait( false );
+                    }
+
+                    if ( stopProcess == false )
+                    {
+                        _logger.LogInformation( "[{version}] {name}: {direction} migration continuing", version, name, direction );
+                    }
                 }
             }
 
@@ -171,13 +209,12 @@ public class MigrationRunner
 
     private async Task<bool> ProcessJobAsync( MigrationItem migrationItem, IMigrationRecordStore recordStore, CancellationToken cancellationToken )
     {
-
         switch ( migrationItem.Direction )
         {
             case Direction.Up:
                 {
                     await migrationItem.Migration.UpAsync( cancellationToken ).ConfigureAwait( false );
-                    var stopMigration = await StopMigration( migrationItem );
+                    var stopMigration = await StopMigration( migrationItem, cancellationToken );
                     if ( stopMigration )
                     {
                         if ( migrationItem.Attribute.Journal )
@@ -189,7 +226,7 @@ public class MigrationRunner
             case Direction.Down:
                 {
                     await migrationItem.Migration.DownAsync( cancellationToken ).ConfigureAwait( false );
-                    var stopMigration = await StopMigration( migrationItem );
+                    var stopMigration = await StopMigration( migrationItem, cancellationToken );
                     if ( stopMigration )
                     {
                         if ( migrationItem.Attribute.Journal )
@@ -203,12 +240,17 @@ public class MigrationRunner
         }
     }
 
-    private async Task<bool> StartMigration( MigrationItem migrationItem )
+    private async Task<bool> StartMigration( MigrationItem migrationItem, CancellationToken cancellationToken )
     {
+        // prefer IContinuousMigration interface over reflection
+
+        if ( migrationItem.Migration is IContinuousMigration continuous )
+            return await continuous.StartAsync( cancellationToken );
+
+        // fall back to string-based reflection
+
         if ( string.IsNullOrEmpty( migrationItem.Attribute.StartMethod ) )
-        {
             return true;
-        }
 
         var methodInfo = migrationItem.Migration.GetType().GetMethod( migrationItem.Attribute.StartMethod );
 
@@ -219,12 +261,18 @@ public class MigrationRunner
         return false;
     }
 
-    private async Task<bool> StopMigration( MigrationItem migrationItem )
+    private async Task<bool> StopMigration( MigrationItem migrationItem, CancellationToken cancellationToken )
     {
+        // prefer IContinuousMigration interface over reflection
+
+        if ( migrationItem.Migration is IContinuousMigration continuous )
+            return await continuous.StopAsync( cancellationToken );
+
+        // fall back to string-based reflection
+
         if ( string.IsNullOrEmpty( migrationItem.Attribute.StopMethod ) )
-        {
             return true;
-        }
+
         var methodInfo = migrationItem.Migration.GetType().GetMethod( migrationItem.Attribute.StopMethod );
 
         if ( methodInfo != null && methodInfo.ReturnType == typeof( Task<bool> ) )
@@ -233,5 +281,4 @@ public class MigrationRunner
         _logger.LogError( $"Method '{methodInfo?.Name}' not found or does not return a boolean." );
         return false;
     }
-
 }

@@ -1,7 +1,9 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using Couchbase.Management.Buckets;
+using Parlot;
+using Parlot.Fluent;
+using static Parlot.Fluent.Parsers;
 
 namespace Hyperbee.Migrations.Providers.Couchbase.Parsers;
 
@@ -28,185 +30,286 @@ public class StatementParser
 {
     // THIS IS A *PARTIAL* STATEMENT PARSER. IT DOES *NOT* SUPPORT ALL N1QL STATEMENT SHAPES.
     //
-    // It is intended for reading statements from statements.json resource files. 
+    // It is intended for reading statements from statements.json resource files.
 
-    private readonly KeyspaceParser _keyspaceParser = new();
+    private static readonly Parser<StatementItem> ParlotParser = BuildParser();
+
+    private static Parser<StatementItem> BuildParser()
+    {
+        // keywords (case-insensitive)
+
+        var create = Terms.Text( "CREATE", caseInsensitive: true );
+        var drop = Terms.Text( "DROP", caseInsensitive: true );
+        var primary = Terms.Text( "PRIMARY", caseInsensitive: true );
+        var index = Terms.Text( "INDEX", caseInsensitive: true );
+        var bucket = Terms.Text( "BUCKET", caseInsensitive: true );
+        var scope = Terms.Text( "SCOPE", caseInsensitive: true );
+        var collection = Terms.Text( "COLLECTION", caseInsensitive: true );
+        var on = Terms.Text( "ON", caseInsensitive: true );
+        var update = Terms.Text( "UPDATE", caseInsensitive: true );
+        var build = Terms.Text( "BUILD", caseInsensitive: true );
+
+        // bucket option keywords
+
+        var type = Terms.Text( "TYPE", caseInsensitive: true );
+        var ramquota = Terms.Text( "RAMQUOTA", caseInsensitive: true );
+        var flush = Terms.Text( "FLUSH", caseInsensitive: true );
+        var enabled = Terms.Text( "ENABLED", caseInsensitive: true );
+        var replicas = Terms.Text( "REPLICAS", caseInsensitive: true );
+
+        var couchbaseType = Terms.Text( "COUCHBASE", caseInsensitive: true );
+        var memcachedType = Terms.Text( "MEMCACHED", caseInsensitive: true );
+        var ephemeralType = Terms.Text( "EPHEMERAL", caseInsensitive: true );
+
+        // terminals
+
+        var dot = Terms.Char( '.' );
+        var colon = Terms.Char( ':' );
+
+        // identifier: plain or backtick-quoted
+
+        var plainIdentifier = Terms.Pattern( static c => char.IsLetterOrDigit( c ) || c == '_' || c == '$' );
+        var quotedIdentifier = Between( Terms.Char( '`' ), Terms.Pattern( static c => c != '`' ), Terms.Char( '`' ) );
+        var identifier = quotedIdentifier.Or( plainIdentifier );
+
+        // keyspace components - build up from identifiers
+
+        var namespacePrefix = identifier.AndSkip( colon )
+            .Then( static x => x.ToString() );
+
+        var oneIdent = identifier.Then( static x => x.ToString() );
+
+        var twoPart = identifier.AndSkip( dot ).And( identifier )
+            .Then( static x => (x.Item1.ToString(), x.Item2.ToString()) );
+
+        var threePart = identifier.AndSkip( dot ).And( identifier ).AndSkip( dot ).And( identifier )
+            .Then( static x => (x.Item1.ToString(), x.Item2.ToString(), x.Item3.ToString()) );
+
+        // keyspace-ref: [namespace:]bucket[.scope.collection]
+
+        var keyspaceNs3 = namespacePrefix.And( threePart )
+            .Then( static x => new KeyspaceRef( x.Item1, x.Item2.Item1, x.Item2.Item2, x.Item2.Item3 ) );
+
+        var keyspace3 = threePart
+            .Then( static x => new KeyspaceRef( null, x.Item1, x.Item2, x.Item3 ) );
+
+        var keyspaceNs2 = namespacePrefix.And( twoPart )
+            .Then( static x => new KeyspaceRef( x.Item1, x.Item2.Item1, null, x.Item2.Item2 ) );
+
+        var keyspace2 = twoPart
+            .Then( static x => new KeyspaceRef( null, x.Item1, null, x.Item2 ) );
+
+        var keyspaceNs1 = namespacePrefix.And( oneIdent )
+            .Then( static x => new KeyspaceRef( x.Item1, x.Item2, null, null ) );
+
+        var keyspace1 = oneIdent
+            .Then( static x => new KeyspaceRef( null, x, null, null ) );
+
+        var keyspaceRef = OneOf( keyspaceNs3, keyspace3, keyspaceNs2, keyspace2, keyspaceNs1, keyspace1 );
+
+        var partialKeyspace = OneOf( keyspaceNs3, keyspace3, keyspaceNs2, keyspace2, keyspaceNs1, keyspace1 );
+
+        // bucket options: [TYPE COUCHBASE|MEMCACHED|EPHEMERAL] [RAMQUOTA <int>] [FLUSH ENABLED] [REPLICAS <int>]
+        // each option is optional and parsed independently
+
+        var bucketType = type.SkipAnd( OneOf(
+            couchbaseType.Then( static _ => BucketType.Couchbase ),
+            memcachedType.Then( static _ => BucketType.Memcached ),
+            ephemeralType.Then( static _ => BucketType.Ephemeral )
+        ) );
+
+        var bucketRamQuota = ramquota.SkipAnd( Terms.Integer() );
+
+        var bucketFlush = flush.SkipAnd( enabled ).Then( static _ => true );
+
+        var bucketReplicas = replicas.SkipAnd( Terms.Integer() );
+
+        // CREATE BUCKET keyspace [TYPE ...] [RAMQUOTA ...] [FLUSH ENABLED] [REPLICAS ...]
+
+        var createBucket = create
+            .SkipAnd( bucket )
+            .SkipAnd( keyspaceRef )
+            .And( ZeroOrOne( bucketType ) )
+            .And( ZeroOrOne( bucketRamQuota ) )
+            .And( ZeroOrOne( bucketFlush ) )
+            .And( ZeroOrOne( bucketReplicas ) )
+            .Then( static x =>
+            {
+                var keyspace = x.Item1;
+                var settings = new BucketSettings
+                {
+                    Name = keyspace.BucketName,
+                    BucketType = x.Item2 == default ? BucketType.Couchbase : x.Item2,
+                    RamQuotaMB = x.Item3 == 0 ? 256 : (int) x.Item3,
+                    FlushEnabled = x.Item4,
+                    NumReplicas = (int) x.Item5
+                };
+
+                return new StatementItem(
+                    StatementType.CreateBucket,
+                    default,
+                    keyspace,
+                    null,
+                    null
+                )
+                {
+                    BucketSettings = settings
+                };
+            } );
+
+        // CREATE PRIMARY INDEX [name] ON keyspace
+
+        var indexNameNotOn = identifier
+            .Then( static x => x.ToString() )
+            .When( static ( _, v ) => !v.Equals( "ON", StringComparison.OrdinalIgnoreCase ) );
+
+        var createPrimaryIndex = create
+            .SkipAnd( primary )
+            .SkipAnd( index )
+            .SkipAnd( ZeroOrOne( indexNameNotOn ) )
+            .AndSkip( on )
+            .And( keyspaceRef )
+            .Then( static x => new StatementItem(
+                StatementType.CreatePrimaryIndex,
+                default,
+                x.Item2,
+                x.Item1?.Trim( '`' ),
+                null
+            ) );
+
+        // CREATE INDEX name ON keyspace(...)
+
+        var createIndex = create
+            .SkipAnd( index )
+            .SkipAnd( identifier )
+            .AndSkip( on )
+            .And( keyspaceRef )
+            .Then( static x => new StatementItem(
+                StatementType.CreateIndex,
+                default,
+                x.Item2,
+                x.Item1.ToString().Trim( '`' ),
+                null
+            ) );
+
+        // CREATE SCOPE keyspace
+
+        var createScope = create
+            .SkipAnd( scope )
+            .SkipAnd( keyspaceRef )
+            .Then( static x => new StatementItem(
+                StatementType.CreateScope,
+                default,
+                x,
+                null,
+                null
+            ) );
+
+        // CREATE COLLECTION keyspace
+
+        var createCollection = create
+            .SkipAnd( collection )
+            .SkipAnd( partialKeyspace )
+            .Then( static x => new StatementItem(
+                StatementType.CreateCollection,
+                default,
+                x,
+                null,
+                null
+            ) );
+
+        // DROP BUCKET keyspace
+
+        var dropBucket = drop
+            .SkipAnd( bucket )
+            .SkipAnd( keyspaceRef )
+            .Then( static x => new StatementItem(
+                StatementType.DropBucket,
+                default,
+                x,
+                null,
+                null
+            ) );
+
+        // DROP SCOPE keyspace
+
+        var dropScope = drop
+            .SkipAnd( scope )
+            .SkipAnd( keyspaceRef )
+            .Then( static x => new StatementItem(
+                StatementType.DropScope,
+                default,
+                x,
+                null,
+                null
+            ) );
+
+        // DROP COLLECTION keyspace
+
+        var dropCollection = drop
+            .SkipAnd( collection )
+            .SkipAnd( partialKeyspace )
+            .Then( static x => new StatementItem(
+                StatementType.DropCollection,
+                default,
+                x,
+                null,
+                null
+            ) );
+
+        // BUILD INDEX ON keyspace(...)
+
+        var buildIndex = build
+            .SkipAnd( index )
+            .SkipAnd( on )
+            .SkipAnd( keyspaceRef )
+            .Then( static x => new StatementItem(
+                StatementType.Build,
+                default,
+                x,
+                null,
+                null
+            ) );
+
+        // UPDATE keyspace SET ...
+
+        var updateStmt = update
+            .SkipAnd( keyspaceRef )
+            .Then( static x => new StatementItem(
+                StatementType.Update,
+                default,
+                x,
+                null,
+                null
+            ) );
+
+        // top-level: ORDER MATTERS
+        // createPrimaryIndex before createIndex (both start with CREATE)
+        // createIndex before createBucket/createScope/createCollection
+
+        return OneOf(
+            createPrimaryIndex,
+            createIndex,
+            createBucket,
+            createScope,
+            createCollection,
+            dropBucket,
+            dropScope,
+            dropCollection,
+            buildIndex,
+            updateStmt
+        );
+    }
 
     public StatementItem ParseStatement( string statement )
     {
-        static string Unquote( ReadOnlySpan<char> value ) => value.Trim().Trim( '`' ).ToString();
+        ArgumentException.ThrowIfNullOrWhiteSpace( statement );
 
-        // create-index ::= CREATE INDEX index-name ON keyspace-ref '(' index-key [ index-order ] [ ',' index-key [ index-order ] ]* ')' [ where-clause ] [ index-using ] [ index-with ]
-
-        var match = Regex.Match( statement, @"^\s*CREATE\s+INDEX\s*(?<name>.*)\s+ON\s*(?<on>.+)", RegexOptions.IgnoreCase );
-
-        if ( match.Success )
+        if ( !ParlotParser.TryParse( statement, out var result ) )
         {
-            var name = Unquote( match.Groups["name"].Value );
-            var on = match.Groups["on"].ValueSpan;
-            ParseKeyspace( on, out var k, out var e );
-            return new StatementItem( StatementType.CreateIndex, statement, k, name, e.ToString() );
+            throw new NotSupportedException( $"Unknown statement or syntax error. `{statement}`" );
         }
 
-        // create-primary-index ::= CREATE PRIMARY INDEX [ index-name ] ON keyspace-ref [ index-using ] [ index-with ]
-
-        match = Regex.Match( statement, @"^\s*CREATE\s+PRIMARY\s+INDEX\s*(?<name>.*)?\s+ON\s*(?<on>.+)", RegexOptions.IgnoreCase );
-
-        if ( match.Success )
-        {
-            var name = Unquote( match.Groups["name"].Value );
-            var on = match.Groups["on"].ValueSpan;
-            ParseKeyspace( on, out var k, out var e );
-            return new StatementItem( StatementType.CreatePrimaryIndex, statement, k, name, e.ToString() );
-        }
-
-        // create-bucket-extension ::= CREATE BUCKET [ namespace ':' ] bucket [TYPE COUCHBASE|MEMCACHED|EPHEMERAL] [RAMQUOTA 256] [FLUSH ENABLED] [REPLICAS 0]
-        // pseudo n1ql statement
-
-        match = Regex.Match( statement, @"^\s*CREATE\s+BUCKET\s+(?<keyspace>.+)", RegexOptions.IgnoreCase );
-
-        if ( match.Success )
-        {
-            var keyspace = match.Groups["keyspace"].ValueSpan;
-            ParseKeyspace( keyspace, out var k, out var e );
-
-            return new StatementItem( StatementType.CreateBucket, statement, k, default, e.ToString() )
-            {
-                BucketSettings = ParseBucketSettings( k, e )
-            };
-        }
-
-        // create-collection ::= CREATE COLLECTION [ [ namespace ':' ] bucket '.' scope '.' ] collection
-
-        match = Regex.Match( statement, @"^\s*CREATE\s+COLLECTION\s+(?<keyspace>.+)", RegexOptions.IgnoreCase );
-
-        if ( match.Success )
-        {
-            var keyspace = match.Groups["keyspace"].ValueSpan;
-            ParseKeyspace( keyspace, out var k, out var e, true );
-            return new StatementItem( StatementType.CreateCollection, statement, k, default, e.ToString() );
-        }
-
-        // create-scope ::= CREATE SCOPE [ namespace ':' ] bucket '.' scope
-
-        match = Regex.Match( statement, @"^\s*CREATE\s+SCOPE\s+(?<keyspace>.+)", RegexOptions.IgnoreCase );
-
-        if ( match.Success )
-        {
-            var keyspace = match.Groups["keyspace"].ValueSpan;
-            ParseKeyspace( keyspace, out var k, out var e );
-            return new StatementItem( StatementType.CreateScope, statement, k, default, e.ToString() );
-        }
-
-        // drop-bucket-extension ::= DROP BUCKET [ namespace ':' ] bucket
-        // pseudo n1ql statement
-
-        match = Regex.Match( statement, @"^\s*DROP\s+BUCKET\s+(?<keyspace>.+)", RegexOptions.IgnoreCase );
-
-        if ( match.Success )
-        {
-            var keyspace = match.Groups["keyspace"].ValueSpan;
-            ParseKeyspace( keyspace, out var k, out _ );
-            return new StatementItem( StatementType.DropBucket, statement, k, default, default );
-        }
-
-        // drop-collection ::= DROP COLLECTION [ [ namespace ':' ] bucket '.' scope '.' ] collection
-
-        match = Regex.Match( statement, @"^\s*DROP\s+COLLECTION\s+(?<keyspace>.+)", RegexOptions.IgnoreCase );
-
-        if ( match.Success )
-        {
-            var keyspace = match.Groups["keyspace"].ValueSpan;
-            ParseKeyspace( keyspace, out var k, out var e, true );
-            return new StatementItem( StatementType.DropCollection, statement, k, default, e.ToString() );
-        }
-
-        // drop-scope ::= DROP SCOPE [ namespace ':' ] bucket '.' scope
-
-        match = Regex.Match( statement, @"^\s*DROP\s+SCOPE\s+(?<keyspace>.+)", RegexOptions.IgnoreCase );
-
-        if ( match.Success )
-        {
-            var keyspace = match.Groups["keyspace"].ValueSpan;
-            ParseKeyspace( keyspace, out var k, out var e );
-            return new StatementItem( StatementType.DropScope, statement, k, default, e.ToString() );
-        }
-
-        // build-index ::= BUILD INDEX ON keyspace-ref '(' index-term [ ',' index-term ]* ')' [ index-using ]
-
-        match = Regex.Match( statement, @"^\s*BUILD\s+INDEX\s+ON\s+(?<on>.+)", RegexOptions.IgnoreCase );
-
-        if ( match.Success )
-        {
-            var on = match.Groups["on"].ValueSpan;
-            ParseKeyspace( on, out var k, out var e );
-            return new StatementItem( StatementType.Build, statement, k, default, e.ToString() );
-        }
-
-        // update ::= UPDATE keyspace-ref [[AS] alias] SET ...
-
-        match = Regex.Match( statement, @"^\s*UPDATE\s+(?<keyspace>.+)", RegexOptions.IgnoreCase );
-
-        if ( match.Success )
-        {
-            var keyspace = match.Groups["keyspace"].ValueSpan;
-            ParseKeyspace( keyspace, out var k, out var e );
-            return new StatementItem( StatementType.Update, statement, k, default, e.ToString() );
-        }
-
-        // Ruh-Rough
-
-        throw new NotSupportedException( $"Unknown statement or syntax error. `{statement}`" );
-    }
-
-    private void ParseKeyspace( ReadOnlySpan<char> expr, out KeyspaceRef keyspace, out ReadOnlySpan<char> trailingExpr, bool partial = false )
-    {
-        var options = new KeySpaceParserOptions
-        {
-            Partial = partial
-        };
-
-        keyspace = _keyspaceParser.ParseExpression( expr, out var count, options );
-        trailingExpr = expr[count..].Trim();
-    }
-
-    private static readonly IReadOnlyDictionary<string, BucketType> BucketTypes = new Dictionary<string, BucketType>( StringComparer.OrdinalIgnoreCase )
-    {
-        ["Couchbase"] = BucketType.Couchbase,
-        ["Ephemeral"] = BucketType.Ephemeral,
-        ["Memcached"] = BucketType.Memcached
-    };
-
-    private static BucketSettings ParseBucketSettings( KeyspaceRef keyspace, ReadOnlySpan<char> expr )
-    {
-        var settings = new BucketSettings
-        {
-            Name = keyspace.BucketName,
-            BucketType = BucketType.Couchbase,
-            RamQuotaMB = 256,
-            FlushEnabled = true
-        };
-
-        if ( expr.IsEmpty )
-            return settings;
-
-        var match = Regex.Match( expr.ToString(), @"^\s*(?:TYPE\s+\b(?<type>COUCHBASE|MEMCACHED|EPHEMERAL)\b)?(?:\s+RAMQUOTA\s+(?<quota>\d+))?(?:\s+(?<flush>FLUSH ENABLED))?(?:\s+REPLICAS\s+(?<replicas>\d+))?", RegexOptions.IgnoreCase );
-
-        if ( !match.Success )
-            return settings;
-
-        settings.RamQuotaMB = !match.Groups["quota"].ValueSpan.IsEmpty
-            ? int.Parse( match.Groups["quota"].ValueSpan )
-            : 256;
-
-        settings.FlushEnabled = !match.Groups["flush"].ValueSpan.IsEmpty;
-
-        if ( !match.Groups["replicas"].ValueSpan.IsEmpty )
-            settings.NumReplicas = int.Parse( match.Groups["replicas"].ValueSpan );
-
-        if ( BucketTypes.TryGetValue( match.Groups["type"].Value, out var bucketType ) )
-            settings.BucketType = bucketType;
-
-        return settings;
+        return result with { Statement = statement };
     }
 }

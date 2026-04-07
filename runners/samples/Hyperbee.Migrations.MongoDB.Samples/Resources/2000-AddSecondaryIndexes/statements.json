@@ -1,0 +1,19 @@
+{
+  "statements": [
+    {
+      "statement": "db.getSiblingDB('sample').users.createIndex({ email: 1 }, { name: 'idx_users_email', unique: true })"
+    },
+    {
+      "statement": "db.getSiblingDB('sample').users.createIndex({ active: 1 }, { name: 'idx_users_active' })"
+    },
+    {
+      "statement": "db.getSiblingDB('sample').users.createIndex({ role: 1 }, { name: 'idx_users_role' })"
+    },
+    {
+      "statement": "db.getSiblingDB('sample').products.createIndex({ category: 1 }, { name: 'idx_products_category' })"
+    },
+    {
+      "statement": "db.getSiblingDB('sample').products.createIndex({ price: 1 }, { name: 'idx_products_price' })"
+    }
+  ]
+}
