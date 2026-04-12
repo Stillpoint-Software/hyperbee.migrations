@@ -70,11 +70,6 @@ public class CoreLogicTests
         int count = 0;
         await WaitHelper.WaitUntilAsync( async ct => { count++; return count > 2; } );
 
-<<<<<<< TODO: Unmerged change from project 'Hyperbee.Migrations.Tests(net9.0)', Before:
-        Assert.IsGreaterThan( 2, count );
-=======
-        Assert.IsGreaterThan( 2, count );
->>>>>>> After
         Assert.IsGreaterThan( 2, count );
     }
 

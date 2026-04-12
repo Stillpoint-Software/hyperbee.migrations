@@ -27,14 +27,16 @@ public class MigrationCronHelper
         return true;
     }
 
-    public static bool IsDue( string cronExpression, DateTimeOffset? lastRunOn )
+    public static bool IsDue( string cronExpression, DateTimeOffset? lastRunOn, TimeProvider timeProvider = null )
     {
         if ( lastRunOn == null )
             return true;
 
+        timeProvider ??= TimeProvider.System;
+
         var expression = CronExpression.Parse( cronExpression );
         var nextOccurrence = expression.GetNextOccurrence( lastRunOn.Value.UtcDateTime, TimeZoneInfo.Utc );
 
-        return nextOccurrence.HasValue && nextOccurrence.Value <= DateTime.UtcNow;
+        return nextOccurrence.HasValue && nextOccurrence.Value <= timeProvider.GetUtcNow().UtcDateTime;
     }
 }
