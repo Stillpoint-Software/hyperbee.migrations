@@ -4,11 +4,11 @@ on:
   workflow_run:
     workflows: [Create Release]
     types: [requested]
-    branches: [main, develop]        
+    branches: [main]
   workflow_dispatch:
   pull_request:
     types: [opened, edited, synchronize, reopened]
-    branches: [main, develop]
+    branches: [main]
 
 permissions:
   contents: read
