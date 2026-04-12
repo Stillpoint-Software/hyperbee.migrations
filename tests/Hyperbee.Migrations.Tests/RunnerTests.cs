@@ -226,9 +226,13 @@ public class RunnerTests
     [TestMethod]
     public void IsDue_returns_false_when_recently_run()
     {
-        // ran 5 minutes ago with an hourly cron -- not due yet
-        var lastRun = DateTimeOffset.UtcNow.AddMinutes( -5 );
-        var result = MigrationCronHelper.IsDue( "0 * * * *", lastRun );
+        // fix "now" to 12:05 UTC; lastRun = 12:00 UTC (5 minutes ago)
+        // hourly cron "0 * * * *" next fires at 13:00 -- not due yet
+        var now = new DateTimeOffset( 2026, 1, 1, 12, 5, 0, TimeSpan.Zero );
+        var lastRun = now.AddMinutes( -5 );
+        var timeProvider = new FakeTimeProvider( now );
+
+        var result = MigrationCronHelper.IsDue( "0 * * * *", lastRun, timeProvider );
 
         Assert.IsFalse( result );
     }
@@ -236,9 +240,13 @@ public class RunnerTests
     [TestMethod]
     public void IsDue_returns_true_when_past_due()
     {
-        // ran 2 hours ago with an hourly cron -- due
-        var lastRun = DateTimeOffset.UtcNow.AddHours( -2 );
-        var result = MigrationCronHelper.IsDue( "0 * * * *", lastRun );
+        // fix "now" to 14:00 UTC; lastRun = 12:00 UTC (2 hours ago)
+        // hourly cron's next firing after lastRun was 13:00, which is <= now -- due
+        var now = new DateTimeOffset( 2026, 1, 1, 14, 0, 0, TimeSpan.Zero );
+        var lastRun = now.AddHours( -2 );
+        var timeProvider = new FakeTimeProvider( now );
+
+        var result = MigrationCronHelper.IsDue( "0 * * * *", lastRun, timeProvider );
 
         Assert.IsTrue( result );
     }
