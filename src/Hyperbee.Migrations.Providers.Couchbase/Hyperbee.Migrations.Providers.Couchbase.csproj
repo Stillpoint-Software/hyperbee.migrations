@@ -25,6 +25,7 @@
     <PackageReference Include="Couchbase.Extensions.DependencyInjection" />
     <PackageReference Include="Couchbase.Extensions.Locks" />
     <PackageReference Include="CouchbaseNetClient" />
+    <PackageReference Include="Parlot" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Http" />

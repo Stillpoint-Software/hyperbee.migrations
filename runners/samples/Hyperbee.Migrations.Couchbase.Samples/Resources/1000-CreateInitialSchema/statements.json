@@ -1,0 +1,7 @@
+{
+  "statements": [
+    {
+      "statement": "CREATE BUCKET `sample` TYPE Couchbase RAMQUOTA 100 FLUSH ENABLED"
+    }
+  ]
+}

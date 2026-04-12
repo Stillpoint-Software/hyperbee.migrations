@@ -1,0 +1,13 @@
+{
+  "statements": [
+    {
+      "statement": "CREATE INDEX WAIT idx_users_role ON test.users (role) STRING"
+    },
+    {
+      "statement": "CREATE INDEX WAIT idx_products_category ON test.products (category) STRING"
+    },
+    {
+      "statement": "CREATE INDEX WAIT idx_products_price ON test.products (price) NUMERIC"
+    }
+  ]
+}

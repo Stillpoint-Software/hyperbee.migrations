@@ -1,8 +1,0 @@
-﻿{
-  "statements": [
-    {
-      "statement": "CREATE BUCKET `migrationbucket` TYPE Couchbase RAMQUOTA 100 FLUSH ENABLED",
-      "args": null
-    }
-  ]
-}
