@@ -288,3 +288,6 @@ _site/
 vendor/
 .bundle/
 docs/site/Gemfile.lock
+
+# Claude Code scratch directory (local, not shared)
+.claude/
