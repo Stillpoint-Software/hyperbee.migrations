@@ -228,6 +228,25 @@ public class AerospikeStatementParserTests
         Assert.IsTrue( result.WaitReady );
     }
 
+    [TestMethod]
+    public void Should_parse_if_not_exists()
+    {
+        var result = _parser.ParseStatement( "CREATE INDEX IF NOT EXISTS idx_test ON test.users (name) STRING" );
+
+        Assert.AreEqual( AerospikeStatementType.CreateIndex, result.StatementType );
+        Assert.AreEqual( "idx_test", result.IndexName );
+        Assert.AreEqual( AerospikeIndexType.String, result.IndexType );
+    }
+
+    [TestMethod]
+    public void Should_parse_if_not_exists_with_wait()
+    {
+        var result = _parser.ParseStatement( "CREATE INDEX IF NOT EXISTS WAIT idx_test ON test.users (name)" );
+
+        Assert.AreEqual( "idx_test", result.IndexName );
+        Assert.IsTrue( result.WaitReady );
+    }
+
     // Whitespace handling
 
     [TestMethod]

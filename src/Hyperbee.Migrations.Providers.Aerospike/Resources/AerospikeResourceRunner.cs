@@ -1,5 +1,6 @@
 ﻿using System.Text.Json.Nodes;
 using Aerospike.Client;
+using Hyperbee.Migrations.Providers.Aerospike.Extensions;
 using Hyperbee.Migrations.Providers.Aerospike.Parsers;
 using Hyperbee.Migrations.Resources;
 using Hyperbee.Migrations.Wait;
@@ -77,11 +78,11 @@ public class AerospikeResourceRunner<TMigration>
             switch ( statementItem.StatementType )
             {
                 case AerospikeStatementType.CreateIndex:
-                    await CreateIndexAsync( statementItem, operationCancelToken ).ConfigureAwait( false );
+                    await CreateIndexFromStatementAsync( statementItem, operationCancelToken ).ConfigureAwait( false );
                     break;
 
                 case AerospikeStatementType.DropIndex:
-                    await DropIndexAsync( statementItem ).ConfigureAwait( false );
+                    await DropIndexFromStatementAsync( statementItem ).ConfigureAwait( false );
                     break;
 
                 case AerospikeStatementType.CreateSet:
@@ -202,25 +203,51 @@ public class AerospikeResourceRunner<TMigration>
         }
     }
 
-    // operations
+    // imperative operations (public — for migrations that prefer code over DSL)
 
-    private async Task CreateIndexAsync( AerospikeStatementItem item, CancellationToken cancellationToken )
+    public Task CreateIndexAsync(
+        string ns,
+        string setName,
+        string indexName,
+        string binName,
+        IndexType indexType,
+        IndexCreateMode mode = IndexCreateMode.Missing,
+        bool waitReady = true,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default )
     {
-        var indexExists = IndexExists( item.Namespace, item.IndexName );
+        _logger?.LogInformation( "CREATE INDEX {indexName} ON {namespace}.{set} ({bin}) {type}",
+            indexName, ns, setName, binName, indexType );
 
-        if ( indexExists && item.Recreate )
-        {
-            _logger?.LogInformation( "@RECREATE dropping index '{indexName}'", item.IndexName );
-            _client.DropIndex( null, item.Namespace, item.SetName, item.IndexName );
-            indexExists = false;
-        }
+        return _client.CreateIndexAsync( ns, setName, indexName, binName, indexType, mode, waitReady, timeout, cancellationToken );
+    }
 
-        if ( indexExists )
-        {
-            _logger?.LogInformation( "skip index '{indexName}' already exists", item.IndexName );
-            return;
-        }
+    public Task<bool> IndexExistsAsync( string ns, string indexName )
+    {
+        return _client.IndexExistsAsync( ns, indexName );
+    }
 
+    public Task DropIndexAsync( string ns, string setName, string indexName )
+    {
+        _logger?.LogInformation( "DROP INDEX {namespace} {indexName}", ns, indexName );
+        return _client.DropIndexAsync( ns, setName, indexName );
+    }
+
+    public Task UpsertDocumentAsync(
+        string ns,
+        string setName,
+        string id,
+        IReadOnlyDictionary<string, object> bins,
+        CancellationToken cancellationToken = default )
+    {
+        _logger?.LogInformation( "UPSERT '{id}' TO {namespace}.{set}", id, ns, setName );
+        return _asyncClient.UpsertAsync( ns, setName, id, bins, cancellationToken );
+    }
+
+    // DSL operations
+
+    private async Task CreateIndexFromStatementAsync( AerospikeStatementItem item, CancellationToken cancellationToken )
+    {
         var aerospikeIndexType = item.IndexType switch
         {
             AerospikeIndexType.String or AerospikeIndexType.Default => IndexType.STRING,
@@ -229,105 +256,24 @@ public class AerospikeResourceRunner<TMigration>
             _ => IndexType.STRING
         };
 
-        _logger?.LogInformation( "CREATE INDEX {indexName} ON {namespace}.{set} ({bin}) {type}",
-            item.IndexName, item.Namespace, item.SetName, item.BinName, item.IndexType );
+        var mode = item.Recreate ? IndexCreateMode.Recreate : IndexCreateMode.Missing;
 
-        try
-        {
-            var task = _client.CreateIndex( null, item.Namespace, item.SetName, item.IndexName, item.BinName, aerospikeIndexType );
+        if ( mode == IndexCreateMode.Recreate )
+            _logger?.LogInformation( "@RECREATE index '{indexName}'", item.IndexName );
 
-            if ( item.WaitReady )
-            {
-                await WaitForIndexReadyAsync( item.Namespace, item.IndexName, cancellationToken ).ConfigureAwait( false );
-            }
-        }
-        catch ( AerospikeException ex ) when ( ex.Result == ResultCode.INDEX_ALREADY_EXISTS )
-        {
-            _logger?.LogInformation( "Index '{indexName}' already exists (race condition)", item.IndexName );
-        }
+        await CreateIndexAsync(
+            item.Namespace, item.SetName, item.IndexName, item.BinName, aerospikeIndexType,
+            mode, item.WaitReady, timeout: null, cancellationToken ).ConfigureAwait( false );
     }
 
-    private async Task DropIndexAsync( AerospikeStatementItem item )
+    private Task DropIndexFromStatementAsync( AerospikeStatementItem item )
     {
-        _logger?.LogInformation( "DROP INDEX {namespace} {indexName}", item.Namespace, item.IndexName );
-
-        try
-        {
-            _client.DropIndex( null, item.Namespace, item.SetName, item.IndexName );
-        }
-        catch ( AerospikeException ex ) when ( ex.Result == ResultCode.INDEX_NOTFOUND )
-        {
-            _logger?.LogInformation( "Index '{indexName}' not found (already dropped)", item.IndexName );
-        }
+        return DropIndexAsync( item.Namespace, item.SetName, item.IndexName );
     }
 
-    private async Task UpsertDocumentAsync( string namespaceName, string setName, string id, Dictionary<string, object> bins )
+    private Task UpsertDocumentAsync( string ns, string setName, string id, Dictionary<string, object> bins )
     {
-        _logger?.LogInformation( "UPSERT '{id}' TO {namespace}.{set}", id, namespaceName, setName );
-
-        var key = new Key( namespaceName, setName, id );
-        var binArray = bins.Select( kvp => new Bin( kvp.Key, kvp.Value ) ).ToArray();
-
-        await _asyncClient.Put( null, CancellationToken.None, key, binArray ).ConfigureAwait( false );
-    }
-
-    // helpers
-
-    private bool IndexExists( string namespaceName, string indexName )
-    {
-        try
-        {
-            // Query sindex info from the cluster
-            var node = _client.Nodes.FirstOrDefault();
-
-            if ( node == null )
-                return false;
-
-            var response = Info.Request( node, "sindex/" + namespaceName );
-
-            if ( string.IsNullOrEmpty( response ) )
-                return false;
-
-            return response.Contains( indexName );
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private async Task WaitForIndexReadyAsync( string namespaceName, string indexName, CancellationToken cancellationToken )
-    {
-        _logger?.LogInformation( "@WAITREADY waiting for index '{indexName}' to be ready", indexName );
-
-        await WaitHelper.WaitUntilAsync(
-            async ct =>
-            {
-                try
-                {
-                    var node = _client.Nodes.FirstOrDefault();
-
-                    if ( node == null )
-                        return false;
-
-                    // Query sindex info for specific index
-                    var response = Info.Request( node, $"sindex/{namespaceName}/{indexName}" );
-
-                    // The index is ready when the response doesn't contain "load_pct" < 100
-                    // or when it contains the index info without error
-                    return !string.IsNullOrEmpty( response ) && !response.Contains( "FAIL" );
-                }
-                catch
-                {
-                    return false;
-                }
-            },
-            TimeSpan.FromSeconds( 60 ),
-            new BackoffRetryStrategy( TimeSpan.FromMilliseconds( 500 ), TimeSpan.FromSeconds( 5 ) ),
-            cancellationToken
-        ).ConfigureAwait( false );
-
-        _logger?.LogInformation( "Index '{indexName}' is ready", indexName );
+        return UpsertDocumentAsync( ns, setName, id, (IReadOnlyDictionary<string, object>) bins );
     }
 
     private static void ThrowIfNoResourceLocationFor()

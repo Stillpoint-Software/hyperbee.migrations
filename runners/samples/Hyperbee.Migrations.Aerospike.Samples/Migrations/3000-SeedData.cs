@@ -1,54 +1,47 @@
-﻿using Aerospike.Client;
+using Aerospike.Client;
+using Hyperbee.Migrations.Providers.Aerospike;
+using Hyperbee.Migrations.Providers.Aerospike.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Aerospike.Samples.Migrations;
 
+// Code migration using raw client injection and the AerospikeClientExtensions helpers.
+// Use this pattern when the DSL/resource-runner style doesn't fit, but you still want
+// idempotent index creation with async readiness waits and ergonomic upserts.
+
 [Migration( 3000 )]
-public class SeedData : Migration
+public class SeedData( IAerospikeClient client, IAsyncClient asyncClient, AerospikeMigrationOptions options, ILogger<SeedData> logger ) : Migration
 {
-    private readonly IAsyncClient _asyncClient;
-    private readonly ILogger<SeedData> _logger;
-
-    public SeedData( IAsyncClient asyncClient, ILogger<SeedData> logger )
-    {
-        _asyncClient = asyncClient;
-        _logger = logger;
-    }
-
     public override async Task UpAsync( CancellationToken cancellationToken = default )
     {
-        // code migration: seed additional user and product data using injected Aerospike client
+        var ns = options.Namespace;
 
-        _logger.LogInformation( "Seeding additional data via code migration" );
+        // idempotent index creation with async readiness wait (no blocking task.Wait)
 
-        // seed users
-        await _asyncClient.Put(
-            null,
-            cancellationToken,
-            new Key( "test", "users", "user-003" ),
-            new Bin( "name", "Bob Johnson" ),
-            new Bin( "email", "bob@example.com" ),
-            new Bin( "active", 1 ),
-            new Bin( "role", "user" ),
-            new Bin( "createdDate", "2024-06-01T09:00:00Z" )
-        ).ConfigureAwait( false );
+        await client.CreateIndexAsync( ns, "users", "idx_users_createdDate", "createdDate", IndexType.STRING, cancellationToken: cancellationToken );
 
-        _logger.LogInformation( "Inserted user-003" );
+        // ergonomic upserts — no manual Key/Bin plumbing at the call site
 
-        // seed products
-        await _asyncClient.Put(
-            null,
-            cancellationToken,
-            new Key( "test", "products", "prod-003" ),
-            new Bin( "name", "Doohickey" ),
-            new Bin( "category", "accessories" ),
-            new Bin( "price", 9.99 ),
-            new Bin( "active", 1 ),
-            new Bin( "createdDate", "2024-06-01T09:00:00Z" )
-        ).ConfigureAwait( false );
+        await asyncClient.UpsertAsync( ns, "users", "user-003", new Bin[]
+        {
+            new( "name", "Bob Johnson" ),
+            new( "email", "bob@example.com" ),
+            new( "active", 1 ),
+            new( "role", "user" ),
+            new( "createdDate", "2024-06-01T09:00:00Z" )
+        }, cancellationToken );
 
-        _logger.LogInformation( "Inserted prod-003" );
+        logger.LogInformation( "Inserted user-003" );
 
-        _logger.LogInformation( "Seed data migration completed" );
+        await asyncClient.UpsertAsync( ns, "products", "prod-003", new Bin[]
+        {
+            new( "name", "Doohickey" ),
+            new( "category", "accessories" ),
+            new( "price", 9.99 ),
+            new( "active", 1 ),
+            new( "createdDate", "2024-06-01T09:00:00Z" )
+        }, cancellationToken );
+
+        logger.LogInformation( "Inserted prod-003" );
     }
 }

@@ -30,6 +30,9 @@ public class AerospikeStatementParser
 
         var recreate = Terms.Text( "RECREATE", caseInsensitive: true );
         var wait = Terms.Text( "WAIT", caseInsensitive: true );
+        var @if = Terms.Text( "IF", caseInsensitive: true );
+        var not = Terms.Text( "NOT", caseInsensitive: true );
+        var exists = Terms.Text( "EXISTS", caseInsensitive: true );
 
         // index type keywords
 
@@ -69,15 +72,20 @@ public class AerospikeStatementParser
             geoType.Then( static _ => AerospikeIndexType.Geo2DSphere )
         );
 
-        // optional flags: [RECREATE] [WAIT] in any order, parsed as two optional flags
+        // optional flags: [IF NOT EXISTS] [RECREATE] [WAIT] in any order
 
+        // IF NOT EXISTS is parsed but does not change behavior — CREATE INDEX is already idempotent.
+        // It is accepted purely for AQL-familiarity / muscle-memory.
+
+        var ifNotExistsFlag = ZeroOrOne( @if.SkipAnd( not ).SkipAnd( exists ).Then( static _ => true ) );
         var recreateFlag = ZeroOrOne( recreate.Then( static _ => true ) );
         var waitFlag = ZeroOrOne( wait.Then( static _ => true ) );
 
-        // CREATE INDEX [RECREATE] [WAIT] index_name ON namespace.set (bin_name) [STRING|NUMERIC|GEO2DSPHERE]
+        // CREATE INDEX [IF NOT EXISTS] [RECREATE] [WAIT] index_name ON namespace.set (bin_name) [STRING|NUMERIC|GEO2DSPHERE]
 
         var createIndex = create
             .SkipAnd( index )
+            .SkipAnd( ifNotExistsFlag )
             .SkipAnd( recreateFlag )
             .And( waitFlag )
             .And( identifier )
