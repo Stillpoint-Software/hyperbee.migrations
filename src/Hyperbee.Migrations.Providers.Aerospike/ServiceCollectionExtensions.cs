@@ -3,6 +3,7 @@ using System.Runtime.Loader;
 using Hyperbee.Migrations.Providers.Aerospike.Resources;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Hyperbee.Migrations.Providers.Aerospike;
 
