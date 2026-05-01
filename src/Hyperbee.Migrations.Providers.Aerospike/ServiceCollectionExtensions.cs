@@ -57,6 +57,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<MigrationRunner>();
         services.AddTransient( typeof( AerospikeResourceRunner<> ) );
 
+        services.TryAddSingleton( TimeProvider.System );
+
         return services;
     }
 

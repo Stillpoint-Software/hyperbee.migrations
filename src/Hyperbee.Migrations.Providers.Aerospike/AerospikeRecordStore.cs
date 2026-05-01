@@ -7,15 +7,18 @@ internal class AerospikeRecordStore : IMigrationRecordStore
 {
     private readonly IAsyncClient _client;
     private readonly AerospikeMigrationOptions _options;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<AerospikeRecordStore> _logger;
 
     public AerospikeRecordStore(
         IAsyncClient client,
         AerospikeMigrationOptions options,
+        TimeProvider timeProvider,
         ILogger<AerospikeRecordStore> logger )
     {
         _client = client;
         _options = options;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -145,19 +148,54 @@ internal class AerospikeRecordStore : IMigrationRecordStore
             CancellationToken.None,
             key,
             new Bin( "Name", recordId ),
-            new Bin( "ExecutedAt", DateTimeOffset.UtcNow.ToUnixTimeSeconds() )
+            new Bin( "ExecutedAt", _timeProvider.GetUtcNow().ToUnixTimeSeconds() )
         ).ConfigureAwait( false );
     }
 
-    private sealed class Disposable( Action dispose ) : IDisposable
+    private sealed class LockHandle : IDisposable
     {
+        private readonly AerospikeRecordStore _store;
+        private readonly Key _key;
+        private readonly CancellationTokenSource _renewCts;
+        private readonly Task _renewTask;
         private int _disposed;
-        private Action Disposer { get; } = dispose;
+
+        public LockHandle( AerospikeRecordStore store, Key key, CancellationTokenSource renewCts, Task renewTask )
+        {
+            _store = store;
+            _key = key;
+            _renewCts = renewCts;
+            _renewTask = renewTask;
+        }
 
         public void Dispose()
         {
-            if ( Interlocked.CompareExchange( ref _disposed, 1, 0 ) == 0 )
-                Disposer.Invoke();
+            if ( Interlocked.CompareExchange( ref _disposed, 1, 0 ) != 0 )
+                return;
+
+            _store._logger.LogInformation( "{action} disposing lock", nameof( CreateLockAsync ) );
+
+            try
+            {
+                _renewCts.Cancel();
+                try { _renewTask.GetAwaiter().GetResult(); }
+                catch ( OperationCanceledException ) { /* expected on cancel */ }
+            }
+            finally
+            {
+                _renewCts.Dispose();
+            }
+
+            try
+            {
+                _store._client.Delete( null, CancellationToken.None, _key )
+                    .GetAwaiter().GetResult();
+            }
+            catch ( Exception ex )
+            {
+                _store._logger.LogCritical( ex, "{action} unable to remove lock", nameof( CreateLockAsync ) );
+                throw;
+            }
         }
     }
 }
