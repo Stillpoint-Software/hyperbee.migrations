@@ -147,22 +147,26 @@ Audit existing providers; populate the Style Reference section above with concre
 - [x] OpenSearch container added to `InitializeTestContainers.AssemblyInitialize`
 - [x] `dotnet build` clean (0 errors; 27 warnings, all pre-existing CS0618 plus 1 matching one in my code per house style)
 
-#### 0.4: Hyperbee.Templating first-contact spike (per A6)
+#### 0.4: Hyperbee.Templating first-contact spike (per A6) — done by parallel sub-agent
 
-Wire the four-scope renderer (`env`, `config`, `runtime`, `secrets`) and validate that JSON-context rendering with `{{#if}}` and `{{each}}` blocks produces well-formed output. Catches first-contact bugs before they cascade.
+Wired the four-scope renderer (`env`, `config`, `runtime`, `secrets`) and validated JSON-context rendering with `{{#if}}` and `{{each}}` blocks. Catches first-contact bugs before they cascade.
 
-- [ ] Wire renderer with all four scopes
-- [ ] Three smoke tests: simple substitution, conditional inside JSON, iteration inside JSON
-- [ ] Document any quirks discovered in Style Reference
+- [x] Wire renderer with all four scopes — `Templating/OpenSearchResourceTemplateRenderer.cs` (Hyperbee.Templating 3.4.1)
+- [x] `SecretMarker` + `SecretValue` types as Phase 6 scaffolding (per R-10 — secrets identified by content hash for log scrubber)
+- [x] Three smoke tests: simple substitution, conditional inside JSON, iteration inside JSON — all passing on net8/9/10
+- [x] **First-contact note**: dotted scope-prefixed keys (`config.indexPrefix`) require an override of `TemplateOptions.Validator` because the default rejects '.' in identifiers. The renderer ships a custom `IsValidScopedKey` that admits a single '.' joining two valid sub-identifiers, plus a bracket-suffix form for ordered collections (`runtime.nodes[0]`).
 
 #### 0.5: Spike — minimal AST + grammar + SafeDefaultMergeMiddleware
 
 Smallest implementation that validates the parser/runtime split.
 
-- [ ] `StatementAst` abstract record with `SafeDefaults` dictionary; concrete `CreateIndexAst` and `ReindexAst`
-- [ ] Parlot grammar parsing only `CREATE INDEX <name> WITH BODY $body` and `REINDEX FROM <src> TO <dst> [WITH BODY $body]`
-- [ ] `SafeDefaultMergeMiddleware` operating on `JsonNode` trees: merge `op_type: create` (REINDEX dest path); merge `dynamic: strict` (CREATE INDEX mappings path) with `composed_of` detection
-- [ ] Unit tests for AST construction, grammar positive/negative cases, merge logic (10+ cases)
+- [x] `StatementAst` abstract record + `BodyRef` record (sibling JSON property reference); concrete `CreateIndexAst` and `ReindexAst` records carrying typed safe-default flags (`InjectDynamicStrict`, `InjectOpTypeCreate`, `UnsafeJustification`)
+- [x] Parlot grammar parsing `CREATE INDEX <name> [IF NOT EXISTS] [WITH BODY $body]` and `REINDEX [UNSAFE("<reason>")] FROM <src> TO <dst> [WITH BODY $body]` — backtick-or-plain identifiers, case-insensitive keywords, ordered `OneOf` per Style Reference Pattern 3
+- [x] `SafeDefaultMergeMiddleware` operating on `JsonNode` trees: merges `op_type: create` (REINDEX `dest` path) with idempotent + conflict detection; merges `dynamic: strict` (CREATE INDEX `mappings` path) with `composed_of` detection per R-17 / PM-4 fix; preserves user-explicit values; never mutates caller's tree (deep clone via round-trip)
+- [x] **`SafeDefaultConflictException`** surfaces conflicting `op_type` with remediation message pointing to `REINDEX UNSAFE("...")`
+- [x] **`OpenSearchParseException`** with file/recognized-verb context in message
+- [x] **36 unit tests across 3 test classes**: 6 AST equality tests, 18 grammar tests (positive/negative cases including bare-UNSAFE rejection per R-18), 12 merge middleware tests covering all 5 CREATE INDEX edge cases + all REINDEX edge cases + tree-mutation invariant
+- [x] All tests pass on net8/9/10 (39 total OpenSearch tests with the Templating spike, 117 test runs, 0 failures)
 
 #### 0.6: Spike — 10 wire-level integration tests against real OpenSearch
 
@@ -344,9 +348,9 @@ Before tagging a phase snapshot:
 | 2 — Atomic + Composite + Cross-Cutting | Not Started | |
 | 3 — Distribution + Polish | Not Started | |
 
-**Current task:** Phase 0, Tasks 0.1 + 0.2 + 0.3 **Done**. Provider library scaffolded; Testcontainers harness + hello-world test in place; build clean.
-**Next action:** Tasks 0.4 (Templating spike) + 0.5 (AST/grammar/middleware) — candidate for parallel execution.
-**Blockers:** None.
+**Current task:** Phase 0, Tasks 0.1-0.5 **Done**. Tasks 0.4 + 0.5 ran in parallel (sub-agent did Templating; orchestrator did AST/grammar/middleware). 39 unit tests, 117 test runs across net8/9/10, 0 failures. Phase 0 kill criterion **NOT FIRED** at the unit-test level.
+**Next action:** Task 0.6 (10 wire-level integration tests against real OpenSearch) — requires Docker. Can be deferred to user's local dev env or run in CI.
+**Blockers:** None for unit-level architecture validation. Live-cluster gate requires Docker availability.
 
 ---
 
