@@ -47,6 +47,12 @@ public sealed class StatementDispatcher
             AliasSwapAst aliasSwap => DispatchAliasSwapAsync( aliasSwap, context ),
             AliasAddAst aliasAdd => DispatchAliasAddAsync( aliasAdd, context ),
             AliasRemoveAst aliasRemove => DispatchAliasRemoveAsync( aliasRemove, context ),
+            CreateTemplateAst ct => DispatchCreateTemplateAsync( ct, context ),
+            CreateComponentAst cc => DispatchCreateComponentAsync( cc, context ),
+            DropTemplateAst dt => DispatchDropTemplateAsync( dt, context ),
+            DropComponentAst dc => DispatchDropComponentAsync( dc, context ),
+            CreatePolicyAst cp => DispatchCreatePolicyAsync( cp, context ),
+            ApplyPolicyAst ap => DispatchApplyPolicyAsync( ap, context ),
             _ => throw new InvalidOperationException(
                 $"StatementDispatcher does not handle AST type {ast.GetType().Name}." )
         };
@@ -424,6 +430,215 @@ public sealed class StatementDispatcher
             data: PostData.String( body ) ).ConfigureAwait( false );
 
         return BuildResult( verb, response, $"removed alias `{ast.Alias}` from `{ast.IndexName}`" );
+    }
+
+    // --- CREATE TEMPLATE <name> [WITH BODY $body] ---
+
+    private static async Task<StatementResult> DispatchCreateTemplateAsync( CreateTemplateAst ast, StatementContext context )
+    {
+        var verb = ast.Verb;
+        var ll = context.Client.LowLevel;
+
+        if ( context.ResolvedBody is null )
+        {
+            return new StatementResult( StatementOutcome.Failed, verb,
+                Detail: "CREATE TEMPLATE requires a body — supply WITH BODY $<name>.",
+                Exception: new InvalidOperationException( "CREATE TEMPLATE with null body" ) );
+        }
+
+        var body = context.ResolvedBody.ToJsonString();
+
+        // PUT /_index_template/<name> — composable index template.
+        // Idempotent: PUT replaces an existing template definition.
+
+        var response = await ll.DoRequestAsync<StringResponse>(
+            global::OpenSearch.Net.HttpMethod.PUT,
+            $"_index_template/{ast.TemplateName}",
+            context.CancellationToken,
+            data: PostData.String( body ) ).ConfigureAwait( false );
+
+        return BuildResult( verb, response, $"template `{ast.TemplateName}` created/updated" );
+    }
+
+    // --- CREATE COMPONENT <name> [WITH BODY $body] ---
+
+    private static async Task<StatementResult> DispatchCreateComponentAsync( CreateComponentAst ast, StatementContext context )
+    {
+        var verb = ast.Verb;
+        var ll = context.Client.LowLevel;
+
+        if ( context.ResolvedBody is null )
+        {
+            return new StatementResult( StatementOutcome.Failed, verb,
+                Detail: "CREATE COMPONENT requires a body — supply WITH BODY $<name>.",
+                Exception: new InvalidOperationException( "CREATE COMPONENT with null body" ) );
+        }
+
+        var body = context.ResolvedBody.ToJsonString();
+
+        // PUT /_component_template/<name> — reusable building block referenced
+        // by composable index templates via `composed_of`.
+
+        var response = await ll.DoRequestAsync<StringResponse>(
+            global::OpenSearch.Net.HttpMethod.PUT,
+            $"_component_template/{ast.ComponentName}",
+            context.CancellationToken,
+            data: PostData.String( body ) ).ConfigureAwait( false );
+
+        return BuildResult( verb, response, $"component `{ast.ComponentName}` created/updated" );
+    }
+
+    // --- DROP TEMPLATE <name> [IF EXISTS] ---
+
+    private static async Task<StatementResult> DispatchDropTemplateAsync( DropTemplateAst ast, StatementContext context )
+    {
+        var verb = ast.Verb;
+        var ll = context.Client.LowLevel;
+
+        if ( ast.IfExists )
+        {
+            var existsResponse = await ll.DoRequestAsync<StringResponse>(
+                global::OpenSearch.Net.HttpMethod.HEAD,
+                $"_index_template/{ast.TemplateName}",
+                context.CancellationToken ).ConfigureAwait( false );
+
+            if ( existsResponse.HttpStatusCode != 200 )
+            {
+                context.Logger.LogInformation( "{verb} `{name}` skipped: IF EXISTS guard (not present)",
+                    verb, ast.TemplateName );
+                return new StatementResult( StatementOutcome.Skipped, verb,
+                    Detail: $"IF EXISTS: template `{ast.TemplateName}` did not exist" );
+            }
+        }
+
+        var response = await ll.DoRequestAsync<StringResponse>(
+            global::OpenSearch.Net.HttpMethod.DELETE,
+            $"_index_template/{ast.TemplateName}",
+            context.CancellationToken ).ConfigureAwait( false );
+
+        return BuildResult( verb, response, $"template `{ast.TemplateName}` deleted" );
+    }
+
+    // --- DROP COMPONENT <name> [IF EXISTS] ---
+
+    private static async Task<StatementResult> DispatchDropComponentAsync( DropComponentAst ast, StatementContext context )
+    {
+        var verb = ast.Verb;
+        var ll = context.Client.LowLevel;
+
+        if ( ast.IfExists )
+        {
+            var existsResponse = await ll.DoRequestAsync<StringResponse>(
+                global::OpenSearch.Net.HttpMethod.HEAD,
+                $"_component_template/{ast.ComponentName}",
+                context.CancellationToken ).ConfigureAwait( false );
+
+            if ( existsResponse.HttpStatusCode != 200 )
+            {
+                context.Logger.LogInformation( "{verb} `{name}` skipped: IF EXISTS guard (not present)",
+                    verb, ast.ComponentName );
+                return new StatementResult( StatementOutcome.Skipped, verb,
+                    Detail: $"IF EXISTS: component `{ast.ComponentName}` did not exist" );
+            }
+        }
+
+        // The cluster returns 400 if the component is referenced by an index
+        // template; the caller must drop the referencing template first. The
+        // dispatcher surfaces that error verbatim via BuildResult.
+
+        var response = await ll.DoRequestAsync<StringResponse>(
+            global::OpenSearch.Net.HttpMethod.DELETE,
+            $"_component_template/{ast.ComponentName}",
+            context.CancellationToken ).ConfigureAwait( false );
+
+        return BuildResult( verb, response, $"component `{ast.ComponentName}` deleted" );
+    }
+
+    // --- CREATE POLICY <id> WITH BODY $body ---
+
+    private static async Task<StatementResult> DispatchCreatePolicyAsync( CreatePolicyAst ast, StatementContext context )
+    {
+        var verb = ast.Verb;
+        var ll = context.Client.LowLevel;
+
+        if ( context.ResolvedBody is null )
+        {
+            return new StatementResult( StatementOutcome.Failed, verb,
+                Detail: "CREATE POLICY requires a body — supply WITH BODY $<name>.",
+                Exception: new InvalidOperationException( "CREATE POLICY with null body" ) );
+        }
+
+        var body = context.ResolvedBody.ToJsonString();
+
+        // PUT /_plugins/_ism/policies/<id> — Index State Management policy.
+
+        var response = await ll.DoRequestAsync<StringResponse>(
+            global::OpenSearch.Net.HttpMethod.PUT,
+            $"_plugins/_ism/policies/{ast.PolicyId}",
+            context.CancellationToken,
+            data: PostData.String( body ) ).ConfigureAwait( false );
+
+        return BuildResult( verb, response, $"policy `{ast.PolicyId}` created/updated" );
+    }
+
+    // --- APPLY POLICY <id> TO <pattern> ---
+
+    private static async Task<StatementResult> DispatchApplyPolicyAsync( ApplyPolicyAst ast, StatementContext context )
+    {
+        var verb = ast.Verb;
+        var ll = context.Client.LowLevel;
+
+        // POST /_plugins/_ism/add/<pattern> attaches a policy to existing
+        // indices matching the pattern. `ism_template` matching only kicks in
+        // at index-creation time, so this verb is the way to bind a policy to
+        // already-created indices.
+        //
+        // ISM's add endpoint returns HTTP 200 even when zero indices were
+        // updated (no matching indices, missing policy, already-attached) —
+        // we have to inspect the response body's `updated_indices` and
+        // `failures` fields and surface logical failures explicitly.
+
+        var body = $$"""
+            { "policy_id": "{{ast.PolicyId}}" }
+            """;
+
+        var response = await ll.DoRequestAsync<StringResponse>(
+            global::OpenSearch.Net.HttpMethod.POST,
+            $"_plugins/_ism/add/{ast.IndexPattern}",
+            context.CancellationToken,
+            data: PostData.String( body ) ).ConfigureAwait( false );
+
+        if ( !response.Success )
+            return BuildResult( verb, response, $"policy `{ast.PolicyId}` apply to `{ast.IndexPattern}` failed" );
+
+        try
+        {
+            using var doc = JsonDocument.Parse( response.Body );
+            var root = doc.RootElement;
+
+            var updated = root.TryGetProperty( "updated_indices", out var u ) ? u.GetInt32() : 0;
+            var failures = root.TryGetProperty( "failures", out var f ) && f.GetBoolean();
+
+            if ( failures || updated == 0 )
+            {
+                var detail = $"policy `{ast.PolicyId}` apply to `{ast.IndexPattern}`: updated {updated}, failures={failures}; body={response.Body}";
+                return new StatementResult( StatementOutcome.Failed, verb,
+                    Detail: detail,
+                    OpenSearchResponseStatus: response.HttpStatusCode,
+                    Exception: new InvalidOperationException( detail ) );
+            }
+
+            return new StatementResult( StatementOutcome.Executed, verb,
+                Detail: $"policy `{ast.PolicyId}` applied to `{ast.IndexPattern}` ({updated} indices)",
+                OpenSearchResponseStatus: response.HttpStatusCode );
+        }
+        catch ( JsonException ex )
+        {
+            return new StatementResult( StatementOutcome.Failed, verb,
+                Detail: $"could not parse ISM add response: {ex.Message}",
+                OpenSearchResponseStatus: response.HttpStatusCode,
+                Exception: ex );
+        }
     }
 
     // --- helpers ---

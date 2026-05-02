@@ -17,6 +17,12 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
 //   ALIAS SWAP <alias> FROM <old> TO <new>
 //   ALIAS ADD <alias> ON <idx>
 //   ALIAS REMOVE <alias> ON <idx>
+//   CREATE TEMPLATE <name> [WITH BODY $body]
+//   CREATE COMPONENT <name> [WITH BODY $body]
+//   DROP TEMPLATE <name> [IF EXISTS]
+//   DROP COMPONENT <name> [IF EXISTS]
+//   CREATE POLICY <id> [WITH BODY $body]
+//   APPLY POLICY <id> TO <pattern>
 //
 // Per ADR-0011: parser owns intent. AST nodes carry safe-default flags;
 // runtime middleware applies them during JSON tree merge.
@@ -66,6 +72,10 @@ public sealed class OpenSearchStatementParser
         var swap = Terms.Text( "SWAP", caseInsensitive: true );
         var add = Terms.Text( "ADD", caseInsensitive: true );
         var remove = Terms.Text( "REMOVE", caseInsensitive: true );
+        var template = Terms.Text( "TEMPLATE", caseInsensitive: true );
+        var component = Terms.Text( "COMPONENT", caseInsensitive: true );
+        var policy = Terms.Text( "POLICY", caseInsensitive: true );
+        var apply = Terms.Text( "APPLY", caseInsensitive: true );
 
         // identifier: plain, dashed, or backtick-quoted.
         // OpenSearch index names allow letters/digits/-/_/. but the parser is permissive
@@ -74,6 +84,12 @@ public sealed class OpenSearchStatementParser
         var plainIdentifier = Terms.Pattern( static c => char.IsLetterOrDigit( c ) || c == '_' || c == '-' || c == '.' );
         var quotedIdentifier = Between( Terms.Char( '`' ), Terms.Pattern( static c => c != '`' ), Terms.Char( '`' ) );
         var identifier = quotedIdentifier.Or( plainIdentifier ).Then( static x => x.ToString()! );
+
+        // index pattern: identifier characters plus `*` for wildcards (used by APPLY POLICY).
+        // The cluster rejects truly invalid patterns at execution; the grammar stays permissive.
+
+        var plainPattern = Terms.Pattern( static c => char.IsLetterOrDigit( c ) || c == '_' || c == '-' || c == '.' || c == '*' );
+        var indexPattern = quotedIdentifier.Or( plainPattern ).Then( static x => x.ToString()! );
 
         // body reference: `WITH BODY $name` resolves against sibling JSON properties
 
@@ -280,15 +296,89 @@ public sealed class OpenSearchStatementParser
                 IndexName: x.Item2
             ) );
 
+        // CREATE TEMPLATE <name> [WITH BODY $body]
+
+        var createTemplate = create
+            .SkipAnd( template )
+            .SkipAnd( identifier )
+            .And( ZeroOrOne( bodyRef ) )
+            .Then( static x => (StatementAst) new CreateTemplateAst(
+                TemplateName: x.Item1,
+                Body: x.Item2
+            ) );
+
+        // CREATE COMPONENT <name> [WITH BODY $body]
+
+        var createComponent = create
+            .SkipAnd( component )
+            .SkipAnd( identifier )
+            .And( ZeroOrOne( bodyRef ) )
+            .Then( static x => (StatementAst) new CreateComponentAst(
+                ComponentName: x.Item1,
+                Body: x.Item2
+            ) );
+
+        // DROP TEMPLATE <name> [IF EXISTS]
+
+        var dropTemplate = drop
+            .SkipAnd( template )
+            .SkipAnd( identifier )
+            .And( ZeroOrOne( ifExists ) )
+            .Then( static x => (StatementAst) new DropTemplateAst(
+                TemplateName: x.Item1,
+                IfExists: x.Item2
+            ) );
+
+        // DROP COMPONENT <name> [IF EXISTS]
+
+        var dropComponent = drop
+            .SkipAnd( component )
+            .SkipAnd( identifier )
+            .And( ZeroOrOne( ifExists ) )
+            .Then( static x => (StatementAst) new DropComponentAst(
+                ComponentName: x.Item1,
+                IfExists: x.Item2
+            ) );
+
+        // CREATE POLICY <id> [WITH BODY $body]
+
+        var createPolicy = create
+            .SkipAnd( policy )
+            .SkipAnd( identifier )
+            .And( ZeroOrOne( bodyRef ) )
+            .Then( static x => (StatementAst) new CreatePolicyAst(
+                PolicyId: x.Item1,
+                Body: x.Item2
+            ) );
+
+        // APPLY POLICY <id> TO <pattern>
+
+        var applyPolicy = apply
+            .SkipAnd( policy )
+            .SkipAnd( identifier )
+            .AndSkip( to )
+            .And( indexPattern )
+            .Then( static x => (StatementAst) new ApplyPolicyAst(
+                PolicyId: x.Item1,
+                IndexPattern: x.Item2
+            ) );
+
         // Top-level OneOf — order matters when prefixes overlap.
-        // CREATE before REFRESH (both single-keyword); UPDATE MAPPING before
-        // UPDATE SETTINGS (both UPDATE); WAIT FOR vs WAIT UNTIL (Parlot's
-        // OneOf tries left-to-right; both first dispatch on `wait`).
-        // ALIAS SWAP/ADD/REMOVE all dispatch on `alias` — order within is
-        // mutually-exclusive sub-verb keywords so any order works.
+        // CREATE TEMPLATE/COMPONENT/POLICY are listed BEFORE CREATE INDEX so the
+        // more-specific second keyword wins; same for DROP TEMPLATE/COMPONENT
+        // before DROP INDEX. UPDATE MAPPING before UPDATE SETTINGS (both
+        // UPDATE); WAIT FOR vs WAIT UNTIL (Parlot's OneOf tries left-to-right;
+        // both first dispatch on `wait`). ALIAS SWAP/ADD/REMOVE all dispatch on
+        // `alias` — order within is mutually-exclusive sub-verb keywords so
+        // any order works.
 
         return OneOf(
+            createTemplate,
+            createComponent,
+            createPolicy,
             createIndex,
+            dropTemplate,
+            dropComponent,
             dropIndex,
             updateMapping,
             updateSettings,
@@ -298,7 +388,8 @@ public sealed class OpenSearchStatementParser
             reindexCore,
             aliasSwap,
             aliasAdd,
-            aliasRemove
+            aliasRemove,
+            applyPolicy
         );
     }
 

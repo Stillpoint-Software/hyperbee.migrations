@@ -162,6 +162,9 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
             Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast.ReindexAst r => r.Body?.Name,
             Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast.UpdateMappingAst um => um.Body?.Name,
             Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast.UpdateSettingsAst us => us.Body?.Name,
+            Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast.CreateTemplateAst ct => ct.Body?.Name,
+            Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast.CreateComponentAst cc => cc.Body?.Name,
+            Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast.CreatePolicyAst cp => cp.Body?.Name,
             _ => null
         };
     }

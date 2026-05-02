@@ -318,4 +318,135 @@ public class FoundationVerbParserTests
         var act = () => _parser.Parse( "ALIAS ADD users-current users-v1" );
         act.Should().Throw<OpenSearchParseException>();
     }
+
+    // ---- CREATE/DROP TEMPLATE & COMPONENT, CREATE/APPLY POLICY (Phase 2) ----
+
+    [TestMethod]
+    public void CreateTemplate_WithBody_Parses()
+    {
+        var ast = _parser.Parse( "CREATE TEMPLATE logs-template WITH BODY $body" );
+
+        var t = (CreateTemplateAst) ast;
+        t.TemplateName.Should().Be( "logs-template" );
+        t.Body!.Name.Should().Be( "body" );
+    }
+
+    [TestMethod]
+    public void CreateTemplate_WithoutBody_Parses()
+    {
+        // Body is optional at parse time; the dispatcher rejects null body at execute time.
+        var ast = _parser.Parse( "CREATE TEMPLATE logs-template" );
+
+        var t = (CreateTemplateAst) ast;
+        t.TemplateName.Should().Be( "logs-template" );
+        t.Body.Should().BeNull();
+    }
+
+    [TestMethod]
+    public void CreateComponent_WithBody_Parses()
+    {
+        var ast = _parser.Parse( "CREATE COMPONENT common-mappings WITH BODY $body" );
+
+        var c = (CreateComponentAst) ast;
+        c.ComponentName.Should().Be( "common-mappings" );
+        c.Body!.Name.Should().Be( "body" );
+    }
+
+    [TestMethod]
+    public void DropTemplate_BareName_Parses()
+    {
+        var ast = _parser.Parse( "DROP TEMPLATE logs-template" );
+
+        var d = (DropTemplateAst) ast;
+        d.TemplateName.Should().Be( "logs-template" );
+        d.IfExists.Should().BeFalse();
+    }
+
+    [TestMethod]
+    public void DropTemplate_IfExists_FlagsTrue()
+    {
+        var ast = _parser.Parse( "DROP TEMPLATE logs-template IF EXISTS" );
+
+        var d = (DropTemplateAst) ast;
+        d.IfExists.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void DropComponent_IfExists_FlagsTrue()
+    {
+        var ast = _parser.Parse( "DROP COMPONENT common-mappings IF EXISTS" );
+
+        var d = (DropComponentAst) ast;
+        d.ComponentName.Should().Be( "common-mappings" );
+        d.IfExists.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void CreatePolicy_WithBody_Parses()
+    {
+        var ast = _parser.Parse( "CREATE POLICY hot-warm-cold WITH BODY $body" );
+
+        var p = (CreatePolicyAst) ast;
+        p.PolicyId.Should().Be( "hot-warm-cold" );
+        p.Body!.Name.Should().Be( "body" );
+    }
+
+    [TestMethod]
+    public void ApplyPolicy_Parses()
+    {
+        var ast = _parser.Parse( "APPLY POLICY hot-warm-cold TO logs-*" );
+
+        var a = (ApplyPolicyAst) ast;
+        a.PolicyId.Should().Be( "hot-warm-cold" );
+        a.IndexPattern.Should().Be( "logs-*" );
+    }
+
+    [TestMethod]
+    public void ApplyPolicy_BacktickPattern_StripsBackticks()
+    {
+        var ast = _parser.Parse( "APPLY POLICY hot-warm-cold TO `logs-2026.*`" );
+
+        var a = (ApplyPolicyAst) ast;
+        a.IndexPattern.Should().Be( "logs-2026.*" );
+    }
+
+    [TestMethod]
+    public void TemplatePolicy_KeywordsCaseInsensitive_Parses()
+    {
+        _parser.Parse( "create template logs-template with body $body" )
+            .Should().BeOfType<CreateTemplateAst>();
+        _parser.Parse( "create component common-mappings with body $body" )
+            .Should().BeOfType<CreateComponentAst>();
+        _parser.Parse( "drop template logs-template if exists" )
+            .Should().BeOfType<DropTemplateAst>();
+        _parser.Parse( "drop component common-mappings if exists" )
+            .Should().BeOfType<DropComponentAst>();
+        _parser.Parse( "create policy hot-warm-cold with body $body" )
+            .Should().BeOfType<CreatePolicyAst>();
+        _parser.Parse( "apply policy hot-warm-cold to logs-*" )
+            .Should().BeOfType<ApplyPolicyAst>();
+    }
+
+    [TestMethod]
+    public void CreateTemplate_BeforeCreateIndex_Disambiguates()
+    {
+        // Disambiguation: CREATE TEMPLATE must not be misclassified as
+        // CREATE INDEX (where TEMPLATE would become an identifier).
+        var ast = _parser.Parse( "CREATE TEMPLATE logs WITH BODY $body" );
+        ast.Should().BeOfType<CreateTemplateAst>();
+    }
+
+    [TestMethod]
+    public void DropComponent_BeforeDropIndex_Disambiguates()
+    {
+        var ast = _parser.Parse( "DROP COMPONENT common IF EXISTS" );
+        ast.Should().BeOfType<DropComponentAst>();
+    }
+
+    [TestMethod]
+    public void ApplyPolicy_MissingTo_Throws()
+    {
+        var act = () => _parser.Parse( "APPLY POLICY hot-warm-cold logs-*" );
+        act.Should().Throw<OpenSearchParseException>();
+    }
 }
