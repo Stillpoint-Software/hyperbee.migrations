@@ -24,26 +24,16 @@ internal static class StartupExtensions
 
     public static IServiceCollection AddOpenSearchProvider( this IServiceCollection services, IConfiguration config, ILogger logger = null )
     {
+        // Do not log credentials. Connection-string-only logging is safe.
         var connectionString = config["OpenSearch:ConnectionString"] ?? "http://localhost:9200";
-        var userName = config["OpenSearch:UserName"];
-        var password = config["OpenSearch:Password"];
-
-        // Do not log credentials.
         logger?.Information( $"Connecting to `{connectionString}`." );
 
-        var settings = new ConnectionSettings( new Uri( connectionString ) );
+        // R-21: provider-side AddOpenSearchClient handles all three core auth
+        // modes (Basic, ApiKey, ClientCertificate) plus Anonymous and the
+        // legacy flat OpenSearch:UserName/Password back-compat. SigV4 (AWS
+        // Managed) lands as an opt-in extension in plan task 3.2.
+        services.AddOpenSearchClient( config );
 
-        if ( !string.IsNullOrEmpty( userName ) )
-        {
-            settings = settings.BasicAuthentication( userName, password ?? string.Empty );
-        }
-
-        // Phase 3.1 ships basic auth + anonymous. SigV4 (AWS Managed) lands
-        // as an opt-in extension in plan task 3.2 / R-21.
-
-        var client = new OpenSearchClient( settings );
-
-        services.AddSingleton<IOpenSearchClient>( client );
         return services;
     }
 

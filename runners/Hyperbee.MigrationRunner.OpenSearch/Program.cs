@@ -82,7 +82,7 @@ internal class Program
             { "-a", "[Migrations:FromAssemblies]" },
             { "-p", "[Migrations:Profiles]" },
             { "-cs", "OpenSearch:ConnectionString" },
-            { "-u", "OpenSearch:UserName" },
+            { "-u", "OpenSearch:Authentication:UserName" },
 
             // aliases
             { "--file", "[Migrations:FromPaths]" },
@@ -90,8 +90,22 @@ internal class Program
             { "--profile", "[Migrations:Profiles]" },
 
             { "--connection", "OpenSearch:ConnectionString" },
-            { "--user", "OpenSearch:UserName" },
-            { "--password", "OpenSearch:Password" },
+
+            // R-21 — auth (basic, API key, mTLS). Mode is a string parsed
+            // case-insensitively: Anonymous | Basic | ApiKey | ClientCertificate.
+            // Setting Mode is optional when only Basic credentials are given —
+            // the provider treats `--user` + `--password` without an explicit
+            // Mode as Basic (back-compat with the runner's earlier shape).
+            { "--auth-mode", "OpenSearch:Authentication:Mode" },
+
+            { "--user", "OpenSearch:Authentication:UserName" },
+            { "--password", "OpenSearch:Authentication:Password" },
+
+            { "--api-key-id", "OpenSearch:Authentication:ApiKeyId" },
+            { "--api-key", "OpenSearch:Authentication:ApiKey" },
+
+            { "--client-cert", "OpenSearch:Authentication:ClientCertificatePath" },
+            { "--client-cert-password", "OpenSearch:Authentication:ClientCertificatePassword" },
 
             { "--ledger", "Migrations:LedgerIndex" },
             { "--lock", "Migrations:LockIndex" },

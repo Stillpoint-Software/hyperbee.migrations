@@ -288,6 +288,53 @@ To recover:
 
 ---
 
+## Authentication (R-21)
+
+The provider supports four auth modes for the core package; SigV4 ships in a separate opt-in extension (plan task 3.2). Configure via `services.AddOpenSearchClient(endpoint, opts => ...)` or via `IConfiguration` under the `OpenSearch:Authentication:*` section. The runner project surfaces all four through CLI flags.
+
+| Mode | Use when | Required fields |
+|------|----------|-----------------|
+| `Anonymous` | Local dev cluster with the security plugin disabled | (none — emits a startup WARN) |
+| `Basic` | Standard username/password setup | `UserName` (Password may be empty) |
+| `ApiKey` | OpenSearch security-plugin API keys (recommended for service-to-service) | `ApiKeyId`, `ApiKey` |
+| `ClientCertificate` | mTLS — corporate compliance and zero-trust setups | `ClientCertificatePath` (PFX) **or** `ClientCertificate` (X509Certificate instance); optional `ClientCertificatePassword` |
+
+Validation runs at client-build time so missing required fields fail at startup with the configuration key to set, not at first wire request.
+
+```csharp
+services.AddOpenSearchClient( new Uri( "https://prod-cluster.example:9200" ), auth =>
+{
+    auth.Mode = OpenSearchAuthenticationMode.ApiKey;
+    auth.ApiKeyId = config["OpenSearch:Authentication:ApiKeyId"];
+    auth.ApiKey = config["OpenSearch:Authentication:ApiKey"];
+} );
+
+services.AddOpenSearchMigrations( opts => { /* ... */ } );
+```
+
+Or from `IConfiguration` directly:
+
+```csharp
+services.AddOpenSearchClient( configuration );
+```
+
+```jsonc
+{
+  "OpenSearch": {
+    "ConnectionString": "https://prod-cluster.example:9200",
+    "Authentication": {
+      "Mode": "ClientCertificate",
+      "ClientCertificatePath": "/secrets/migrations.pfx",
+      "ClientCertificatePassword": "(use user-secrets / env vars / vault)"
+    }
+  }
+}
+```
+
+**Anonymous emits a startup WARN.** Production deployments should always pin a non-anonymous mode; the warning is the cheapest forcing function we can afford. Mode keyword parsing is case-insensitive (`apikey` / `ApiKey` / `APIKEY` are equivalent in config).
+
+The runner project's `--user`/`--password` flags map onto Basic; `--api-key-id`/`--api-key` map onto ApiKey; `--client-cert`/`--client-cert-password` map onto ClientCertificate. `--auth-mode` selects explicitly when needed.
+
 ## Configuration
 
 `AddOpenSearchMigrations(Action<OpenSearchMigrationOptions>)` registers the provider. Options:

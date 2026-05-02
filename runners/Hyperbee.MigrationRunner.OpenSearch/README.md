@@ -14,8 +14,13 @@ Configure via `appsettings.json`, `appsettings.<ENV>.json`, environment variable
 | Key | Description | Default |
 |-----|-------------|---------|
 | `OpenSearch:ConnectionString` | Cluster URL | `http://localhost:9200` |
-| `OpenSearch:UserName` | Basic-auth username (optional) | |
-| `OpenSearch:Password` | Basic-auth password (use user-secrets in dev) | |
+| `OpenSearch:Authentication:Mode` | Auth mode: `Anonymous` \| `Basic` \| `ApiKey` \| `ClientCertificate` | `Anonymous` |
+| `OpenSearch:Authentication:UserName` | Basic-auth username | |
+| `OpenSearch:Authentication:Password` | Basic-auth password (use user-secrets in dev) | |
+| `OpenSearch:Authentication:ApiKeyId` | OpenSearch security-plugin API key id | |
+| `OpenSearch:Authentication:ApiKey` | OpenSearch security-plugin API key secret | |
+| `OpenSearch:Authentication:ClientCertificatePath` | Path to a PFX/PKCS12 client cert (mTLS) | |
+| `OpenSearch:Authentication:ClientCertificatePassword` | PFX password, if any | |
 | `Migrations:LedgerIndex` | Ledger index name | `.migrations` |
 | `Migrations:LockIndex` | Lock index name | `.migrations-lock` |
 | `Migrations:LockName` | Lock document id | `migration_lock` |
@@ -24,6 +29,8 @@ Configure via `appsettings.json`, `appsettings.<ENV>.json`, environment variable
 | `Migrations:FromPaths` | Migration assembly file paths | |
 | `Migrations:FromAssemblies` | Migration assembly names | |
 | `Migrations:Profiles` | Active migration profiles | |
+
+The runner accepts the legacy flat `OpenSearch:UserName` / `OpenSearch:Password` keys without an explicit `Authentication:Mode` and treats them as Basic. New deployments should use the `Authentication:*` section so the mode is explicit.
 
 ## Running Locally
 
@@ -43,8 +50,13 @@ docker run opensearch-migrations
 | Flag | Description |
 |------|-------------|
 | `-cs`, `--connection` | OpenSearch connection string |
+| `--auth-mode` | Auth mode: `Anonymous` \| `Basic` \| `ApiKey` \| `ClientCertificate` (case-insensitive) |
 | `-u`, `--user` | Basic-auth username |
 | `--password` | Basic-auth password |
+| `--api-key-id` | API key id (mode `ApiKey`) |
+| `--api-key` | API key secret (mode `ApiKey`) |
+| `--client-cert` | Path to PFX client cert (mode `ClientCertificate`) |
+| `--client-cert-password` | PFX password, if any |
 | `--ledger` | Ledger index name |
 | `--lock` | Lock index name |
 | `--lock-name` | Lock document id |
