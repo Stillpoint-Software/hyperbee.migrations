@@ -49,11 +49,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton( OpenSearchMigrationOptionsFactory );
         services.AddSingleton<MigrationOptions>( provider => provider.GetRequiredService<OpenSearchMigrationOptions>() );
 
-        // IMigrationRecordStore registration deferred until LockHandle + RecordStore land
-        // (Phase 1 Slice 1.B follow-on). The bootstrapper, options, and init steps are
-        // available now for consumers that want to assemble their own RecordStore for
-        // testing or experimentation.
-
+        services.AddSingleton<IMigrationRecordStore, OpenSearchRecordStore>();
         services.AddSingleton<MigrationRunner>();
 
         services.TryAddSingleton( TimeProvider.System );
