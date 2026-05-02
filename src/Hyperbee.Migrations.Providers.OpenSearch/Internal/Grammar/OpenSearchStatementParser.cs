@@ -5,8 +5,14 @@ using static Parlot.Fluent.Parsers;
 
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
 
-// PARTIAL OpenSearch statement parser. Phase 0 spike scope:
+// PARTIAL OpenSearch statement parser. Foundation verbs (Phase 0 + Phase 1):
 //   CREATE INDEX <name> [IF NOT EXISTS] [WITH BODY $body]
+//   DROP INDEX <name> [IF EXISTS]
+//   UPDATE MAPPING ON <idx> [WITH BODY $body]
+//   UPDATE SETTINGS ON <idx> [CLOSE] [WITH BODY $body]
+//   REFRESH <name>
+//   WAIT FOR <green|yellow> [ON <idx>] [TIMEOUT <duration>]
+//   WAIT UNTIL TASK <id> COMPLETE [TIMEOUT <duration>]
 //   REINDEX [UNSAFE("<reason>")] FROM <src> TO <dst> [WITH BODY $body]
 //
 // Per ADR-0011: parser owns intent. AST nodes carry safe-default flags;
@@ -28,7 +34,14 @@ public sealed class OpenSearchStatementParser
         // keywords (case-insensitive)
 
         var create = Terms.Text( "CREATE", caseInsensitive: true );
+        var drop = Terms.Text( "DROP", caseInsensitive: true );
+        var update = Terms.Text( "UPDATE", caseInsensitive: true );
         var index = Terms.Text( "INDEX", caseInsensitive: true );
+        var mapping = Terms.Text( "MAPPING", caseInsensitive: true );
+        var settings = Terms.Text( "SETTINGS", caseInsensitive: true );
+        var refreshKw = Terms.Text( "REFRESH", caseInsensitive: true );
+        var on = Terms.Text( "ON", caseInsensitive: true );
+        var close = Terms.Text( "CLOSE", caseInsensitive: true );
         var @if = Terms.Text( "IF", caseInsensitive: true );
         var not = Terms.Text( "NOT", caseInsensitive: true );
         var exists = Terms.Text( "EXISTS", caseInsensitive: true );
@@ -38,6 +51,14 @@ public sealed class OpenSearchStatementParser
         var from = Terms.Text( "FROM", caseInsensitive: true );
         var to = Terms.Text( "TO", caseInsensitive: true );
         var unsafeKw = Terms.Text( "UNSAFE", caseInsensitive: true );
+        var wait = Terms.Text( "WAIT", caseInsensitive: true );
+        var @for = Terms.Text( "FOR", caseInsensitive: true );
+        var until = Terms.Text( "UNTIL", caseInsensitive: true );
+        var task = Terms.Text( "TASK", caseInsensitive: true );
+        var complete = Terms.Text( "COMPLETE", caseInsensitive: true );
+        var timeout = Terms.Text( "TIMEOUT", caseInsensitive: true );
+        var greenKw = Terms.Text( "GREEN", caseInsensitive: true );
+        var yellowKw = Terms.Text( "YELLOW", caseInsensitive: true );
 
         // identifier: plain, dashed, or backtick-quoted.
         // OpenSearch index names allow letters/digits/-/_/. but the parser is permissive
@@ -114,7 +135,120 @@ public sealed class OpenSearchStatementParser
                 );
             } );
 
-        return OneOf( createIndex, reindexCore );
+        // DROP INDEX <name> [IF EXISTS]
+
+        var ifExists = @if.SkipAnd( exists ).Then( static _ => true );
+
+        var dropIndex = drop
+            .SkipAnd( index )
+            .SkipAnd( identifier )
+            .And( ZeroOrOne( ifExists ) )
+            .Then( static x => (StatementAst) new DropIndexAst(
+                IndexName: x.Item1,
+                IfExists: x.Item2
+            ) );
+
+        // UPDATE MAPPING ON <idx> [WITH BODY $body]
+
+        var updateMapping = update
+            .SkipAnd( mapping )
+            .SkipAnd( on )
+            .SkipAnd( identifier )
+            .And( ZeroOrOne( bodyRef ) )
+            .Then( static x => (StatementAst) new UpdateMappingAst(
+                IndexName: x.Item1,
+                Body: x.Item2
+            ) );
+
+        // UPDATE SETTINGS ON <idx> [CLOSE] [WITH BODY $body]
+
+        var closeFlag = close.Then( static _ => true );
+
+        var updateSettings = update
+            .SkipAnd( settings )
+            .SkipAnd( on )
+            .SkipAnd( identifier )
+            .And( ZeroOrOne( closeFlag ) )
+            .And( ZeroOrOne( bodyRef ) )
+            .Then( static x => (StatementAst) new UpdateSettingsAst(
+                IndexName: x.Item1,
+                Close: x.Item2,
+                Body: x.Item3
+            ) );
+
+        // REFRESH <name>
+
+        var refreshStmt = refreshKw
+            .SkipAnd( identifier )
+            .Then( static name => (StatementAst) new RefreshAst( IndexName: name ) );
+
+        // duration: <integer><s|m|h>  (e.g., 30s, 5m, 2h)
+        // Pure-integer numeric durations are rejected — explicit suffix required.
+
+        var durationParser = Terms.Integer().And( Terms.Pattern( static c => c is 's' or 'm' or 'h', minSize: 1, maxSize: 1 ) )
+            .Then( static x =>
+            {
+                var n = x.Item1;
+                var suffix = x.Item2.ToString();
+                return suffix switch
+                {
+                    "s" => TimeSpan.FromSeconds( n ),
+                    "m" => TimeSpan.FromMinutes( n ),
+                    "h" => TimeSpan.FromHours( n ),
+                    _ => throw new InvalidOperationException( $"Unrecognized duration suffix `{suffix}`." )
+                };
+            } );
+
+        var timeoutClause = timeout.SkipAnd( durationParser );
+
+        // WAIT FOR <green|yellow> [ON <idx>] [TIMEOUT <duration>]
+
+        var healthThreshold = OneOf(
+            greenKw.Then( static _ => HealthStatus.Green ),
+            yellowKw.Then( static _ => HealthStatus.Yellow )
+        );
+
+        var onIndex = on.SkipAnd( identifier );
+
+        var waitForHealth = wait
+            .SkipAnd( @for )
+            .SkipAnd( healthThreshold )
+            .And( ZeroOrOne( onIndex ) )
+            .And( ZeroOrOne( timeoutClause ) )
+            .Then( static x => (StatementAst) new WaitForHealthAst(
+                Threshold: x.Item1,
+                IndexName: x.Item2,
+                Timeout: x.Item3 == TimeSpan.Zero ? null : x.Item3
+            ) );
+
+        // WAIT UNTIL TASK <id> COMPLETE [TIMEOUT <duration>]
+
+        var waitUntilTask = wait
+            .SkipAnd( until )
+            .SkipAnd( task )
+            .SkipAnd( identifier )
+            .AndSkip( complete )
+            .And( ZeroOrOne( timeoutClause ) )
+            .Then( static x => (StatementAst) new WaitUntilTaskAst(
+                TaskId: x.Item1,
+                Timeout: x.Item2 == TimeSpan.Zero ? null : x.Item2
+            ) );
+
+        // Top-level OneOf — order matters when prefixes overlap.
+        // CREATE before REFRESH (both single-keyword); UPDATE MAPPING before
+        // UPDATE SETTINGS (both UPDATE); WAIT FOR vs WAIT UNTIL (Parlot's
+        // OneOf tries left-to-right; both first dispatch on `wait`).
+
+        return OneOf(
+            createIndex,
+            dropIndex,
+            updateMapping,
+            updateSettings,
+            refreshStmt,
+            waitForHealth,
+            waitUntilTask,
+            reindexCore
+        );
     }
 
     /// <summary>
