@@ -37,6 +37,19 @@ public class OpenSearchMigrationOptions : MigrationOptions
     public string ActiveContext { get; set; }
     public bool AssumeIndicesExist { get; set; } = false;
 
+    // R-19: when a previous Down attempt halted partway through the rollback
+    // sequence, the ledger entry is `partially_rolled_back`. Subsequent runs
+    // are refused (loudly, with remediation) until the operator inspects the
+    // cluster, reconciles state, and opts in to a retry by setting this
+    // flag. The runner project (R-26) is expected to surface this as a
+    // `--force-resume` CLI flag once it lands.
+    //
+    // ForceResume = true bypasses the partially_rolled_back lockout; the
+    // runner proceeds as if the record were in a normal state. Use only
+    // after manual reconciliation — silently retrying a partially-failed
+    // rollback can leave the cluster in an indeterminate state.
+    public bool ForceResume { get; set; } = false;
+
     public TimeSpan ImplicitWaitTimeout { get; set; } = TimeSpan.FromSeconds( 30 );
 
     // Heartbeat renewal interval. Must be shorter than LockStaleAfter so a healthy

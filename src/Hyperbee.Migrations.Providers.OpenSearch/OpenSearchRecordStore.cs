@@ -333,22 +333,50 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
         }
     }
 
+    // Per R-19: when a record is in `partially_rolled_back` state, subsequent
+    // runs in either direction are refused unless ForceResume is set. The
+    // refusal happens here in ExistsAsync — the core MigrationRunner calls
+    // ExistsAsync before deciding to run a migration, so this is the natural
+    // gate. The thrown OpenSearchPartialRollbackException bubbles through
+    // RunAsync (which only catches MigrationLockUnavailable + OperationCanceled)
+    // to the operator.
+    //
+    // ForceResume = true: skip the lockout check; behave as a normal Exists.
+    // The operator has accepted responsibility for cluster-state reconciliation.
     public async Task<bool> ExistsAsync( string recordId )
     {
         _logger.LogDebug( "Running {action} with `{recordId}`", nameof( ExistsAsync ), recordId );
 
-        var response = await _client.DocumentExistsAsync<MigrationRecord>( recordId, d => d
+        var response = await _client.GetAsync<OpenSearchMigrationRecord>( recordId, g => g
             .Index( _options.LedgerIndex )
+            .Realtime( true )
         ).ConfigureAwait( false );
 
-        return response.Exists;
+        if ( !response.Found )
+            return false;
+
+        var record = response.Source;
+        if ( !_options.ForceResume &&
+             string.Equals( record?.Status, OpenSearchMigrationRecord.StatusPartiallyRolledBack, StringComparison.Ordinal ) )
+        {
+            throw new OpenSearchPartialRollbackException(
+                recordId, record!.FailedStatementIndex,
+                $"Migration `{recordId}` is in `partially_rolled_back` state " +
+                $"(failed at rollback statement index {record.FailedStatementIndex?.ToString() ?? "<unknown>"}). " +
+                $"Subsequent runs are refused per R-19. " +
+                $"Inspect the cluster, reconcile state manually, then set " +
+                $"`OpenSearchMigrationOptions.ForceResume = true` (or pass --force-resume on the runner) to proceed. " +
+                $"Original error: {record.Error ?? "<none>"}" );
+        }
+
+        return true;
     }
 
     public async Task<MigrationRecord> ReadAsync( string recordId )
     {
         _logger.LogDebug( "Running {action} with `{recordId}`", nameof( ReadAsync ), recordId );
 
-        var response = await _client.GetAsync<MigrationRecord>( recordId, g => g
+        var response = await _client.GetAsync<OpenSearchMigrationRecord>( recordId, g => g
             .Index( _options.LedgerIndex )
             .Realtime( true )
         ).ConfigureAwait( false );
@@ -356,19 +384,61 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
         return response.Found ? response.Source : null!;
     }
 
-    public async Task WriteAsync( string recordId )
+    public Task WriteAsync( string recordId )
     {
-        _logger.LogDebug( "Running {action} with `{recordId}`", nameof( WriteAsync ), recordId );
+        // Standard contract write: a successful Up. Populate the forensic
+        // fields per R-06 so the ledger captures status/direction/applied-by
+        // alongside the record id. Failed-state writes go through the
+        // partial-rollback path (WritePartialRollbackAsync).
+        return WriteRecordAsync( BuildSucceededRecord( recordId, "Up" ) );
+    }
 
-        var record = new MigrationRecord
+    private OpenSearchMigrationRecord BuildSucceededRecord( string recordId, string direction )
+    {
+        return new OpenSearchMigrationRecord
         {
             Id = recordId,
-            RunOn = _timeProvider.GetUtcNow()
+            RunOn = _timeProvider.GetUtcNow(),
+            Direction = direction,
+            Status = OpenSearchMigrationRecord.StatusSucceeded,
+            AppliedBy = $"{Environment.MachineName}/{Environment.ProcessId}",
+            Checksum = null,
+            Error = null,
+            FailedStatementIndex = null
         };
+    }
+
+    /// <summary>
+    /// R-19: writes the migration's ledger entry as `partially_rolled_back`
+    /// with the index of the failing rollback statement. Called by the
+    /// resource runner when a Down sequence halts partway through. The
+    /// recordId may already exist (the migration's previous Up wrote it);
+    /// this overwrites that record with the partial-rollback state.
+    /// </summary>
+    internal async Task WritePartialRollbackAsync( string recordId, int failedStatementIndex, string error )
+    {
+        var record = new OpenSearchMigrationRecord
+        {
+            Id = recordId,
+            RunOn = _timeProvider.GetUtcNow(),
+            Direction = "Down",
+            Status = OpenSearchMigrationRecord.StatusPartiallyRolledBack,
+            AppliedBy = $"{Environment.MachineName}/{Environment.ProcessId}",
+            Checksum = null,
+            Error = error,
+            FailedStatementIndex = failedStatementIndex
+        };
+        await WriteRecordAsync( record ).ConfigureAwait( false );
+    }
+
+    private async Task WriteRecordAsync( OpenSearchMigrationRecord record )
+    {
+        _logger.LogDebug( "Running {action} with `{recordId}` status={status}",
+            nameof( WriteRecordAsync ), record.Id, record.Status );
 
         var response = await _client.IndexAsync( record, idx => idx
             .Index( _options.LedgerIndex )
-            .Id( recordId )
+            .Id( record.Id )
             .Refresh( global::OpenSearch.Net.Refresh.WaitFor )
         ).ConfigureAwait( false );
 
@@ -378,7 +448,7 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
                 ?? response.ServerError?.Error?.ToString()
                 ?? "Unknown ledger write failure.";
             throw new OpenSearchProviderException(
-                $"Ledger write for `{recordId}` failed: {detail}",
+                $"Ledger write for `{record.Id}` failed: {detail}",
                 response.OriginalException ?? new InvalidOperationException( detail ) );
         }
     }

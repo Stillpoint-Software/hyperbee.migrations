@@ -30,3 +30,37 @@ public sealed class AwsSigV4NotConfiguredException : OpenSearchProviderException
 {
     public AwsSigV4NotConfiguredException( string message ) : base( message ) { }
 }
+
+// R-19: thrown by RollbackStatementsFromAsync when a statement entry has no
+// `rollback` field. The author's intent is "this operation is irreversible";
+// the runner refuses Down rather than guess at an inverse.
+
+public sealed class RollbackNotSupportedException : OpenSearchProviderException
+{
+    public int StatementIndex { get; }
+
+    public RollbackNotSupportedException( int statementIndex, string message )
+        : base( message )
+    {
+        StatementIndex = statementIndex;
+    }
+}
+
+// R-19: thrown when a migration's ledger record is in `partially_rolled_back`
+// state and the operator has not opted into recovery via OpenSearchMigrationOptions.ForceResume.
+// Subsequent runs are refused in either direction until the operator
+// inspects the cluster, reconciles state, and explicitly re-runs with
+// ForceResume = true (or deletes the record manually for a fresh Up).
+
+public sealed class OpenSearchPartialRollbackException : OpenSearchProviderException
+{
+    public string RecordId { get; }
+    public int? FailedStatementIndex { get; }
+
+    public OpenSearchPartialRollbackException( string recordId, int? failedStatementIndex, string message )
+        : base( message )
+    {
+        RecordId = recordId;
+        FailedStatementIndex = failedStatementIndex;
+    }
+}
