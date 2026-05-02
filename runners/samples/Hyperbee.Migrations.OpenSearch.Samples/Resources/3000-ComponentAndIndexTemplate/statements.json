@@ -1,0 +1,41 @@
+{
+  "statements": [
+    {
+      "statement": "CREATE COMPONENT sample_common_mappings WITH BODY $body",
+      "body": {
+        "template": {
+          "mappings": {
+            "properties": {
+              "@timestamp": { "type": "date" },
+              "host":       { "type": "keyword" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "statement": "CREATE COMPONENT sample_default_settings WITH BODY $body",
+      "body": {
+        "template": {
+          "settings": { "number_of_shards": 1, "number_of_replicas": 0 }
+        }
+      }
+    },
+    {
+      "statement": "CREATE TEMPLATE sample_app_logs_template WITH BODY $body",
+      "body": {
+        "index_patterns": ["sample_app_logs-*"],
+        "composed_of": ["sample_common_mappings", "sample_default_settings"],
+        "template": {
+          "mappings": {
+            "properties": {
+              "level": { "type": "keyword" },
+              "msg":   { "type": "text" }
+            }
+          }
+        },
+        "priority": 100
+      }
+    }
+  ]
+}

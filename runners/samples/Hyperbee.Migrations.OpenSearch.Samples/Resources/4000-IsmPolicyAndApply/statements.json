@@ -1,0 +1,23 @@
+{
+  "statements": [
+    {
+      "statement": "CREATE INDEX sample_metrics-2026.01.01 IF NOT EXISTS WITH BODY $idx",
+      "idx": {
+        "settings": { "number_of_shards": 1, "number_of_replicas": 0 }
+      }
+    },
+    {
+      "statement": "CREATE POLICY sample_hot_warm_cold WITH BODY $policy",
+      "policy": {
+        "policy": {
+          "description": "demo lifecycle policy",
+          "default_state": "hot",
+          "states": [
+            { "name": "hot", "actions": [], "transitions": [] }
+          ]
+        }
+      }
+    },
+    { "statement": "APPLY POLICY sample_hot_warm_cold TO sample_metrics-*" }
+  ]
+}
