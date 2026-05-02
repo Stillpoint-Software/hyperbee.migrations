@@ -17,6 +17,8 @@
     <PackageReference Include="MSTest.TestAdapter" />
     <PackageReference Include="Aerospike.Client" />
     <PackageReference Include="Npgsql" />
+    <PackageReference Include="OpenSearch.Client" />
+    <PackageReference Include="OpenSearch.Net" />
     <PackageReference Include="Testcontainers"  />
     <PackageReference Include="Testcontainers.Couchbase"  />
     <PackageReference Include="Testcontainers.MongoDb"/>
@@ -36,6 +38,7 @@
     <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.MongoDB\Hyperbee.Migrations.Providers.MongoDB.csproj" />
     <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Aerospike\Hyperbee.Migrations.Providers.Aerospike.csproj" />
     <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Couchbase\Hyperbee.Migrations.Providers.Couchbase.csproj" />
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.OpenSearch\Hyperbee.Migrations.Providers.OpenSearch.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -141,9 +141,11 @@ Audit existing providers; populate the Style Reference section above with concre
 
 #### 0.3: Single-node Testcontainers harness + hello-world
 
-- [ ] `OpenSearchTestContainer.cs` mirroring Aerospike harness shape
-- [ ] Hello-world test: container boots, `_cluster/health` returns yellow
-- [ ] Document the version-support contract (per A11/NF-6): minimum supported OpenSearch version, pinned digest, AWS Managed caveat — comment header in the container file + README line
+- [x] `OpenSearchTestContainer.cs` mirroring Aerospike harness shape — `discovery.type=single-node`, security plugin disabled, mapped 9200, captures both `IOpenSearchClient` (high-level) and `OpenSearchLowLevelClient` (low-level for raw HTTP)
+- [x] Hello-world test (`OpenSearchHarnessTest.HelloWorld_ClusterHealthYellowOrGreen`): gated by `#if INTEGRATIONS` per ADR-0010; calls `Cluster.HealthAsync<StringResponse>()` and asserts `status` is yellow or green
+- [x] Version-support contract documented in `OpenSearchTestContainer.cs` header (per A11/NF-6): tested 2.18.0, minimum 2.0.0, AWS Managed caveat about ISM endpoint path
+- [x] OpenSearch container added to `InitializeTestContainers.AssemblyInitialize`
+- [x] `dotnet build` clean (0 errors; 27 warnings, all pre-existing CS0618 plus 1 matching one in my code per house style)
 
 #### 0.4: Hyperbee.Templating first-contact spike (per A6)
 
@@ -342,8 +344,8 @@ Before tagging a phase snapshot:
 | 2 — Atomic + Composite + Cross-Cutting | Not Started | |
 | 3 — Distribution + Polish | Not Started | |
 
-**Current task:** Phase 0, Tasks 0.1 + 0.2 **Done**. Style Reference populated; provider library scaffolded; build clean (0 warnings, 0 errors).
-**Next action:** Task 0.3 (single-node Testcontainers harness + hello-world).
+**Current task:** Phase 0, Tasks 0.1 + 0.2 + 0.3 **Done**. Provider library scaffolded; Testcontainers harness + hello-world test in place; build clean.
+**Next action:** Tasks 0.4 (Templating spike) + 0.5 (AST/grammar/middleware) — candidate for parallel execution.
 **Blockers:** None.
 
 ---
