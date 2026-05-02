@@ -76,7 +76,12 @@ public sealed class StatementDispatcher
         var response = await ll.Indices.CreateAsync<StringResponse>(
             ast.IndexName, PostData.String( body ), ctx: context.CancellationToken ).ConfigureAwait( false );
 
-        return BuildResult( verb, response, $"created `{ast.IndexName}`" );
+        var result = BuildResult( verb, response, $"created `{ast.IndexName}`" );
+
+        if ( result.IsSuccess )
+            await ImplicitWaitIfMutatingAsync( context, ast.IndexName ).ConfigureAwait( false );
+
+        return result;
     }
 
     // --- DROP INDEX ---
@@ -188,7 +193,12 @@ public sealed class StatementDispatcher
         var dynamicResponse = await ll.Indices.UpdateSettingsAsync<StringResponse>(
             ast.IndexName, PostData.String( body ), ctx: context.CancellationToken ).ConfigureAwait( false );
 
-        return BuildResult( verb, dynamicResponse, $"settings updated on `{ast.IndexName}`" );
+        var result = BuildResult( verb, dynamicResponse, $"settings updated on `{ast.IndexName}`" );
+
+        if ( result.IsSuccess )
+            await ImplicitWaitIfMutatingAsync( context, ast.IndexName ).ConfigureAwait( false );
+
+        return result;
     }
 
     // --- REFRESH ---
@@ -327,10 +337,64 @@ public sealed class StatementDispatcher
         var response = await ll.ReindexOnServerAsync<StringResponse>(
             PostData.String( body ), ctx: context.CancellationToken ).ConfigureAwait( false );
 
-        return BuildResult( verb, response, $"reindex {ast.Source} -> {ast.Destination}" );
+        var result = BuildResult( verb, response, $"reindex {ast.Source} -> {ast.Destination}" );
+
+        if ( result.IsSuccess )
+            await ImplicitWaitIfMutatingAsync( context, ast.Destination ).ConfigureAwait( false );
+
+        return result;
     }
 
     // --- helpers ---
+
+    // R-12: implicit cluster-health wait after mutating statements, scoped to the
+    // mutated index per NF-3 (avoids stalling on permanently-yellow plugin indices
+    // like .opendistro_security). Honors WaitMode:
+    //   - PerStatement (SDK default): wait after each mutating statement
+    //   - PerMigration (production via WithProductionDefaults): no per-statement
+    //     wait; the resource runner is responsible for a single consolidated
+    //     wait at migration end (Phase 6 wires this; Phase 1 only implements
+    //     PerStatement)
+    //   - Off: no implicit waits — author owns explicit WAIT FOR statements
+
+    private static async Task ImplicitWaitIfMutatingAsync( StatementContext context, string mutatedIndex )
+    {
+        if ( context.Options.WaitMode == WaitMode.Off )
+            return;
+
+        if ( context.Options.WaitMode == WaitMode.PerMigration )
+        {
+            // PerMigration deferred to Phase 6 (requires resource-runner-level
+            // dirty-index tracking + consolidated end-of-migration wait).
+            return;
+        }
+
+        var threshold = context.Options.ClusterHealthThreshold == ClusterHealthThreshold.Green
+            ? global::OpenSearch.Net.WaitForStatus.Green
+            : global::OpenSearch.Net.WaitForStatus.Yellow;
+
+        var timeout = context.Options.ImplicitWaitTimeout;
+
+        try
+        {
+            await context.Client.Cluster.HealthAsync(
+                selector: s => s
+                    .WaitForStatus( threshold )
+                    .Timeout( timeout )
+                    .Index( global::OpenSearch.Client.Indices.Index( mutatedIndex ) ),
+                ct: context.CancellationToken
+            ).ConfigureAwait( false );
+        }
+        catch ( Exception ex )
+        {
+            // Implicit waits are best-effort defense — they don't fail the statement
+            // result. Log + continue. If a stronger guarantee is needed, the author
+            // should write an explicit WAIT FOR statement.
+            context.Logger.LogWarning( ex,
+                "Implicit wait after mutating statement on `{idx}` failed; continuing", mutatedIndex );
+        }
+    }
+
 
     private static StatementResult BuildResult( string verb, StringResponse response, string detail )
     {

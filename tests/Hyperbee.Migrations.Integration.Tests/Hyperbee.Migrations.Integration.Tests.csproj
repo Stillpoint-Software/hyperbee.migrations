@@ -15,6 +15,7 @@
     <PackageReference Include="MSTest.TestFramework" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="MSTest.TestAdapter" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="Aerospike.Client" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="OpenSearch.Client" />

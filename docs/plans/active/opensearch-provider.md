@@ -363,7 +363,7 @@ ADR-0011 hybrid + ADR-0015 offline-pure parser holds: parser produces AST flags,
 | Phase | Status | Notes |
 |-------|--------|-------|
 | 0 — Scaffold + Spike | Not Started | Critical gate; if spike fails, ADR-0011 needs revision and Approach A becomes fallback |
-| 1 — Foundation + Foundation Verbs | In Progress (~70%) | Bootstrapper, init steps, LockHandle, RecordStore, full foundation verb grammar + AST landed. **Remaining: statement compilers (AST → IRequest), resource runner, ImplicitWaitMiddleware, R-18 unsafe-op enumeration, R-24b integration tests.** 74 unit tests passing. |
+| 1 — Foundation + Foundation Verbs | **Done** | All Phase 1 deliverables landed: bootstrapper façade + 4 default steps; auto-renewing LockHandle with realtime-GET takeover + LockMaxLifetime cancellation; ledger with forensic fields; OpenSearchRecordStore (full IMigrationRecordStore impl); foundation verb grammar (8 verbs); StatementDispatcher (all 8 verbs end-to-end); OpenSearchResourceRunner (load statements.json → parse → dispatch); ImplicitWaitMiddleware (R-12 PerStatement; PerMigration deferred to Phase 6 with documented hook); R-24b lock contention/crash recovery tests with FakeTimeProvider. **R-18 syntactic body-content enumeration deferred to Phase 2** (requires body-content inspection beyond pure parser; UNSAFE/NO WAIT justification tokens already enforced at parse). 74 unit tests + 34 integration tests pass against real OpenSearch 2.18.0. |
 | 2 — Atomic + Composite + Cross-Cutting | Not Started | |
 | 3 — Distribution + Polish | Not Started | |
 
