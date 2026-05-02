@@ -269,33 +269,13 @@ Creation is idempotent. Strict mapping is **immutable per the Forbidden trust bo
 **Priority:** Must
 **Confidence:** High
 
-### Templating
+### Env-variation (no file-level templating)
 
-#### R-10: Hyperbee.Templating renders resources before parse
+#### R-10: ~~Hyperbee.Templating renders resources before parse~~ **STRUCK per ADR-0016**
 
-**Actor:** Migration author and operator
-**Intention:**
-- *Immediate:* Index names, replica counts, analyzers vary across environments without forking files
-- *Outcome:* Same migration runs in dev/staging/prod
-- *Metric:* Zero env-specific forks of `statements.json`
+This requirement was removed. The OpenSearch provider matches the house style of the other four providers (Aerospike, Couchbase, MongoDB, Postgres): env-variation is handled through typed `OpenSearchMigrationOptions` properties + `IConfiguration` binding from `appsettings.{Environment}.json`, not through a file-level templating engine. Per ADR-0016, re-introducing templating requires a superseding ADR with a documented use case that typed options cannot satisfy.
 
-**Friction today:**
-- Current: No provider currently uses Hyperbee.Templating; OpenSearch is the first
-- Failure mode: Without templating, every new env needs a fork or post-processing step
-- Frequency: Every multi-environment rollout
-
-**Given:** A `statements.json` contains `{{config.indexPrefix}}`, `{{env.NODE_ENV}}`, `{{runtime.version}}`, or `{{secrets.snapshotKey}}` references
-**When:** Provider loads the resource
-**Then:**
-1. Hyperbee.Templating renders the entire file with four scopes (`env`, `config`, `runtime`, `secrets`) BEFORE Parlot parsing
-2. Values rendered from the `secrets` scope are wrapped in a `SecretMarker` (opaque struct carrying the value + an interned content hash). The marker survives templating output and is replaced with the literal value at the *last* moment before HTTP dispatch
-3. All log sinks and exception messages route through a `SecretScrubber` (R-25) that replaces any byte sequence matching a known secret content-hash with `***REDACTED***` — value-coupled, not name-coupled. A secret accidentally pasted into the `config` scope by an operator (MD-15) is still scrubbed at log time
-
-**Otherwise:** Unresolved variables fail at render time with the variable name and resource path; render-time errors include the line and column of the source template, not the post-render JSON
-
-**Depends on:** R-08
-**Priority:** Must
-**Confidence:** Medium (engine choice is decided; the four-scope wiring is new and not yet validated against Hyperbee.Templating's API surface)
+The Phase 0 spike (Task 0.4) that wired Hyperbee.Templating was reverted. The validation that the engine works for this use case is preserved as a Learnings Ledger entry, not as code.
 
 ### Async & Wait Semantics
 
@@ -584,7 +564,7 @@ The decomposition is **performed at parse time**, producing the same AST shape a
 
 **Given:** ADR-0010 mandates unit + integration tiers
 **When:** Unit tests run
-**Then:** Unit tests cover (a) Parlot grammar for every verb in R-08a (positive and negative cases including malformed inputs and ambiguous prefixes), (b) statement compilation to OpenSearch request shapes via mocked `IConnection`, (c) lock CAS state machine including renewal, takeover-on-staleness, max-lifetime expiry, and crash mid-renewal, (d) implicit-wait insertion logic for R-12, (e) Hyperbee.Templating four-scope rendering, (f) `dynamic: strict` injection (R-17), (g) parse-time unsafe-operation detection (R-18 syntactic tier)
+**Then:** Unit tests cover (a) Parlot grammar for every verb in R-08a (positive and negative cases including malformed inputs and ambiguous prefixes), (b) statement compilation to OpenSearch request shapes via mocked `IConnection`, (c) lock CAS state machine including renewal, takeover-on-staleness, max-lifetime expiry, and crash mid-renewal, (d) implicit-wait insertion logic for R-12, (e) `dynamic: strict` injection (R-17), (f) parse-time unsafe-operation detection (R-18 syntactic tier)
 **Otherwise:** Each test names the requirement it validates in its DisplayName
 
 **Priority:** Must
@@ -656,7 +636,7 @@ The decomposition is **performed at parse time**, producing the same AST shape a
 - (i) **Reindex stale-dst scenario (PM-3):** crashed prior run leaves dst with partial docs; new run with `op_type: create` (auto-injected) skips them safely, no double-write
 - (j) **LockMaxLifetime cancellation contract (PM-12):** simulated long-running migration that exceeds `LockMaxLifetime` aborts the in-flight statement, skips ledger write, surfaces `MigrationLockExpiredException`
 - (k) **Lock primary-shard contention (PA-2):** N concurrent `CreateLockAsync` invocations against the same lock index; assert lock-index settings include `number_of_replicas: 0`; assert tail latency for losers is bounded
-- (l) **Templating JSON-context (PM-5):** `{{#if}}`, `{{each}}` rendering inside JSON statement strings; assert rendered JSON is well-formed; assert render-time errors surface line/column of source template
+- (l) ~~Templating JSON-context~~ — **REMOVED** per ADR-0016. Slot reserved for a future cross-cutting test if templating is reintroduced.
 - (m) **Ledger refresh budget (R-07 / PA-1):** 100-migration bootstrap completes within budget against 3-node Testcontainers cluster
 - (n) **Partial-rollback ledger state (R-19 / NF-5):** rollback statement N fails after N+1..M succeeded → ledger has `status: partially_rolled_back` with `failedStatementIndex: N`; subsequent runs require `--force-resume`
 - (o) **`MIGRATE INDEX` composite (R-30):** end-to-end test asserts the composite verb produces identical end-state to the hand-composed `CREATE INDEX` + `REINDEX` + `ALIAS SWAP` sequence (cluster state diff is empty); also asserts `WITH TEMPLATE` resolves to the same body as the template's `template` block
@@ -744,11 +724,11 @@ The decomposition is **performed at parse time**, producing the same AST shape a
 - INFO: bootstrapper state transitions, lock acquired/renewed/released, each migration start/end with duration, Tasks API percentage thresholds (10/25/50/75/90%), Tasks API backoff transitions, **startup banner emitting all resolved defaults** (`Profile`, `ClusterHealthThreshold`, `WaitMode`, `RequireUnsafeJustification`, `ContextResolutionPolicy`, `ActiveContext`, rollback enabled/disabled, lock parameters)
 - WARN: 429 retries (with batch size and retry count), lock takeover events, slow waits, structured `migration.unsafe_bypass` and `migration.no_wait` events with justification reasons
 - ERROR: parse failures (with file/index/recognized-verb-so-far), lock conflicts, task errors, `MigrationLockExpiredException`
-- All log sinks and exception messages route through `SecretScrubber` (R-10) — values matching known secret content-hashes are redacted to `***REDACTED***` regardless of which scope they came from (closes MD-15)
+- Correlation includes migration id and task id where applicable
 
-**Otherwise:** Correlation includes migration id and task id where applicable
+**Otherwise:** Per ADR-0016, the provider does not ship a `SecretScrubber` log sink. If host applications need value-coupled redaction (e.g., scrubbing connection-string passwords from logs), that is configured at the Serilog/ILogger sink level — applied uniformly across all five providers, not provider-specific. MD-15 is no longer in scope here.
 
-**Priority:** Must (was Should — promoted because the startup banner and SecretScrubber both close Critical/High findings)
+**Priority:** Must (was Should — promoted because the startup banner closes operator-visibility gaps)
 **Confidence:** High
 
 ## Constraints
@@ -759,7 +739,7 @@ The decomposition is **performed at parse time**, producing the same AST shape a
 - **License:** Apache 2.0 compatible
 - **Async-only API surface** (matches existing providers)
 - **Cancellation:** `CancellationToken` propagates from runner through all async paths
-- **Templating engine:** Hyperbee.Templating (in-house) — first provider to wire it
+- **No file-level templating** (ADR-0016) — env-variation through typed options + `IConfiguration`, matching all other providers
 - **Parser:** Parlot (ADR-0001) — non-negotiable house standard; no alternative parser permitted
 - **No external lock dependency** (Redis/etcd) — must be OpenSearch-native (ADR-0005)
 - **Minimum cluster version:** OpenSearch 2.0+ (decide on legacy ES support — see Open Questions)
@@ -814,7 +794,7 @@ The decomposition is **performed at parse time**, producing the same AST shape a
 
 - **Hybrid Parlot grammar over opaque JSON bodies** — *rationale:* matches Couchbase/Aerospike/MongoDB house style and ADR-0001/ADR-0002. *Influences:* R-08, R-08a, R-09
 - **Sibling `$name` body references over inline JSON strings** — *rationale:* eliminates quote-escaping; real JSON tooling can format and lint. Reserved Parlot identifiers (`$body`, `$query`, `$script`) and reserved templating scope names (`env`, `config`, `runtime`, `secrets`) cannot collide. *Influences:* R-09
-- **Hyperbee.Templating with env/config/runtime/secrets scopes** — *rationale:* in-house engine, four-scope structure covers prior-art needs. *Influences:* R-10
+- **No file-level templating engine (ADR-0016)** — *rationale:* matches house style of all other providers; env-variation via typed `OpenSearchMigrationOptions` + `IConfiguration` is sufficient for substitution; conditional/iteration in resource files is speculative and can be added later via a superseding ADR if a real use case emerges. *Influences:* R-10 (struck), R-25 (amended)
 - **Auto-renewing lock heartbeat ported from Aerospike, with realtime-GET takeover and explicit max-lifetime cancellation contract** — *rationale:* OpenSearch refresh-lag invalidates pure search-based staleness checks; max-lifetime must abort, not warn. *Influences:* R-04, R-05
 - **Ledger lives in OpenSearch itself** — *rationale:* operational simplicity (one system to back up); ADR-0005 prefers provider-native. Strict mapping is immutable; forensic fields (`appliedBy`, `direction`, `failedStatementIndex`) MUST land before v1. *Influences:* R-06, R-07
 - **Implicit + explicit wait grammar with `WaitMode` enum (PerStatement / PerMigration / Off)** — *rationale:* default robustness without N+1 master storms; PerMigration is production default. Implicit waits scope to the mutated index by default. *Influences:* R-12, R-13
@@ -827,7 +807,7 @@ The decomposition is **performed at parse time**, producing the same AST shape a
 - **`ALIAS SWAP` precondition is in-body, not a separate GET** — *rationale:* eliminates TOCTOU window; cluster atomically rejects entire body. *Influences:* R-16
 - **Semantic version comparison for `WHEN VERSION`** — *rationale:* string compare returns wrong answer on `'2.9' < '2.10'`; correctness gap, not future concern. *Influences:* R-15a
 - **`ActiveContext` option as source-of-truth for context filter; `ContextResolutionPolicy.RequireExplicit` in production** — *rationale:* silent-skip and silent-run are both worse than fail-loud; production must require explicit context. *Influences:* R-15
-- **Render-time `SecretMarker` + log-time `SecretScrubber` by content hash** — *rationale:* value-coupled redaction protects against operators accidentally putting secrets in `config` scope (MD-15). *Influences:* R-10, R-25
+- **No provider-shipped secret scrubber (ADR-0016)** — *rationale:* with templating removed, the secret-leakage risk class shrinks dramatically (no JSON-rendering pathway). Option-value redaction in logs (if needed) belongs at the Serilog/ILogger sink layer, applied uniformly across all providers. *Influences:* R-10 (struck), R-25 (amended)
 - **Multi-node Testcontainers Compose CI is Must, not Should** — *rationale:* Green-threshold and replica-allocation behaviors are never exercised on single-node; OpenSearch image runs as 3-node cluster trivially. *Influences:* R-28
 - **Testcontainers OpenSearch image pinned by sha256 digest** — *rationale:* "2.x latest" is mutable; CI silently picks up new image, prod runs older cluster, behavior diverges. *Influences:* R-24a
 - **Lock index `number_of_replicas: 0`** — *rationale:* eliminates replica-write coupling on the lock primary shard under N concurrent runners (PA-2). *Influences:* R-04

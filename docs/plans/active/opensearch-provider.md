@@ -136,7 +136,7 @@ Audit existing providers; populate the Style Reference section above with concre
 - [x] Add NuGet versions to `Directory.Packages.props`: `OpenSearch.Client` 1.8.0, `OpenSearch.Net` 1.8.0, `OpenSearch.Net.Auth.AwsSigV4` 1.8.0 (used in Phase 3)
 - [x] Add to `Hyperbee.Migrations.slnx`; `dotnet build` clean (provider library: 0 warnings, 0 errors across net8/9/10)
 - [x] Initial source files: `OpenSearchMigrationOptions.cs` (with WaitMode, ClusterHealthThreshold, ContextResolutionPolicy enums + lock parameters), `ServiceCollectionExtensions.cs` (`AddOpenSearchMigrations` + `WithProductionDefaults` scaffolded; full impl in Phase 6), README.md
-- [x] **Defer**: Hyperbee.Templating package reference — added in Task 0.4 when the spike actually needs it
+- [x] ~~Hyperbee.Templating package reference~~ — added then removed per ADR-0016 (see Task 0.4)
 - [x] **Defer**: Testcontainers OpenSearch image setup — moved to Task 0.3
 
 #### 0.3: Single-node Testcontainers harness + hello-world
@@ -147,14 +147,15 @@ Audit existing providers; populate the Style Reference section above with concre
 - [x] OpenSearch container added to `InitializeTestContainers.AssemblyInitialize`
 - [x] `dotnet build` clean (0 errors; 27 warnings, all pre-existing CS0618 plus 1 matching one in my code per house style)
 
-#### 0.4: Hyperbee.Templating first-contact spike (per A6) — done by parallel sub-agent
+#### 0.4: ~~Hyperbee.Templating first-contact spike~~ — **REVERTED per ADR-0016**
 
-Wired the four-scope renderer (`env`, `config`, `runtime`, `secrets`) and validated JSON-context rendering with `{{#if}}` and `{{each}}` blocks. Catches first-contact bugs before they cascade.
+Spike was completed by a parallel sub-agent and then removed wholesale per ADR-0016 (the OpenSearch provider matches the house style of the other four providers — env-variation through typed options + `IConfiguration`, no file-level templating engine).
 
-- [x] Wire renderer with all four scopes — `Templating/OpenSearchResourceTemplateRenderer.cs` (Hyperbee.Templating 3.4.1)
-- [x] `SecretMarker` + `SecretValue` types as Phase 6 scaffolding (per R-10 — secrets identified by content hash for log scrubber)
-- [x] Three smoke tests: simple substitution, conditional inside JSON, iteration inside JSON — all passing on net8/9/10
-- [x] **First-contact note**: dotted scope-prefixed keys (`config.indexPrefix`) require an override of `TemplateOptions.Validator` because the default rejects '.' in identifiers. The renderer ships a custom `IsValidScopedKey` that admits a single '.' joining two valid sub-identifiers, plus a bracket-suffix form for ordered collections (`runtime.nodes[0]`).
+The work product is preserved in commit `b2febba` (added) and `95825f0` (removed); see Learnings Ledger for the four PM-5 first-contact issues the spike documented in Hyperbee.Templating 3.4.1 (these findings ARE preserved as durable learnings — they prompted a separate fix to Hyperbee.Templating's README/docs).
+
+- [x] Spike validated the engine works for the use case
+- [x] Decision documented in [ADR-0016](../../decisions/0016-no-file-level-templating.md): **don't adopt** — house-style consistency outweighs speculative needs (conditional sections, iteration) that no current sample requires
+- [x] Code deleted in commit `95825f0`
 
 #### 0.5: Spike — minimal AST + grammar + SafeDefaultMergeMiddleware
 
@@ -166,7 +167,7 @@ Smallest implementation that validates the parser/runtime split.
 - [x] **`SafeDefaultConflictException`** surfaces conflicting `op_type` with remediation message pointing to `REINDEX UNSAFE("...")`
 - [x] **`OpenSearchParseException`** with file/recognized-verb context in message
 - [x] **36 unit tests across 3 test classes**: 6 AST equality tests, 18 grammar tests (positive/negative cases including bare-UNSAFE rejection per R-18), 12 merge middleware tests covering all 5 CREATE INDEX edge cases + all REINDEX edge cases + tree-mutation invariant
-- [x] All tests pass on net8/9/10 (39 total OpenSearch tests with the Templating spike, 117 test runs, 0 failures)
+- [x] All tests pass on net8/9/10 (36 total OpenSearch tests after Templating removal, 108 test runs, 0 failures; was 39/117 with the now-removed Templating spike)
 
 #### 0.6: Spike — 10 wire-level integration tests against real OpenSearch
 
@@ -243,8 +244,8 @@ Tag `opensearch/phase-1-foundation` after completion criteria met.
 - **MIGRATE INDEX composite (R-30)** — parser produces decomposed AST sequence (CREATE + REINDEX + ALIAS SWAP) with `BodySource = TemplateRef("foo")` for `WITH TEMPLATE`; runtime middleware resolves template body via `GET /_index_template/<id>` immediately before CREATE INDEX dispatch (per ADR-0015 — parser is offline-pure)
 - `WHEN VERSION` semver comparator (R-15a) — `'2.9' < '2.10'` correct
 - Component-template-aware `dynamic: strict` injection (R-17 — skipped on `composed_of`)
-- Hyperbee.Templating four-scope renderer in production path (Phase 0 spike → real wiring)
-- `SecretMarker` + `SecretScrubber` log sink wrapper (R-10/R-25 value-coupled redaction)
+- ~~Hyperbee.Templating four-scope renderer~~ — REMOVED per ADR-0016
+- ~~`SecretMarker` + `SecretScrubber` log sink wrapper~~ — REMOVED per ADR-0016 (host-level Serilog config handles option-value redaction if needed)
 - `ActiveContext` + `ContextResolutionPolicy` (R-15)
 - `WaitMode.PerMigration` implementation (dirty-index tracking + consolidated end-of-migration wait)
 - Down direction execution; partial-rollback ledger semantics (R-19) — `status: partially_rolled_back` + `failedStatementIndex`; runner exposes `--force-resume`
@@ -266,7 +267,7 @@ Tag `opensearch/phase-1-foundation` after completion criteria met.
 | (i) | Reindex stale-dst recovery — `op_type:create` skips partial prior-run docs safely | Phase 2 | Single-node |
 | (j) | `LockMaxLifetime` cancellation contract — in-flight migration aborts cleanly | Phase 1 | Single-node |
 | (k) | Lock primary-shard contention — N concurrent acquires, replicas:0 verified | Phase 1 | Multi-node |
-| (l) | Templating JSON-context — `{{#if}}` and `{{each}}` rendering inside JSON | Phase 2 | Single-node |
+| (l) | ~~Templating JSON-context~~ — REMOVED per ADR-0016 | — | — |
 | (m) | Ledger refresh budget — 100-migration bootstrap completes within budget | Phase 1 | Multi-node |
 | (n) | Partial-rollback ledger state — `status: partially_rolled_back` with `failedStatementIndex` | Phase 2 | Single-node |
 | (o) | `MIGRATE INDEX` composite produces identical end-state to hand-composed sequence | Phase 2 | Single-node |
@@ -279,7 +280,7 @@ Tag `opensearch/phase-1-foundation` after completion criteria met.
 - **2.4** `MIGRATE INDEX` composite — parser decomposition + runtime template resolution middleware (per ADR-0015)
 - **2.5** WHEN VERSION semver parser + comparator (R-15a)
 - **2.6** Component-template-aware `dynamic: strict` injection refinement
-- **2.7** Hyperbee.Templating renderer in production path (extends Phase 0 spike); SecretMarker + SecretScrubber + log sink wrapper
+- **2.7** ~~Hyperbee.Templating renderer~~ — REMOVED per ADR-0016. Env-variation flows through typed `OpenSearchMigrationOptions` properties + `IConfiguration` binding (matches Aerospike/Couchbase/MongoDB/Postgres pattern)
 - **2.8** ActiveContext + ContextResolutionPolicy (R-15)
 - **2.9** WaitMode.PerMigration (dirty-index tracking)
 - **2.10** Down direction execution; partial-rollback ledger semantics; runner `--force-resume` flag
@@ -337,7 +338,9 @@ Before tagging a phase snapshot:
 
 ## Learnings Ledger
 
-### Phase 0 Task 0.4 — Hyperbee.Templating first-contact (style)
+### Phase 0 Task 0.4 — Hyperbee.Templating decision (rejected → ADR-0016)
+
+After the spike landed, maintainer review surfaced that no other provider uses Hyperbee.Templating. Decision: don't adopt — see [ADR-0016](../../decisions/0016-no-file-level-templating.md). The spike code was removed in commit `95825f0`. The first-contact issues the spike documented in Hyperbee.Templating 3.4.1 are preserved here because they (a) prompted a separate fix to the templating engine's README/docs, and (b) are useful if the decision is ever revisited.
 
 PM-5 from assessment 0002 was right to worry about first-contact bugs. Background sub-agent found four:
 
@@ -364,7 +367,7 @@ ADR-0011 hybrid + ADR-0015 offline-pure parser holds: parser produces AST flags,
 | 2 — Atomic + Composite + Cross-Cutting | Not Started | |
 | 3 — Distribution + Polish | Not Started | |
 
-**Current task:** Phase 0 **DONE** (all 6 tasks). 39 unit tests across 4 classes pass on net8/9/10 (117 unit-test executions, 0 failures). 10 wire-level integration tests written and compile clean both with and without `INTEGRATIONS` defined; awaiting user run in Docker env to fire the official Phase 0 kill criterion.
+**Current task:** Phase 0 **DONE** (5 tasks effectively; 0.4 reverted per ADR-0016). 36 unit tests across 3 classes pass on net8/9/10 (108 unit-test executions, 0 failures). 10 wire-level integration tests written and compile clean both with and without `INTEGRATIONS` defined; awaiting user run in Docker env to fire the official Phase 0 kill criterion.
 **Next action:** User runs the integration tests in their Docker env to validate the architecture against real OpenSearch:
 1. Uncomment `//#define INTEGRATIONS` at the top of `OpenSearchSpikeTests.cs` (and `OpenSearchHarnessTest.cs` if running the smoke test too)
 2. `dotnet test tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj --filter "TestCategory=Spike"`

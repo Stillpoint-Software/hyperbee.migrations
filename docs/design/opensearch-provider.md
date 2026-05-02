@@ -18,7 +18,9 @@
 | B: Parser-First Composition (parser-only, pipeline-only, provision-on-demand) | ~82% | ✓ all | High | Small | High | Clean | Moderate |
 | **C: Pragmatic Hybrid** | **~96%** | ✓ all | High | Small | High | Clean | **Strong** |
 
-C dominates because the requirements *force* a hybrid: R-08a (`op_type: create` injection), R-17 (component-template-aware `dynamic: strict`), and R-18 (parse-time syntactic unsafe-op detection) all require parser-level work; R-10 / R-25 (SecretMarker scrubbing routing through all logs and exception messages) and structured WARN event emission require runtime work. Pure runtime (A) loses parse-time error message contracts; pure parser (B) cannot observe live request/response. Hybrid is the only architecture that satisfies both classes natively.
+C dominates because the requirements *force* a hybrid: R-08a (`op_type: create` injection), R-17 (component-template-aware `dynamic: strict`), and R-18 (parse-time syntactic unsafe-op detection) all require parser-level work; R-25 (structured event emission) requires runtime work. Pure runtime (A) loses parse-time error message contracts; pure parser (B) cannot observe live request/response. Hybrid is the only architecture that satisfies both classes natively.
+
+**Note (post-Phase-0):** R-10 (Hyperbee.Templating renderer) was struck per [ADR-0016](../decisions/0016-no-file-level-templating.md) — env-variation flows through typed options, matching the other four providers. The architecture below has been amended to remove the Templating Renderer block and the SecretScrubberSink that depended on it. The hybrid argument still stands on the parse-time-detection / runtime-middleware split.
 
 ## Architecture
 
@@ -64,13 +66,10 @@ C dominates because the requirements *force* a hybrid: R-08a (`op_type: create` 
                               ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ Statement Pipeline                                                           │
-│   ┌──────────────────────────────────────────────────────────────────┐       │
-│   │ Hyperbee.Templating Renderer                                     │       │
-│   │   • Four scopes (env, config, runtime, secrets)                  │       │
-│   │   • Wraps secret values in SecretMarker                          │       │
-│   └──────────────────────────────────────────────────────────────────┘       │
-│                              │                                                │
-│                              ▼                                                │
+│   (Per ADR-0016: no file-level templating renderer — resource files are     │
+│    consumed by the Parlot parser directly. Env-variation is handled by      │
+│    typed OpenSearchMigrationOptions + IConfiguration.)                       │
+│                                                                              │
 │   ┌──────────────────────────────────────────────────────────────────┐       │
 │   │ Parlot Statement Parser (PARSE-TIME — R-08, R-09)                │       │
 │   │   • Verb grammar (R-08a)                                         │       │
@@ -102,8 +101,8 @@ C dominates because the requirements *force* a hybrid: R-08a (`op_type: create` 
 │   │     post-statement per WaitMode (R-12)                           │       │
 │   │   • TasksApiPollMiddleware — handles wait_for_completion=false   │       │
 │   │     (R-11) with progress threshold logging                       │       │
-│   │   • SecretScrubberSink — wraps ILogger; redacts SecretMarker     │       │
-│   │     content-hashes from all log output (R-10, R-25)              │       │
+│   │   • (No SecretScrubberSink per ADR-0016 — host Serilog config    │       │
+│   │     handles option-value redaction if needed)                    │       │
 │   └──────────────────────────────────────────────────────────────────┘       │
 │                              │                                                │
 │                              ▼                                                │
@@ -159,10 +158,10 @@ internal interface IStatementMiddleware {
 
 1. `MigrationRunner.RunAsync` → `OpenSearchRecordStore.InitializeAsync` → `OpenSearchBootstrapper.RunAsync` → each `IBootstrapStep` executes; failure on any step aborts with typed exception
 2. `MigrationRunner` discovers migration class, constructs it; calls `UpAsync`
-3. Migration loads `statements.json` resource; provider passes file content through `Templating Renderer` (secrets wrapped in `SecretMarker`)
+3. Migration loads `statements.json` resource; provider passes file content directly to the Parlot parser (no templating renderer — per ADR-0016)
 4. Parlot parser produces `StatementAst[]`; safe-default flags computed at parse; UNSAFE/NO WAIT justification tokens validated; unsafe-op detection runs; version comparators parsed semantically
 5. For each AST node: `StatementCompiler` builds an `IRequest`; runtime middleware chain processes (`SafeDefaultMergeMiddleware` merges flags into JSON tree → `ImplicitWaitMiddleware` runs scoped health check post-execute → `TasksApiPollMiddleware` polls if applicable)
-6. All logs / exceptions route through `SecretScrubberSink` — values matching `SecretMarker` content-hashes redacted to `***REDACTED***` regardless of source scope
+6. All logs / exceptions emit structured events; option-value redaction (if needed) is configured at the host Serilog/ILogger sink layer (per ADR-0016, not provider-specific)
 7. `MigrationRunner` calls `OpenSearchRecordStore.WriteAsync(record)` — CAS write with `?refresh=wait_for` and forensic fields (`appliedBy`, `direction`)
 8. `LockHandle.DisposeAsync` releases lock
 
@@ -198,7 +197,7 @@ These decisions cross the ADR threshold (reversal would touch multiple component
 - **Pipeline parallelism within bootstrapper:** the `IBootstrapStep[]` pipeline could run independent steps (ledger + lock init) in parallel. Worth doing? If yes, step dependencies must be declared (`DependsOn` attribute or topological sort). If no, the linear sequential model is simpler. Recommend **linear in v1** unless a concrete bottleneck emerges in R-24c's measured-cost test.
 - **Middleware ordering:** if a consumer adds a custom `IStatementMiddleware`, the position in the chain matters. Need a documented order convention (`Order` attribute) and a test that asserts the built-in middleware order.
 - **`AssumeIndicesExist = true` validation:** when set, `InitializeAsync` skips create but does it *verify* the indices exist with the expected mapping? Recommend yes — verification is cheap; silent acceptance of missing indices is worse than the cost.
-- **Hyperbee.Templating + SecretMarker integration:** marker preservation across template engine output is the riskiest first-contact bug (PM-5). Validate against a representative `{{#if}}` and `{{each}}` JSON template before writing other code.
+- ~~Hyperbee.Templating + SecretMarker integration~~ — REMOVED per ADR-0016. The first-contact bug class PM-5 worried about is fully eliminated by not adopting the engine.
 - **State-machine façade observability:** the public `BootstrapResult` should expose per-step status for log aggregation. Recommend enumerating the steps in `BootstrapResult.Steps` so operators can see exactly which step failed without parsing log strings.
 
 ## Recommended next steps
