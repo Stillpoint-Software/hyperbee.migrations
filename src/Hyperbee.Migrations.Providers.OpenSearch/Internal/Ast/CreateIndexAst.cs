@@ -20,7 +20,7 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 public sealed record CreateIndexAst(
     string IndexName,
     bool IfNotExists,
-    BodyRef? Body,
+    BodySource? Body,
     bool InjectDynamicStrict,
     TemplateBodyRef? TemplateBody = null
 ) : StatementAst

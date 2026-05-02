@@ -58,7 +58,7 @@ public class FoundationVerbParserTests
 
         var u = (UpdateMappingAst) ast;
         u.IndexName.Should().Be( "users" );
-        u.Body!.Name.Should().Be( "newProps" );
+        u.Body.Should().BeOfType<BodyRef>().Which.Name.Should().Be( "newProps" );
     }
 
     [TestMethod]
@@ -83,7 +83,7 @@ public class FoundationVerbParserTests
         var u = (UpdateSettingsAst) ast;
         u.IndexName.Should().Be( "users" );
         u.Close.Should().BeFalse();
-        u.Body!.Name.Should().Be( "newSettings" );
+        u.Body.Should().BeOfType<BodyRef>().Which.Name.Should().Be( "newSettings" );
     }
 
     [TestMethod]
@@ -328,7 +328,7 @@ public class FoundationVerbParserTests
 
         var t = (CreateTemplateAst) ast;
         t.TemplateName.Should().Be( "logs-template" );
-        t.Body!.Name.Should().Be( "body" );
+        t.Body.Should().BeOfType<BodyRef>().Which.Name.Should().Be( "body" );
     }
 
     [TestMethod]
@@ -349,7 +349,7 @@ public class FoundationVerbParserTests
 
         var c = (CreateComponentAst) ast;
         c.ComponentName.Should().Be( "common-mappings" );
-        c.Body!.Name.Should().Be( "body" );
+        c.Body.Should().BeOfType<BodyRef>().Which.Name.Should().Be( "body" );
     }
 
     [TestMethod]
@@ -388,7 +388,7 @@ public class FoundationVerbParserTests
 
         var p = (CreatePolicyAst) ast;
         p.PolicyId.Should().Be( "hot-warm-cold" );
-        p.Body!.Name.Should().Be( "body" );
+        p.Body.Should().BeOfType<BodyRef>().Which.Name.Should().Be( "body" );
     }
 
     [TestMethod]
@@ -487,7 +487,7 @@ public class FoundationVerbParserTests
         c.Children.Should().HaveCount( 3 );
 
         var create = (CreateIndexAst) c.Children[0];
-        create.Body!.Name.Should().Be( "newShape" );
+        create.Body.Should().BeOfType<BodyRef>().Which.Name.Should().Be( "newShape" );
         create.TemplateBody.Should().BeNull();
     }
 

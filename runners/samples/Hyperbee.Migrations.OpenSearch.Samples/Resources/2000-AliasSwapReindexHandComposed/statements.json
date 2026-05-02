@@ -2,25 +2,29 @@
   "statements": [
     {
       "statement": "CREATE INDEX sample_logs_v1 IF NOT EXISTS WITH BODY $logsV1",
-      "logsV1": {
-        "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
-        "mappings": {
-          "properties": {
-            "@timestamp": { "type": "date" },
-            "msg":        { "type": "text" }
+      "bodies": {
+        "logsV1": {
+          "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+          "mappings": {
+            "properties": {
+              "@timestamp": { "type": "date" },
+              "msg":        { "type": "text" }
+            }
           }
         }
       }
     },
     {
       "statement": "CREATE INDEX sample_logs_v2 IF NOT EXISTS WITH BODY $logsV2",
-      "logsV2": {
-        "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
-        "mappings": {
-          "properties": {
-            "@timestamp": { "type": "date" },
-            "msg":        { "type": "text" },
-            "level":      { "type": "keyword" }
+      "bodies": {
+        "logsV2": {
+          "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+          "mappings": {
+            "properties": {
+              "@timestamp": { "type": "date" },
+              "msg":        { "type": "text" },
+              "level":      { "type": "keyword" }
+            }
           }
         }
       }

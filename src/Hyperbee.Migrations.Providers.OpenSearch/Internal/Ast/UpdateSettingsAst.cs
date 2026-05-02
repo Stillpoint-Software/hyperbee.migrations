@@ -13,7 +13,7 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 public sealed record UpdateSettingsAst(
     string IndexName,
     bool Close,
-    BodyRef? Body
+    BodySource? Body
 ) : StatementAst
 {
     public override string Verb => "UPDATE SETTINGS";

@@ -8,7 +8,9 @@
     <None Remove="Resources\1000-CreateInitialIndex\statements.json" />
     <None Remove="Resources\2000-AliasSwapReindexHandComposed\statements.json" />
     <None Remove="Resources\3000-ComponentAndIndexTemplate\statements.json" />
+    <None Remove="Resources\3000-ComponentAndIndexTemplate\bodies\common-mappings-component.json" />
     <None Remove="Resources\4000-IsmPolicyAndApply\statements.json" />
+    <None Remove="Resources\4000-IsmPolicyAndApply\bodies\hot-warm-cold-policy.json" />
     <None Remove="Resources\5000-ConditionalVersion\statements.json" />
     <None Remove="Resources\6000-MigrateIndexComposite\statements.json" />
     <None Remove="Resources\7000-ReversibleAlias\statements.json" />
@@ -19,7 +21,9 @@
     <EmbeddedResource Include="Resources\1000-CreateInitialIndex\statements.json" />
     <EmbeddedResource Include="Resources\2000-AliasSwapReindexHandComposed\statements.json" />
     <EmbeddedResource Include="Resources\3000-ComponentAndIndexTemplate\statements.json" />
+    <EmbeddedResource Include="Resources\3000-ComponentAndIndexTemplate\bodies\common-mappings-component.json" />
     <EmbeddedResource Include="Resources\4000-IsmPolicyAndApply\statements.json" />
+    <EmbeddedResource Include="Resources\4000-IsmPolicyAndApply\bodies\hot-warm-cold-policy.json" />
     <EmbeddedResource Include="Resources\5000-ConditionalVersion\statements.json" />
     <EmbeddedResource Include="Resources\6000-MigrateIndexComposite\statements.json" />
     <EmbeddedResource Include="Resources\7000-ReversibleAlias\statements.json" />

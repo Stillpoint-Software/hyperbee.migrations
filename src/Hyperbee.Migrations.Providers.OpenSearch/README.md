@@ -41,13 +41,15 @@ services.AddOpenSearchMigrations( opts =>
   "statements": [
     {
       "statement": "CREATE INDEX users IF NOT EXISTS WITH BODY $usersIndex",
-      "usersIndex": {
-        "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
-        "mappings": {
-          "properties": {
-            "id":    { "type": "keyword" },
-            "email": { "type": "keyword" },
-            "name":  { "type": "text" }
+      "bodies": {
+        "usersIndex": {
+          "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+          "mappings": {
+            "properties": {
+              "id":    { "type": "keyword" },
+              "email": { "type": "keyword" },
+              "name":  { "type": "text" }
+            }
           }
         }
       }
@@ -103,14 +105,78 @@ Durations: `<integer><s\|m\|h>` (e.g., `30s`, `5m`, `2h`). Pure integers are rej
 
 ### Body references
 
-`WITH BODY $name` resolves `$name` against a sibling JSON property on the **same** statement object (R-09). The resolved value is sent verbatim as the request body — no escape-as-string nesting, full IDE JSON validation. Missing references fail at execute time with the file/index/name in the error.
+JSON bodies attach to a statement via `WITH BODY <ref>`. The provider supports **three resolution forms** (ADR-0017), all coexistent — pick the one that fits the body's size and reuse profile.
+
+#### Form 1 — Direct file reference (least ceremony)
+
+```json
+{ "statement": "CREATE INDEX users WITH BODY @bodies/users-mapping.json" }
+```
+
+The `@`-prefixed path loads an embedded resource **relative to the migration's own resource folder**. Use this for any body that would otherwise dominate the `statements.json` file — large mappings, ISM policies, reusable templates. The file must be marked `EmbeddedResource` in the project csproj (same convention as `statements.json`).
+
+Path validation is parse-time:
+- Absolute paths (leading `/` or `\`) are rejected — body files must stay inside the migration's resource folder.
+- `..` segments are rejected — no parent-directory traversal.
+- Allowed characters: letters, digits, `_`, `-`, `.`, `/`, `\`.
+
+#### Form 2 — Named body inline (the `bodies` section)
 
 ```json
 {
   "statement": "CREATE INDEX users WITH BODY $usersIndex",
-  "usersIndex": { "settings": {...}, "mappings": {...} }
+  "bodies": {
+    "usersIndex": {
+      "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+      "mappings": { "properties": { "id": { "type": "keyword" } } }
+    }
+  }
 }
 ```
+
+`$<name>` resolves to `bodies.<name>` on the same statement object. Use this for tiny bodies tightly coupled to a single statement, where atomic versioning and a single-screen view of the migration are more valuable than file separation.
+
+#### Form 3 — Named body referencing a file
+
+```json
+{
+  "statement": "CREATE INDEX users WITH BODY $usersIndex",
+  "bodies": {
+    "usersIndex": "@bodies/users-mapping.json"
+  }
+}
+```
+
+When a `bodies.<name>` value is a string starting with `@`, the resolver loads it as a file reference (same rules as form 1). Useful when you want to address bodies by name (e.g., for clarity in PR review) but keep them in their own files. Rare in practice — form 1 covers the common case with less ceremony.
+
+#### Back-compat — top-level sibling property (ADR-0009)
+
+```json
+{
+  "statement": "CREATE INDEX users WITH BODY $usersIndex",
+  "usersIndex": { "settings": {...} }
+}
+```
+
+When `bodies.<name>` is missing, the resolver falls back to a top-level sibling property of the same name. Preserves the original ADR-0009/R-09 shape so existing migrations don't need rewriting.
+
+#### Which form to use
+
+| Body looks like... | Use form |
+|---|---|
+| 5 lines of inline JSON, used once | **Form 2** (inline `bodies` section) |
+| 50+ lines of mapping or policy | **Form 1** (`WITH BODY @path`) |
+| Reused across multiple statements | **Form 1** + `composed_of` |
+| Inheriting an old migration | Leave as form 0 (sibling) — works fine |
+
+Sample 4 (`IsmPolicyAndApply`) demonstrates form 1; sample 3 (`ComponentAndIndexTemplate`) mixes form 2 and form 3; the others use form 2.
+
+#### Resolution order
+
+1. `BodyFileRef` (the `@path` form): load the embedded resource.
+2. `BodyRef` with a `bodies.<name>` entry: structured form wins.
+3. `BodyRef` with a sibling `<name>` property: ADR-0009 fallback.
+4. Otherwise: throw `InvalidOperationException` with a remediation message naming both the preferred form and the fallback.
 
 ### Index lifecycle
 
@@ -263,6 +329,10 @@ Each statement entry may carry an optional `rollback` field. UpAsync runs `state
   ]
 }
 ```
+
+Rollback statements support all the same body-reference forms as forward
+statements — the rollback's bodies live in the same `bodies` section,
+and `@path` references resolve relative to the same migration folder.
 
 ```csharp
 public override Task UpAsync( CancellationToken ct = default )

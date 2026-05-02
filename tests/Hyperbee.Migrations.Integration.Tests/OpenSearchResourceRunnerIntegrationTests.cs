@@ -38,6 +38,20 @@ public class OpenSearchResourceRunnerIntegrationTests
         public override Task UpAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
     }
 
+    // Minimal stand-in for IMigrationRecordStore — the resource runner only
+    // touches it on the rollback path, which these tests don't exercise.
+    private sealed class NoopRecordStore : IMigrationRecordStore
+    {
+        public Task InitializeAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
+        public Task<IDisposable> CreateLockAsync() => Task.FromResult<IDisposable>( new NoopDisposable() );
+        public Task<bool> ExistsAsync( string recordId ) => Task.FromResult( false );
+        public Task<MigrationRecord> ReadAsync( string recordId ) => Task.FromResult<MigrationRecord>( null! );
+        public Task DeleteAsync( string recordId ) => Task.CompletedTask;
+        public Task WriteAsync( string recordId ) => Task.CompletedTask;
+
+        private sealed class NoopDisposable : IDisposable { public void Dispose() { } }
+    }
+
     [TestInitialize]
     public void Setup()
     {
@@ -47,7 +61,8 @@ public class OpenSearchResourceRunnerIntegrationTests
             new StatementDispatcher( new SafeDefaultMergeMiddleware() ),
             new OpenSearchStatementParser(),
             TimeProvider.System,
-            NullLogger<DummyMigration>.Instance );
+            NullLogger<DummyMigration>.Instance,
+            new NoopRecordStore() );
 
         _indexName = $"runner-test-{Guid.NewGuid():n}";
     }

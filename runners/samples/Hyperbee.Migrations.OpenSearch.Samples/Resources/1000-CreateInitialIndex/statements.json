@@ -2,17 +2,19 @@
   "statements": [
     {
       "statement": "CREATE INDEX sample_users IF NOT EXISTS WITH BODY $usersIndex",
-      "usersIndex": {
-        "settings": {
-          "number_of_shards": 1,
-          "number_of_replicas": 0
-        },
-        "mappings": {
-          "properties": {
-            "id":    { "type": "keyword" },
-            "email": { "type": "keyword" },
-            "name":  { "type": "text" },
-            "active":{ "type": "boolean" }
+      "bodies": {
+        "usersIndex": {
+          "settings": {
+            "number_of_shards": 1,
+            "number_of_replicas": 0
+          },
+          "mappings": {
+            "properties": {
+              "id":    { "type": "keyword" },
+              "email": { "type": "keyword" },
+              "name":  { "type": "text" },
+              "active":{ "type": "boolean" }
+            }
           }
         }
       }

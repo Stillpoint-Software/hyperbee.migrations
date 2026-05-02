@@ -98,11 +98,55 @@ public sealed class OpenSearchStatementParser
         var plainPattern = Terms.Pattern( static c => char.IsLetterOrDigit( c ) || c == '_' || c == '-' || c == '.' || c == '*' );
         var indexPattern = quotedIdentifier.Or( plainPattern ).Then( static x => x.ToString()! );
 
-        // body reference: `WITH BODY $name` resolves against sibling JSON properties
+        // Body reference (ADR-0017). Two grammar forms, ranked by ceremony:
+        //   `WITH BODY $name`          — named lookup (bodies.<Name>, falling back
+        //                                to a top-level sibling for ADR-0009
+        //                                back-compat). Use when the body is
+        //                                inline JSON or when you need to
+        //                                cross-reference a body across multiple
+        //                                statements.
+        //   `WITH BODY @path/to/file`  — direct embedded-resource reference
+        //                                relative to the migration's resource
+        //                                folder. Use when the body lives in
+        //                                its own file (large mappings, ISM
+        //                                policies, reusable templates).
+        //
+        // Path validation is parse-time only: we reject leading `/` or `\`
+        // (absolute paths) and any `..` segment (parent-directory traversal)
+        // so each migration's body files stay self-contained — keeps repeatable
+        // dotnet publish boundaries honest.
 
         var dollar = Terms.Char( '$' );
-        var bodyRef = with.SkipAnd( body ).SkipAnd( dollar ).SkipAnd( identifier )
-            .Then( static name => new BodyRef( name ) );
+        var at = Terms.Char( '@' );
+
+        var siblingBodyRef = with.SkipAnd( body ).SkipAnd( dollar ).SkipAnd( identifier )
+            .Then( static name => (BodySource) new BodyRef( name ) );
+
+        // path: letters/digits/_/-/./forward+back-slash. Terminates at whitespace.
+        var bodyPath = Terms.Pattern(
+            static c => char.IsLetterOrDigit( c ) || c is '_' or '-' or '.' or '/' or '\\'
+        ).Then( static buf =>
+        {
+            var path = buf.ToString()!;
+            if ( path.StartsWith( '/' ) || path.StartsWith( '\\' ) )
+                throw new InvalidOperationException(
+                    $"WITH BODY `@{path}` is absolute. Body files must live inside the migration's resource folder; use a path relative to it." );
+            // `..` segment = parent traversal. Allow `.` (current dir) but not
+            // `..` anywhere — split-and-check rather than substring so file
+            // names that legitimately contain dots (`.json`) aren't false-
+            // positives.
+            foreach ( var segment in path.Split( new[] { '/', '\\' }, StringSplitOptions.None ) )
+            {
+                if ( segment == ".." )
+                    throw new InvalidOperationException(
+                        $"WITH BODY `@{path}` traverses out of the migration's resource folder via `..`. Move the file inside the migration folder." );
+            }
+            return (BodySource) new BodyFileRef( path );
+        } );
+
+        var fileBodyRef = with.SkipAnd( body ).SkipAnd( at ).SkipAnd( bodyPath );
+
+        var bodyRef = OneOf( siblingBodyRef, fileBodyRef );
 
         // CREATE INDEX <name> [IF NOT EXISTS] [WITH BODY $body]
         // IF NOT EXISTS comes BEFORE WITH BODY in canonical form

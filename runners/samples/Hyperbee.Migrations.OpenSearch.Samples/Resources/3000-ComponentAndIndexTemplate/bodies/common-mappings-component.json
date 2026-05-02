@@ -1,0 +1,10 @@
+{
+  "template": {
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "host":       { "type": "keyword" }
+      }
+    }
+  }
+}

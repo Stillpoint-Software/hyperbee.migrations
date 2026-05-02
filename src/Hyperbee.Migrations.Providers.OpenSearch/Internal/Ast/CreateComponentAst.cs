@@ -8,7 +8,7 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 
 public sealed record CreateComponentAst(
     string ComponentName,
-    BodyRef? Body
+    BodySource? Body
 ) : StatementAst
 {
     public override string Verb => "CREATE COMPONENT";

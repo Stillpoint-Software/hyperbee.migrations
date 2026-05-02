@@ -15,7 +15,7 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 public sealed record ReindexAst(
     string Source,
     string Destination,
-    BodyRef? Body,
+    BodySource? Body,
     bool InjectOpTypeCreate,
     string? UnsafeJustification
 ) : StatementAst

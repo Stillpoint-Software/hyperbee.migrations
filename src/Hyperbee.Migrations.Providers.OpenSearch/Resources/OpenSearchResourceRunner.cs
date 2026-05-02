@@ -1,5 +1,6 @@
 #nullable enable
 using System.Text.Json.Nodes;
+using Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Dispatch;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
 using Hyperbee.Migrations.Resources;
@@ -110,23 +111,7 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
 
             var ast = _parser.Parse( statementText );
 
-            // Resolve $body sibling reference if present. Per ADR-0009 / R-09, $body
-            // references resolve against sibling properties on the same statement
-            // object. The reference name comes from the AST (e.g., CreateIndexAst.Body).
-
-            JsonNode? resolvedBody = null;
-            var bodyRefName = ExtractBodyRefName( ast );
-
-            if ( bodyRefName is not null )
-            {
-                var sibling = entry[bodyRefName]
-                    ?? throw new InvalidOperationException(
-                        $"statements[{i}]: `WITH BODY ${bodyRefName}` references a sibling property that does not exist." );
-
-                // Deep-clone via round-trip so the dispatcher's middleware can mutate
-                // freely without affecting the parsed JSON tree.
-                resolvedBody = JsonNode.Parse( sibling.ToJsonString() );
-            }
+            var resolvedBody = ResolveBody( ast, entry, statementIndex: i, contextLabel: null );
 
             var context = new StatementContext
             {
@@ -245,16 +230,7 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
 
             var ast = _parser.Parse( rollbackText );
 
-            JsonNode? resolvedBody = null;
-            var bodyRefName = ExtractBodyRefName( ast );
-            if ( bodyRefName is not null )
-            {
-                var sibling = entry[bodyRefName]
-                    ?? throw new InvalidOperationException(
-                        $"statements[{i}] rollback: `WITH BODY ${bodyRefName}` references a sibling property that does not exist." );
-
-                resolvedBody = JsonNode.Parse( sibling.ToJsonString() );
-            }
+            var resolvedBody = ResolveBody( ast, entry, statementIndex: i, contextLabel: "rollback" );
 
             var context = new StatementContext
             {
@@ -330,19 +306,115 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
         }
     }
 
-    private static string? ExtractBodyRefName( Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast.StatementAst ast )
+    // Body resolution per ADR-0017. Three forms supported:
+    //
+    //   1. `WITH BODY @path/to/file.json`   (BodyFileRef)
+    //         Loads an embedded resource at the given path relative to the
+    //         migration's resource folder.
+    //
+    //   2. `WITH BODY $name` + `bodies.<name>`   (BodyRef + structured)
+    //         Looks up the named body in the entry's `bodies` object. The
+    //         value is either an inline JSON object OR a string starting
+    //         with `@` (a file reference, which is then resolved as in form 1).
+    //
+    //   3. `WITH BODY $name` + sibling `<name>`   (BodyRef + ADR-0009 back-compat)
+    //         When `bodies.<name>` is missing, fall back to a top-level
+    //         sibling property named <name>. Preserves ADR-0009 / R-09
+    //         semantics so existing migrations keep working.
+    //
+    // The lookup order (bodies first, sibling fallback) means new authors
+    // discover the structured form first, but legacy resources need no edits.
+
+    private JsonNode? ResolveBody( Internal.Ast.StatementAst ast, JsonObject entry, int statementIndex, string? contextLabel )
     {
-        // Cast through the known body-bearing AST shapes. Each verb that supports
-        // WITH BODY $name carries the BodyRef on its record type.
+        var source = ExtractBodySource( ast );
+        if ( source is null )
+            return null;
+
+        var label = contextLabel is null
+            ? $"statements[{statementIndex}]"
+            : $"statements[{statementIndex}] {contextLabel}";
+
+        return source switch
+        {
+            BodyFileRef fileRef => LoadBodyFromResource( fileRef.Path, label ),
+            BodyRef nameRef => ResolveNamedBody( entry, nameRef.Name, label ),
+            _ => throw new InvalidOperationException( $"{label}: unsupported BodySource type `{source.GetType().Name}`." )
+        };
+    }
+
+    private JsonNode? ResolveNamedBody( JsonObject entry, string name, string label )
+    {
+        // Form 2 (preferred): bodies.<name>. The `bodies` section's value
+        // can itself be either an inline JSON object OR a `@path` file ref.
+        var bodies = entry["bodies"] as JsonObject;
+        var fromBodies = bodies?[name];
+        if ( fromBodies is not null )
+        {
+            // If the bodies-section value is a string that starts with `@`,
+            // treat it as a path reference. Otherwise it's the body itself.
+            if ( fromBodies is JsonValue valueNode && valueNode.TryGetValue<string>( out var maybePath )
+                 && maybePath.StartsWith( '@' ) )
+            {
+                return LoadBodyFromResource( maybePath[1..], $"{label} bodies.{name}" );
+            }
+
+            return JsonNode.Parse( fromBodies.ToJsonString() );
+        }
+
+        // Form 3 (back-compat): top-level sibling property. Preserves the
+        // ADR-0009 / R-09 shape so existing migrations don't need to migrate.
+        var sibling = entry[name];
+        if ( sibling is not null )
+            return JsonNode.Parse( sibling.ToJsonString() );
+
+        throw new InvalidOperationException(
+            $"{label}: `WITH BODY ${name}` not found. Expected `bodies.{name}` (preferred) or a top-level `{name}` sibling property." );
+    }
+
+    private JsonNode? LoadBodyFromResource( string path, string label )
+    {
+        // Convert path separators to embedded-resource dot notation. The
+        // resource manifest name format is:
+        //   <RootNamespace>.<MigrationFolder>.<sub>.<dirs>.<file>.json
+        // ResourceHelper.GetResource prepends the assembly's ResourceLocation.
+        var migrationName = Migration.VersionedName<TMigration>();
+        var normalized = path.Replace( '\\', '/' );
+        var resourceTail = normalized.Replace( '/', '.' );
+        var resourceName = $"{migrationName}.{resourceTail}";
+
+        string content;
+        try
+        {
+            content = ResourceHelper.GetResource<TMigration>( resourceName );
+        }
+        catch ( Exception ex )
+        {
+            throw new InvalidOperationException(
+                $"{label}: `WITH BODY @{path}` could not load embedded resource `{resourceName}`. " +
+                $"Verify the file exists under the migration's resource folder AND is marked `EmbeddedResource` in the .csproj.", ex );
+        }
+
+        var parsed = JsonNode.Parse( content );
+        if ( parsed is null )
+            throw new InvalidOperationException(
+                $"{label}: `WITH BODY @{path}` resolved to empty or invalid JSON." );
+        return parsed;
+    }
+
+    private static BodySource? ExtractBodySource( Internal.Ast.StatementAst ast )
+    {
+        // Cast through the known body-bearing AST shapes. Each verb that
+        // supports `WITH BODY` carries a BodySource on its record type.
         return ast switch
         {
-            Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast.CreateIndexAst c => c.Body?.Name,
-            Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast.ReindexAst r => r.Body?.Name,
-            Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast.UpdateMappingAst um => um.Body?.Name,
-            Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast.UpdateSettingsAst us => us.Body?.Name,
-            Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast.CreateTemplateAst ct => ct.Body?.Name,
-            Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast.CreateComponentAst cc => cc.Body?.Name,
-            Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast.CreatePolicyAst cp => cp.Body?.Name,
+            Internal.Ast.CreateIndexAst c => c.Body,
+            Internal.Ast.ReindexAst r => r.Body,
+            Internal.Ast.UpdateMappingAst um => um.Body,
+            Internal.Ast.UpdateSettingsAst us => us.Body,
+            Internal.Ast.CreateTemplateAst ct => ct.Body,
+            Internal.Ast.CreateComponentAst cc => cc.Body,
+            Internal.Ast.CreatePolicyAst cp => cp.Body,
             _ => null
         };
     }

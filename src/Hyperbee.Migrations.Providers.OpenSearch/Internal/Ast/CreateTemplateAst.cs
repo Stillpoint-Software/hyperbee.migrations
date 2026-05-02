@@ -15,7 +15,7 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 
 public sealed record CreateTemplateAst(
     string TemplateName,
-    BodyRef? Body
+    BodySource? Body
 ) : StatementAst
 {
     public override string Verb => "CREATE TEMPLATE";

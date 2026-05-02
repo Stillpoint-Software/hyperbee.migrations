@@ -11,7 +11,7 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 
 public sealed record UpdateMappingAst(
     string IndexName,
-    BodyRef? Body
+    BodySource? Body
 ) : StatementAst
 {
     public override string Verb => "UPDATE MAPPING";

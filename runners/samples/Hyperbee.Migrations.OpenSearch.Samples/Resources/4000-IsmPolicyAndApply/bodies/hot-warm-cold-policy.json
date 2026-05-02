@@ -1,0 +1,9 @@
+{
+  "policy": {
+    "description": "demo lifecycle policy — production policies typically run 100+ lines with rollover actions, force-merge, allocation requirements, and multi-state transitions; that's exactly when external file beats inline.",
+    "default_state": "hot",
+    "states": [
+      { "name": "hot", "actions": [], "transitions": [] }
+    ]
+  }
+}

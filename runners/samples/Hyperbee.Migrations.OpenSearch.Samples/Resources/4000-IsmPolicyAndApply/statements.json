@@ -2,21 +2,15 @@
   "statements": [
     {
       "statement": "CREATE INDEX sample_metrics-2026.01.01 IF NOT EXISTS WITH BODY $idx",
-      "idx": {
-        "settings": { "number_of_shards": 1, "number_of_replicas": 0 }
+      "bodies": {
+        "idx": {
+          "settings": { "number_of_shards": 1, "number_of_replicas": 0 }
+        }
       }
     },
     {
-      "statement": "CREATE POLICY sample_hot_warm_cold WITH BODY $policy",
-      "policy": {
-        "policy": {
-          "description": "demo lifecycle policy",
-          "default_state": "hot",
-          "states": [
-            { "name": "hot", "actions": [], "transitions": [] }
-          ]
-        }
-      }
+      "//": "Form 1 — direct file reference in the statement string. Least ceremony for a single body that lives in its own file. Real production ISM policies are large enough that file-based is the right default.",
+      "statement": "CREATE POLICY sample_hot_warm_cold WITH BODY @bodies/hot-warm-cold-policy.json"
     },
     { "statement": "APPLY POLICY sample_hot_warm_cold TO sample_metrics-*" }
   ]

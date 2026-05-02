@@ -14,7 +14,7 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 
 public sealed record CreatePolicyAst(
     string PolicyId,
-    BodyRef? Body
+    BodySource? Body
 ) : StatementAst
 {
     public override string Verb => "CREATE POLICY";

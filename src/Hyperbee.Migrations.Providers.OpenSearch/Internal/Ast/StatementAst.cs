@@ -13,11 +13,25 @@ public abstract record StatementAst
     public abstract string Verb { get; }
 }
 
-// Reference to a sibling JSON property on the same statement object that holds
-// the request body. `WITH BODY $usersIndex` produces BodyRef("usersIndex").
-// The body itself is opaque JSON resolved by the calling code, not by the parser.
+// Body source — the discriminated union of ways a `WITH BODY <ref>` clause
+// resolves to a JSON body at dispatch time. Per ADR-0017 there are two grammar
+// forms, mapped to the two variants below.
 
-public sealed record BodyRef( string Name );
+public abstract record BodySource;
+
+// `WITH BODY $name` — resolves to `bodies.<Name>` first, falling back to a
+// top-level sibling property `<Name>` for back-compat with ADR-0009.
+// The named value is itself either an inline JSON object OR a `@path` file
+// reference string (resolved by the resource runner).
+
+public sealed record BodyRef( string Name ) : BodySource;
+
+// `WITH BODY @path/to/file.json` — resolves the path against the migration's
+// own resource folder. The file must be marked `EmbeddedResource` in the csproj
+// (same convention as `statements.json`). Path is rejected at parse time if it
+// is absolute, contains `..`, or contains other suspect characters.
+
+public sealed record BodyFileRef( string Path ) : BodySource;
 
 // Reference to an OpenSearch index template whose `template` block becomes the
 // body for a CREATE INDEX. Carried unresolved through parsing (ADR-0015 — parser

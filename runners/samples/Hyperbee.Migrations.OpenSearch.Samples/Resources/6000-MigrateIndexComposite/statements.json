@@ -2,12 +2,14 @@
   "statements": [
     {
       "statement": "CREATE INDEX sample_orders_v1 IF NOT EXISTS WITH BODY $ordersV1",
-      "ordersV1": {
-        "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
-        "mappings": {
-          "properties": {
-            "id":     { "type": "keyword" },
-            "amount": { "type": "double" }
+      "bodies": {
+        "ordersV1": {
+          "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+          "mappings": {
+            "properties": {
+              "id":     { "type": "keyword" },
+              "amount": { "type": "double" }
+            }
           }
         }
       }
@@ -15,19 +17,21 @@
     { "statement": "ALIAS ADD sample_orders ON sample_orders_v1" },
     {
       "statement": "CREATE TEMPLATE sample_orders_template WITH BODY $tpl",
-      "tpl": {
-        "index_patterns": ["sample_orders_v*"],
-        "template": {
-          "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
-          "mappings": {
-            "properties": {
-              "id":       { "type": "keyword" },
-              "amount":   { "type": "double" },
-              "currency": { "type": "keyword" }
+      "bodies": {
+        "tpl": {
+          "index_patterns": ["sample_orders_v*"],
+          "template": {
+            "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+            "mappings": {
+              "properties": {
+                "id":       { "type": "keyword" },
+                "amount":   { "type": "double" },
+                "currency": { "type": "keyword" }
+              }
             }
-          }
-        },
-        "priority": 100
+          },
+          "priority": 100
+        }
       }
     },
     { "statement": "MIGRATE INDEX sample_orders_v1 TO sample_orders_v2 WITH TEMPLATE sample_orders_template VIA ALIAS sample_orders" }

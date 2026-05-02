@@ -58,7 +58,7 @@ public class OpenSearchStatementParserTests
 
         var c = (CreateIndexAst) ast;
         c.Body.Should().NotBeNull();
-        c.Body!.Name.Should().Be( "usersIndex" );
+        c.Body.Should().BeOfType<BodyRef>().Which.Name.Should().Be( "usersIndex" );
     }
 
     [TestMethod]
@@ -69,7 +69,7 @@ public class OpenSearchStatementParserTests
         var c = (CreateIndexAst) ast;
         c.IndexName.Should().Be( "users-v2" );
         c.IfNotExists.Should().BeTrue();
-        c.Body!.Name.Should().Be( "body" );
+        c.Body.Should().BeOfType<BodyRef>().Which.Name.Should().Be( "body" );
     }
 
     [TestMethod]
@@ -102,7 +102,7 @@ public class OpenSearchStatementParserTests
         var ast = _parser.Parse( "REINDEX FROM users TO users-v2 WITH BODY $reindexBody" );
 
         var r = (ReindexAst) ast;
-        r.Body!.Name.Should().Be( "reindexBody" );
+        r.Body.Should().BeOfType<BodyRef>().Which.Name.Should().Be( "reindexBody" );
     }
 
     [TestMethod]
