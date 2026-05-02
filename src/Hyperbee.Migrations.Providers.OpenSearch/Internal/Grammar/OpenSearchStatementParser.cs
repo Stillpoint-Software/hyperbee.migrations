@@ -5,7 +5,7 @@ using static Parlot.Fluent.Parsers;
 
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
 
-// PARTIAL OpenSearch statement parser. Foundation verbs (Phase 0 + Phase 1):
+// OpenSearch statement parser. Foundation + Phase 2 verbs:
 //   CREATE INDEX <name> [IF NOT EXISTS] [WITH BODY $body]
 //   DROP INDEX <name> [IF EXISTS]
 //   UPDATE MAPPING ON <idx> [WITH BODY $body]
@@ -14,6 +14,9 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
 //   WAIT FOR <green|yellow> [ON <idx>] [TIMEOUT <duration>]
 //   WAIT UNTIL TASK <id> COMPLETE [TIMEOUT <duration>]
 //   REINDEX [UNSAFE("<reason>")] FROM <src> TO <dst> [WITH BODY $body]
+//   ALIAS SWAP <alias> FROM <old> TO <new>
+//   ALIAS ADD <alias> ON <idx>
+//   ALIAS REMOVE <alias> ON <idx>
 //
 // Per ADR-0011: parser owns intent. AST nodes carry safe-default flags;
 // runtime middleware applies them during JSON tree merge.
@@ -59,6 +62,10 @@ public sealed class OpenSearchStatementParser
         var timeout = Terms.Text( "TIMEOUT", caseInsensitive: true );
         var greenKw = Terms.Text( "GREEN", caseInsensitive: true );
         var yellowKw = Terms.Text( "YELLOW", caseInsensitive: true );
+        var alias = Terms.Text( "ALIAS", caseInsensitive: true );
+        var swap = Terms.Text( "SWAP", caseInsensitive: true );
+        var add = Terms.Text( "ADD", caseInsensitive: true );
+        var remove = Terms.Text( "REMOVE", caseInsensitive: true );
 
         // identifier: plain, dashed, or backtick-quoted.
         // OpenSearch index names allow letters/digits/-/_/. but the parser is permissive
@@ -234,10 +241,51 @@ public sealed class OpenSearchStatementParser
                 Timeout: x.Item2 == TimeSpan.Zero ? null : x.Item2
             ) );
 
+        // ALIAS SWAP <alias> FROM <old> TO <new>
+
+        var aliasSwap = alias
+            .SkipAnd( swap )
+            .SkipAnd( identifier )       // alias name
+            .AndSkip( from )
+            .And( identifier )           // old index
+            .AndSkip( to )
+            .And( identifier )           // new index
+            .Then( static x => (StatementAst) new AliasSwapAst(
+                Alias: x.Item1,
+                OldIndex: x.Item2,
+                NewIndex: x.Item3
+            ) );
+
+        // ALIAS ADD <alias> ON <idx>
+
+        var aliasAdd = alias
+            .SkipAnd( add )
+            .SkipAnd( identifier )
+            .AndSkip( on )
+            .And( identifier )
+            .Then( static x => (StatementAst) new AliasAddAst(
+                Alias: x.Item1,
+                IndexName: x.Item2
+            ) );
+
+        // ALIAS REMOVE <alias> ON <idx>
+
+        var aliasRemove = alias
+            .SkipAnd( remove )
+            .SkipAnd( identifier )
+            .AndSkip( on )
+            .And( identifier )
+            .Then( static x => (StatementAst) new AliasRemoveAst(
+                Alias: x.Item1,
+                IndexName: x.Item2
+            ) );
+
         // Top-level OneOf — order matters when prefixes overlap.
         // CREATE before REFRESH (both single-keyword); UPDATE MAPPING before
         // UPDATE SETTINGS (both UPDATE); WAIT FOR vs WAIT UNTIL (Parlot's
         // OneOf tries left-to-right; both first dispatch on `wait`).
+        // ALIAS SWAP/ADD/REMOVE all dispatch on `alias` — order within is
+        // mutually-exclusive sub-verb keywords so any order works.
 
         return OneOf(
             createIndex,
@@ -247,7 +295,10 @@ public sealed class OpenSearchStatementParser
             refreshStmt,
             waitForHealth,
             waitUntilTask,
-            reindexCore
+            reindexCore,
+            aliasSwap,
+            aliasAdd,
+            aliasRemove
         );
     }
 

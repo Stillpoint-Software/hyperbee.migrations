@@ -253,4 +253,69 @@ public class FoundationVerbParserTests
         var ast = _parser.Parse( "REINDEX FROM users TO users-v2" );
         ast.Should().BeOfType<ReindexAst>();
     }
+
+    // ---- ALIAS SWAP / ADD / REMOVE (Phase 2) ----
+
+    [TestMethod]
+    public void AliasSwap_Bare_Parses()
+    {
+        var ast = _parser.Parse( "ALIAS SWAP users-current FROM users-v1 TO users-v2" );
+
+        var s = (AliasSwapAst) ast;
+        s.Alias.Should().Be( "users-current" );
+        s.OldIndex.Should().Be( "users-v1" );
+        s.NewIndex.Should().Be( "users-v2" );
+    }
+
+    [TestMethod]
+    public void AliasSwap_BacktickIdentifiers_StripBackticks()
+    {
+        var ast = _parser.Parse( "ALIAS SWAP `users.current` FROM `users.v1` TO `users.v2`" );
+
+        var s = (AliasSwapAst) ast;
+        s.Alias.Should().Be( "users.current" );
+        s.OldIndex.Should().Be( "users.v1" );
+        s.NewIndex.Should().Be( "users.v2" );
+    }
+
+    [TestMethod]
+    public void AliasAdd_Parses()
+    {
+        var ast = _parser.Parse( "ALIAS ADD users-current ON users-v1" );
+
+        var a = (AliasAddAst) ast;
+        a.Alias.Should().Be( "users-current" );
+        a.IndexName.Should().Be( "users-v1" );
+    }
+
+    [TestMethod]
+    public void AliasRemove_Parses()
+    {
+        var ast = _parser.Parse( "ALIAS REMOVE users-current ON users-v1" );
+
+        var r = (AliasRemoveAst) ast;
+        r.Alias.Should().Be( "users-current" );
+        r.IndexName.Should().Be( "users-v1" );
+    }
+
+    [TestMethod]
+    public void AliasSwap_KeywordsCaseInsensitive_Parses()
+    {
+        var ast = _parser.Parse( "alias swap users-current from users-v1 to users-v2" );
+        ast.Should().BeOfType<AliasSwapAst>();
+    }
+
+    [TestMethod]
+    public void AliasSwap_MissingTo_Throws()
+    {
+        var act = () => _parser.Parse( "ALIAS SWAP users-current FROM users-v1" );
+        act.Should().Throw<OpenSearchParseException>();
+    }
+
+    [TestMethod]
+    public void AliasAdd_MissingOn_Throws()
+    {
+        var act = () => _parser.Parse( "ALIAS ADD users-current users-v1" );
+        act.Should().Throw<OpenSearchParseException>();
+    }
 }

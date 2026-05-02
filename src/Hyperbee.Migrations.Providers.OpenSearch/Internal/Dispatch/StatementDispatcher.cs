@@ -44,6 +44,9 @@ public sealed class StatementDispatcher
             WaitForHealthAst w => DispatchWaitForHealthAsync( w, context ),
             WaitUntilTaskAst wt => DispatchWaitUntilTaskAsync( wt, context ),
             ReindexAst rx => DispatchReindexAsync( rx, context ),
+            AliasSwapAst aliasSwap => DispatchAliasSwapAsync( aliasSwap, context ),
+            AliasAddAst aliasAdd => DispatchAliasAddAsync( aliasAdd, context ),
+            AliasRemoveAst aliasRemove => DispatchAliasRemoveAsync( aliasRemove, context ),
             _ => throw new InvalidOperationException(
                 $"StatementDispatcher does not handle AST type {ast.GetType().Name}." )
         };
@@ -343,6 +346,84 @@ public sealed class StatementDispatcher
             await ImplicitWaitIfMutatingAsync( context, ast.Destination ).ConfigureAwait( false );
 
         return result;
+    }
+
+    // --- ALIAS SWAP <alias> FROM <old> TO <new> ---
+
+    private async Task<StatementResult> DispatchAliasSwapAsync( AliasSwapAst ast, StatementContext context )
+    {
+        var verb = ast.Verb;
+        var ll = context.Client.LowLevel;
+
+        // Per R-16 / NF-2: atomic POST /_aliases with both actions in one body.
+        // `must_exist: true` on the remove turns the precondition (alias points
+        // at OldIndex) into a hard rejection — without it, OpenSearch silently
+        // no-ops a remove of a non-existent alias and the swap appears to
+        // succeed without actually moving anything. With must_exist, the
+        // cluster atomically rejects the whole multi-action body if the
+        // precondition fails. No separate GET-then-POST TOCTOU window.
+
+        var body = $$"""
+            {
+              "actions": [
+                { "remove": { "index": "{{ast.OldIndex}}", "alias": "{{ast.Alias}}", "must_exist": true } },
+                { "add":    { "index": "{{ast.NewIndex}}", "alias": "{{ast.Alias}}" } }
+              ]
+            }
+            """;
+
+        var response = await ll.DoRequestAsync<StringResponse>(
+            global::OpenSearch.Net.HttpMethod.POST,
+            "_aliases",
+            context.CancellationToken,
+            data: PostData.String( body ) ).ConfigureAwait( false );
+
+        var result = BuildResult( verb, response, $"swapped `{ast.Alias}`: {ast.OldIndex} -> {ast.NewIndex}" );
+
+        if ( result.IsSuccess )
+            await ImplicitWaitIfMutatingAsync( context, ast.NewIndex ).ConfigureAwait( false );
+
+        return result;
+    }
+
+    // --- ALIAS ADD <alias> ON <idx> ---
+
+    private static async Task<StatementResult> DispatchAliasAddAsync( AliasAddAst ast, StatementContext context )
+    {
+        var verb = ast.Verb;
+        var ll = context.Client.LowLevel;
+
+        var body = $$"""
+            { "actions": [ { "add": { "index": "{{ast.IndexName}}", "alias": "{{ast.Alias}}" } } ] }
+            """;
+
+        var response = await ll.DoRequestAsync<StringResponse>(
+            global::OpenSearch.Net.HttpMethod.POST,
+            "_aliases",
+            context.CancellationToken,
+            data: PostData.String( body ) ).ConfigureAwait( false );
+
+        return BuildResult( verb, response, $"added alias `{ast.Alias}` -> `{ast.IndexName}`" );
+    }
+
+    // --- ALIAS REMOVE <alias> ON <idx> ---
+
+    private static async Task<StatementResult> DispatchAliasRemoveAsync( AliasRemoveAst ast, StatementContext context )
+    {
+        var verb = ast.Verb;
+        var ll = context.Client.LowLevel;
+
+        var body = $$"""
+            { "actions": [ { "remove": { "index": "{{ast.IndexName}}", "alias": "{{ast.Alias}}" } } ] }
+            """;
+
+        var response = await ll.DoRequestAsync<StringResponse>(
+            global::OpenSearch.Net.HttpMethod.POST,
+            "_aliases",
+            context.CancellationToken,
+            data: PostData.String( body ) ).ConfigureAwait( false );
+
+        return BuildResult( verb, response, $"removed alias `{ast.Alias}` from `{ast.IndexName}`" );
     }
 
     // --- helpers ---
