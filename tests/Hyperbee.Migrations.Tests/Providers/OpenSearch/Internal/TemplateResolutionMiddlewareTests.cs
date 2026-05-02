@@ -97,4 +97,108 @@ public class TemplateResolutionMiddlewareTests
         act.Should().Throw<InvalidOperationException>()
             .WithMessage( "*empty response*" );
     }
+
+    // ---- Extract returns (body, hasComposedOf) (R-17 refinement) ----
+
+    [TestMethod]
+    public void Extract_TemplateWithoutComposedOf_HasComposedOfFalse()
+    {
+        const string body = """
+            {
+              "index_templates": [
+                {
+                  "name": "users-template",
+                  "index_template": {
+                    "index_patterns": ["users-*"],
+                    "template": { "settings": { "number_of_shards": 2 } }
+                  }
+                }
+              ]
+            }
+            """;
+
+        var result = TemplateResolutionMiddleware.Extract( body, "users-template" );
+
+        result.Body.Should().NotBeNull();
+        result.HasComposedOf.Should().BeFalse();
+    }
+
+    [TestMethod]
+    public void Extract_TemplateWithComposedOf_HasComposedOfTrue()
+    {
+        // R-17 refinement: templates that reference component templates need
+        // to signal that to the dispatcher so dynamic:strict injection is
+        // skipped — same semantics as the inline-body composed_of skip in
+        // SafeDefaultMergeMiddleware, lifted to the runtime-resolved path.
+        const string body = """
+            {
+              "index_templates": [
+                {
+                  "name": "logs-template",
+                  "index_template": {
+                    "index_patterns": ["logs-*"],
+                    "composed_of": ["common-mappings", "logs-settings"],
+                    "template": { "settings": { "number_of_shards": 1 } }
+                  }
+                }
+              ]
+            }
+            """;
+
+        var result = TemplateResolutionMiddleware.Extract( body, "logs-template" );
+
+        result.Body.Should().NotBeNull();
+        result.HasComposedOf.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void Extract_TemplateWithEmptyComposedOfArray_HasComposedOfFalse()
+    {
+        // Treat empty composed_of as "no composition" — the user pinned the
+        // shape but didn't attach components. Inject dynamic:strict normally.
+        const string body = """
+            {
+              "index_templates": [
+                {
+                  "name": "empty",
+                  "index_template": {
+                    "index_patterns": ["x-*"],
+                    "composed_of": [],
+                    "template": { "settings": { "number_of_shards": 1 } }
+                  }
+                }
+              ]
+            }
+            """;
+
+        var result = TemplateResolutionMiddleware.Extract( body, "empty" );
+
+        result.HasComposedOf.Should().BeFalse();
+    }
+
+    [TestMethod]
+    public void Extract_PureComposedOfTemplate_BodyNullAndComposedOfTrue()
+    {
+        // A "glue" template that only carries composed_of with no inner
+        // template block. Body is null, signal is true — the dispatcher must
+        // tolerate a null body and still observe the composed_of flag.
+        const string body = """
+            {
+              "index_templates": [
+                {
+                  "name": "glue",
+                  "index_template": {
+                    "index_patterns": ["logs-*"],
+                    "composed_of": ["base"]
+                  }
+                }
+              ]
+            }
+            """;
+
+        var result = TemplateResolutionMiddleware.Extract( body, "glue" );
+
+        result.Body.Should().BeNull();
+        result.HasComposedOf.Should().BeTrue();
+    }
 }

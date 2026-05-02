@@ -25,6 +25,7 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
 //   APPLY POLICY <id> TO <pattern>
 //   MIGRATE INDEX <old> TO <new> [WITH TEMPLATE <id> | WITH BODY $body]
 //                                [VIA ALIAS <alias>] [TIMEOUT <duration>]
+//   WHEN VERSION <op> '<version>' <statement>     (statement-level prefix)
 //
 // Per ADR-0011: parser owns intent. AST nodes carry safe-default flags;
 // runtime middleware applies them during JSON tree merge.
@@ -80,6 +81,8 @@ public sealed class OpenSearchStatementParser
         var apply = Terms.Text( "APPLY", caseInsensitive: true );
         var migrate = Terms.Text( "MIGRATE", caseInsensitive: true );
         var via = Terms.Text( "VIA", caseInsensitive: true );
+        var when = Terms.Text( "WHEN", caseInsensitive: true );
+        var versionKw = Terms.Text( "VERSION", caseInsensitive: true );
 
         // identifier: plain, dashed, or backtick-quoted.
         // OpenSearch index names allow letters/digits/-/_/. but the parser is permissive
@@ -470,7 +473,7 @@ public sealed class OpenSearchStatementParser
         // `alias` — order within is mutually-exclusive sub-verb keywords so
         // any order works.
 
-        return OneOf(
+        var bareStatement = OneOf(
             createTemplate,
             createComponent,
             createPolicy,
@@ -490,6 +493,43 @@ public sealed class OpenSearchStatementParser
             applyPolicy,
             migrateIndex
         );
+
+        // WHEN VERSION <op> '<version>' <statement>
+        //
+        // Statement-level prefix (R-15a). Wraps a bare statement; the wrapped
+        // child is dispatched only when the cluster version satisfies the
+        // predicate. Comparator order is significant: longer tokens (`<=`,
+        // `>=`, `!=`) must come before their single-character prefixes
+        // because Parlot's OneOf is greedy on the matched token, not the
+        // longest possible match.
+
+        var versionLiteral = Between(
+            Terms.Char( '\'' ),
+            Terms.Pattern( static c => c != '\'' ),
+            Terms.Char( '\'' )
+        ).Then( static x => ParseVersionLiteral( x.ToString()! ) );
+
+        var compNotEq = Terms.Text( "!=" ).Then( static _ => VersionComparator.NotEq );
+        var compLtEq = Terms.Text( "<=" ).Then( static _ => VersionComparator.LtEq );
+        var compGtEq = Terms.Text( ">=" ).Then( static _ => VersionComparator.GtEq );
+        var compLt = Terms.Text( "<" ).Then( static _ => VersionComparator.Lt );
+        var compGt = Terms.Text( ">" ).Then( static _ => VersionComparator.Gt );
+        var compEq = Terms.Text( "=" ).Then( static _ => VersionComparator.Eq );
+
+        var versionComparator = OneOf( compNotEq, compLtEq, compGtEq, compLt, compGt, compEq );
+
+        var whenVersion = when
+            .SkipAnd( versionKw )
+            .SkipAnd( versionComparator )
+            .And( versionLiteral )
+            .And( bareStatement )
+            .Then( static x => (StatementAst) new WhenVersionAst(
+                Op: x.Item1,
+                Version: x.Item2,
+                Child: x.Item3
+            ) );
+
+        return OneOf( whenVersion, bareStatement );
     }
 
     /// <summary>
@@ -511,6 +551,58 @@ public sealed class OpenSearchStatementParser
         }
 
         return result;
+    }
+
+    // R-15a version literal parsing.
+    //
+    // v1 supports the canonical MAJOR.MINOR[.PATCH] form. AWS `OpenSearch_<x>`
+    // prefixes and `-SNAPSHOT` / `-rc<N>` suffixes are deferred (per the
+    // requirements doc Open Questions section). Unrecognized forms throw at
+    // parse time with a remediation message — loud failure beats silent-wrong
+    // version comparison in production.
+    private static Version ParseVersionLiteral( string literal )
+    {
+        if ( string.IsNullOrWhiteSpace( literal ) )
+        {
+            throw new InvalidOperationException(
+                "WHEN VERSION literal is empty. Expected canonical form `MAJOR.MINOR[.PATCH]`, e.g. `'2.10'` or `'2.10.1'`." );
+        }
+
+        var trimmed = literal.Trim();
+
+        // Reject suffixes/prefixes explicitly so authors get a clear remediation
+        // rather than a malformed System.Version.
+        if ( trimmed.Contains( '-' ) )
+        {
+            throw new InvalidOperationException(
+                $"WHEN VERSION literal `{literal}` includes a pre-release suffix (e.g., `-SNAPSHOT`, `-rc<N>`); v1 supports MAJOR.MINOR[.PATCH] only. " +
+                "Pin to the released version (e.g., `'2.11.0'`) or remove the WHEN VERSION guard until suffix support ships." );
+        }
+
+        if ( trimmed.StartsWith( "OpenSearch_", StringComparison.Ordinal ) )
+        {
+            throw new InvalidOperationException(
+                $"WHEN VERSION literal `{literal}` uses the AWS `OpenSearch_<x>` prefix; v1 supports MAJOR.MINOR[.PATCH] only. " +
+                "Strip the prefix (e.g., `'2.11.0'`) or remove the WHEN VERSION guard until prefix support ships." );
+        }
+
+        // System.Version requires Major.Minor at minimum. We accept that and
+        // also Major.Minor.Build. Anything more (Major.Minor.Build.Revision)
+        // is rejected to keep the v1 surface small and unambiguous.
+        var parts = trimmed.Split( '.' );
+        if ( parts.Length is < 2 or > 3 )
+        {
+            throw new InvalidOperationException(
+                $"WHEN VERSION literal `{literal}` is not MAJOR.MINOR[.PATCH]. Examples: `'2.10'`, `'2.10.1'`." );
+        }
+
+        if ( !Version.TryParse( trimmed, out var version ) )
+        {
+            throw new InvalidOperationException(
+                $"WHEN VERSION literal `{literal}` did not parse. Expected canonical form MAJOR.MINOR[.PATCH] (e.g., `'2.10'`, `'2.10.1'`)." );
+        }
+
+        return version;
     }
 }
 

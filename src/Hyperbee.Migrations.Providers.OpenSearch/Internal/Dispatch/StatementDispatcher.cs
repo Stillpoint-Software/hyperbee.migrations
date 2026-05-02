@@ -28,6 +28,12 @@ public sealed class StatementDispatcher
     private readonly SafeDefaultMergeMiddleware _merger;
     private readonly TemplateResolutionMiddleware _templateResolver;
 
+    // R-15a: cluster version is fetched once per dispatcher lifetime and
+    // cached. The dispatcher is per-resource-runner so this cache is bounded
+    // and there's no cross-runner sharing risk. Lazy<Task<>> serializes the
+    // first fetch under contention without explicit locking.
+    private Lazy<Task<Version>>? _clusterVersionCache;
+
     public StatementDispatcher( SafeDefaultMergeMiddleware merger )
         : this( merger, new TemplateResolutionMiddleware() )
     {
@@ -43,6 +49,7 @@ public sealed class StatementDispatcher
     {
         return ast switch
         {
+            WhenVersionAst wv => DispatchWhenVersionAsync( wv, context ),
             CompositeStatementAst comp => DispatchCompositeAsync( comp, context ),
             CreateIndexAst c => DispatchCreateIndexAsync( c, context ),
             DropIndexAst d => DispatchDropIndexAsync( d, context ),
@@ -64,6 +71,97 @@ public sealed class StatementDispatcher
             _ => throw new InvalidOperationException(
                 $"StatementDispatcher does not handle AST type {ast.GetType().Name}." )
         };
+    }
+
+    // --- WHEN VERSION <op> '<version>' <statement> ---
+    //
+    // R-15a: evaluate the cluster's reported version against the predicate;
+    // dispatch the child only when the predicate holds. The cluster version
+    // is fetched lazily (once per dispatcher) to avoid hitting the cluster
+    // for every guarded statement.
+
+    private async Task<StatementResult> DispatchWhenVersionAsync( WhenVersionAst ast, StatementContext context )
+    {
+        var verb = ast.Verb;
+
+        Version clusterVersion;
+        try
+        {
+            clusterVersion = await GetClusterVersionAsync( context ).ConfigureAwait( false );
+        }
+        catch ( Exception ex )
+        {
+            return new StatementResult( StatementOutcome.Failed, verb,
+                Detail: $"WHEN VERSION: cluster version probe failed: {ex.Message}",
+                Exception: ex );
+        }
+
+        var predicate = ast.Evaluate( clusterVersion );
+        if ( !predicate )
+        {
+            context.Logger.LogInformation(
+                "{verb} skipped: cluster version {actual} does not satisfy `{op} {expected}`",
+                verb, clusterVersion, ast.Op, ast.Version );
+            return new StatementResult( StatementOutcome.Skipped, verb,
+                Detail: $"WHEN VERSION: cluster {clusterVersion} does not satisfy {ast.Op} {ast.Version}; child {ast.Child.Verb} not dispatched" );
+        }
+
+        return await DispatchAsync( ast.Child, context ).ConfigureAwait( false );
+    }
+
+    private Task<Version> GetClusterVersionAsync( StatementContext context )
+    {
+        // Initialize the lazy on first request. The Lazy<Task<>> guarantees a
+        // single concurrent fetch even under parallel dispatches.
+        var cache = _clusterVersionCache ??= new Lazy<Task<Version>>( () => FetchClusterVersionAsync( context ) );
+        return cache.Value;
+    }
+
+    private static async Task<Version> FetchClusterVersionAsync( StatementContext context )
+    {
+        var ll = context.Client.LowLevel;
+        var response = await ll.DoRequestAsync<StringResponse>(
+            global::OpenSearch.Net.HttpMethod.GET, string.Empty, context.CancellationToken ).ConfigureAwait( false );
+
+        if ( !response.Success )
+        {
+            throw new InvalidOperationException(
+                $"GET / failed: HTTP {response.HttpStatusCode}; body: {response.Body}" );
+        }
+
+        using var doc = JsonDocument.Parse( response.Body );
+        if ( !doc.RootElement.TryGetProperty( "version", out var versionElement ) ||
+             !versionElement.TryGetProperty( "number", out var numberElement ) )
+        {
+            throw new InvalidOperationException(
+                $"GET / response did not include `version.number`; body: {response.Body}" );
+        }
+
+        var raw = numberElement.GetString() ?? throw new InvalidOperationException(
+            "GET / response had `version.number` but it was null." );
+
+        // The cluster's reported number is the same canonical form the parser
+        // accepts (MAJOR.MINOR.PATCH). Trim to handle any whitespace; reject
+        // suffixes here too — if a deployment ever reports a non-canonical
+        // version, surface that loudly rather than truncating.
+        var trimmed = raw.Trim();
+        if ( trimmed.Contains( '-' ) )
+        {
+            // Strip the suffix for comparison purposes; the parser-side
+            // version is already suffix-free. This is the one place we
+            // tolerate cluster-side divergence (deploys do report `-SNAPSHOT`
+            // sometimes) without rejecting outright — the comparison still
+            // works against the underlying numeric tuple.
+            trimmed = trimmed[..trimmed.IndexOf( '-' )];
+        }
+
+        if ( !Version.TryParse( trimmed, out var version ) )
+        {
+            throw new InvalidOperationException(
+                $"Cluster-reported version `{raw}` did not parse as MAJOR.MINOR[.PATCH]." );
+        }
+
+        return version;
     }
 
     // --- composite (MIGRATE INDEX, etc.) ---
@@ -132,11 +230,13 @@ public sealed class StatementDispatcher
         // dynamic:strict injection (R-17) and composed_of-aware skipping still
         // apply against the live template body.
         var resolvedBody = context.ResolvedBody;
+        var astForMerge = ast;
         if ( ast.TemplateBody is not null )
         {
+            TemplateResolution resolution;
             try
             {
-                resolvedBody = await _templateResolver.ResolveAsync(
+                resolution = await _templateResolver.ResolveAsync(
                     ll, ast.TemplateBody, context.CancellationToken ).ConfigureAwait( false );
             }
             catch ( Exception ex )
@@ -145,9 +245,36 @@ public sealed class StatementDispatcher
                     Detail: $"template `{ast.TemplateBody.TemplateName}` resolution failed: {ex.Message}",
                     Exception: ex );
             }
+
+            resolvedBody = resolution.Body;
+
+            // R-17 component-template-aware refinement: when the source
+            // template references component templates via `composed_of`, the
+            // resolved body alone does NOT carry the component mappings —
+            // CREATE INDEX with an explicit body bypasses cluster-side
+            // template-matching. Injecting `dynamic: strict` over an
+            // incomplete body would override what the components were
+            // expected to provide. Skip the injection on this path; emit a
+            // WARN so the gap is visible in logs (the destination index will
+            // not inherit component mappings — author should consider
+            // creating the destination by name and letting cluster-side
+            // template-matching apply via index_patterns).
+            if ( resolution.HasComposedOf )
+            {
+                context.Logger.LogWarning(
+                    "{verb}: template `{template}` references component templates via composed_of; " +
+                    "skipping dynamic:strict injection for the destination index `{idx}`. " +
+                    "Note: the destination will NOT inherit component mappings via this path because " +
+                    "CREATE INDEX with an explicit body bypasses cluster-side template-matching. " +
+                    "If you need component composition applied, create the destination index by name " +
+                    "(no MIGRATE INDEX WITH TEMPLATE) and let an index_template's index_patterns match it.",
+                    verb, ast.TemplateBody.TemplateName, ast.IndexName );
+
+                astForMerge = ast with { InjectDynamicStrict = false };
+            }
         }
 
-        var merged = _merger.Merge( ast, resolvedBody );
+        var merged = _merger.Merge( astForMerge, resolvedBody );
         var body = merged.ToJsonString();
 
         var response = await ll.Indices.CreateAsync<StringResponse>(

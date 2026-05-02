@@ -36,9 +36,25 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Middleware;
 // dynamic:strict injection (R-17) and composed_of-aware skipping continue to
 // apply against the resolved template body.
 
+// Result of a template resolution. `Body` is the inner `template` JSON block
+// (settings/mappings/aliases) destined for the CREATE INDEX request body;
+// `HasComposedOf` is true when the source template references component
+// templates via `composed_of`.
+//
+// `HasComposedOf` is the signal R-17 needs from this code path: when the
+// source template composes components, the resolved body alone does not carry
+// those component mappings (CREATE INDEX with an explicit body bypasses
+// template-matching). Injecting `dynamic: strict` against an incomplete body
+// would surprise authors whose component mappings define their own dynamic
+// behavior. The dispatcher uses this signal to skip the injection — same
+// semantics as the existing inline-body composed_of skip in
+// SafeDefaultMergeMiddleware, lifted to the runtime-resolved path.
+
+public readonly record struct TemplateResolution( JsonNode? Body, bool HasComposedOf );
+
 public sealed class TemplateResolutionMiddleware
 {
-    public async Task<JsonNode?> ResolveAsync(
+    public async Task<TemplateResolution> ResolveAsync(
         IOpenSearchLowLevelClient client,
         TemplateBodyRef templateRef,
         CancellationToken cancellationToken )
@@ -58,13 +74,13 @@ public sealed class TemplateResolutionMiddleware
                 $"Template `{templateRef.TemplateName}` lookup failed: HTTP {status}; body: {response.Body}" );
         }
 
-        return ExtractTemplateBlock( response.Body, templateRef.TemplateName );
+        return Extract( response.Body, templateRef.TemplateName );
     }
 
-    // Pure JSON shape extraction; split out for unit testing without a live
-    // cluster. Returns the inner `template` JSON block or throws if the
-    // response shape doesn't match.
-    public static JsonNode? ExtractTemplateBlock( string responseBody, string templateName )
+    // Pure JSON-shape extraction; split out for unit testing without a live
+    // cluster. Returns the inner `template` block plus a flag indicating
+    // whether the source `index_template` uses `composed_of`.
+    public static TemplateResolution Extract( string responseBody, string templateName )
     {
         if ( string.IsNullOrEmpty( responseBody ) )
             throw new InvalidOperationException(
@@ -88,7 +104,16 @@ public sealed class TemplateResolutionMiddleware
                 $"Template `{templateName}` not found in cluster response (no `index_templates` entries)." );
         }
 
-        var template = templates[0]?["index_template"]?["template"];
-        return template?.DeepClone();
+        var indexTemplate = templates[0]?["index_template"];
+        var template = indexTemplate?["template"];
+        var composedOf = indexTemplate?["composed_of"]?.AsArray();
+        var hasComposedOf = composedOf is not null && composedOf.Count > 0;
+
+        return new TemplateResolution( template?.DeepClone(), hasComposedOf );
     }
+
+    // Back-compat for tests/callers that just want the body. Delegates to
+    // Extract and discards the composed_of flag.
+    public static JsonNode? ExtractTemplateBlock( string responseBody, string templateName )
+        => Extract( responseBody, templateName ).Body;
 }

@@ -240,14 +240,14 @@ public class OpenSearchMigrateIndexIntegrationTests
 
         // Resolve the template body the same way the runtime middleware would
         // and use it as the inline body for the hand-composed CREATE.
-        var resolved = await new TemplateResolutionMiddleware()
+        var resolution = await new TemplateResolutionMiddleware()
             .ResolveAsync( ll, new TemplateBodyRef( _templateName ), default );
-        Assert.IsNotNull( resolved, "template should resolve to a body" );
+        Assert.IsNotNull( resolution.Body, "template should resolve to a body" );
 
         try
         {
             // Hand-composed: CREATE INDEX (with resolved body) + REINDEX + ALIAS SWAP
-            var altCreate = await DispatchAsync( $"CREATE INDEX {altDst} WITH BODY $body", resolved );
+            var altCreate = await DispatchAsync( $"CREATE INDEX {altDst} WITH BODY $body", resolution.Body );
             Assert.IsTrue( altCreate.IsSuccess, $"alt CREATE failed: {altCreate.Detail}" );
 
             var altReindex = await DispatchAsync( $"REINDEX FROM {altSrc} TO {altDst}" );
@@ -299,6 +299,100 @@ public class OpenSearchMigrateIndexIntegrationTests
         finally
         {
             await ll.Indices.DeleteAsync<StringResponse>( $"{altSrc},{altDst}" );
+        }
+    }
+
+    // ---- failure semantics ----
+
+    // ---- composed_of-aware refinement (R-17) ----
+
+    [TestMethod]
+    [TestCategory( "OpenSearch" )]
+    [TestCategory( "Phase2" )]
+    [TestCategory( "R-17" )]
+    public async Task MigrateIndex_TemplateUsesComposedOf_SkipsDynamicStrictInjection()
+    {
+        // R-17 refinement: when the source template references components via
+        // composed_of, the MIGRATE INDEX path must NOT inject dynamic:strict
+        // into the resolved body — same semantics as the inline-body skip in
+        // SafeDefaultMergeMiddleware, lifted to the runtime-resolved path.
+        //
+        // Verification: write a document with a field NOT declared in the
+        // template's mappings AFTER the migrate. With dynamic:strict, the
+        // cluster rejects with strict_dynamic_mapping_exception. Without it
+        // (cluster default dynamic:true), the field is accepted and a new
+        // mapping is auto-created.
+
+        var ll = OpenSearchTestContainer.LowLevelClient;
+        var componentName = $"comp-{_slug}";
+        var composedTemplateName = $"composed-{_slug}";
+        var composedDst = $"composed-dst-{_slug}";
+
+        // Pre-create a component template so the composed-of reference
+        // resolves cluster-side (the cluster validates references on PUT of
+        // the parent index template).
+        var componentBody = """
+            {
+              "template": {
+                "mappings": {
+                  "properties": {
+                    "id": { "type": "keyword" }
+                  }
+                }
+              }
+            }
+            """;
+        await ll.DoRequestAsync<StringResponse>(
+            OpenSearch.Net.HttpMethod.PUT,
+            $"_component_template/{componentName}",
+            default,
+            data: PostData.String( componentBody ) );
+
+        // Parent template that uses composed_of
+        var composedBody = $$"""
+            {
+              "index_patterns": ["composed-dst-{{_slug}}"],
+              "composed_of": ["{{componentName}}"],
+              "template": {
+                "settings": { "number_of_shards": 1, "number_of_replicas": 0 }
+              },
+              "priority": 200
+            }
+            """;
+        await ll.DoRequestAsync<StringResponse>(
+            OpenSearch.Net.HttpMethod.PUT,
+            $"_index_template/{composedTemplateName}",
+            default,
+            data: PostData.String( composedBody ) );
+
+        try
+        {
+            // Run MIGRATE INDEX against the composed_of template
+            var result = await DispatchAsync(
+                $"MIGRATE INDEX {_src} TO {composedDst} WITH TEMPLATE {composedTemplateName}" );
+            Assert.IsTrue( result.IsSuccess, $"composite failed: {result.Detail}" );
+
+            // Write a document with a field NOT in the template's mappings.
+            // If dynamic:strict was injected (the bug we're fixing), the
+            // cluster rejects with strict_dynamic_mapping_exception. With
+            // the fix, the cluster accepts (default dynamic:true).
+            var doc = """{ "id": "x1", "completely_new_field": "value" }""";
+            var indexResp = await ll.IndexAsync<StringResponse>(
+                composedDst, "x1", PostData.String( doc ) );
+
+            Assert.IsTrue( indexResp.Success,
+                $"writing un-mapped field should succeed when composed_of is detected " +
+                $"(dynamic:strict must be skipped); got HTTP {indexResp.HttpStatusCode}: {indexResp.Body}" );
+        }
+        finally
+        {
+            await ll.Indices.DeleteAsync<StringResponse>( composedDst );
+            await ll.DoRequestAsync<StringResponse>(
+                OpenSearch.Net.HttpMethod.DELETE,
+                $"_index_template/{composedTemplateName}", default );
+            await ll.DoRequestAsync<StringResponse>(
+                OpenSearch.Net.HttpMethod.DELETE,
+                $"_component_template/{componentName}", default );
         }
     }
 
