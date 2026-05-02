@@ -363,7 +363,7 @@ ADR-0011 hybrid + ADR-0015 offline-pure parser holds: parser produces AST flags,
 | Phase | Status | Notes |
 |-------|--------|-------|
 | 0 — Scaffold + Spike | Not Started | Critical gate; if spike fails, ADR-0011 needs revision and Approach A becomes fallback |
-| 1 — Foundation + Foundation Verbs | Not Started | |
+| 1 — Foundation + Foundation Verbs | In Progress | Slice A done (bootstrapper foundation, 7 unit tests). Slice B partial: init steps + DI wiring landed. LockHandle + RecordStore + foundation verbs remaining. |
 | 2 — Atomic + Composite + Cross-Cutting | Not Started | |
 | 3 — Distribution + Polish | Not Started | |
 
