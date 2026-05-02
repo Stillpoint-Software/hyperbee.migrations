@@ -40,6 +40,7 @@
   </Folder>
   <Project Path="src/Hyperbee.Migrations.Providers.Aerospike/Hyperbee.Migrations.Providers.Aerospike.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.Couchbase/Hyperbee.Migrations.Providers.Couchbase.csproj" />
+  <Project Path="src/Hyperbee.Migrations.Providers.OpenSearch/Hyperbee.Migrations.Providers.OpenSearch.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.MongoDB/Hyperbee.Migrations.Providers.MongoDB.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.Postgres/Hyperbee.Migrations.Providers.Postgres.csproj" />
   <Project Path="src/Hyperbee.Migrations/Hyperbee.Migrations.csproj" />

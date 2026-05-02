@@ -130,11 +130,14 @@ Audit existing providers; populate the Style Reference section above with concre
 
 #### 0.2: Project scaffolding
 
-Mirror the Aerospike layout exactly: `src/Hyperbee.Migrations.Providers.OpenSearch/`, `runners/Hyperbee.MigrationRunner.OpenSearch/`, `runners/samples/Hyperbee.Migrations.OpenSearch.Samples/`, `tests/.../OpenSearch/`.
+**Scope-trimmed**: only the provider library is needed for Phase 0/1 work. Runner project + Samples project are deferred to Phase 3 (Distribution) where they belong with the other distribution work. Existing test projects (`tests/Hyperbee.Migrations.Tests`, `tests/Hyperbee.Migrations.Integration.Tests`) get OpenSearch subdirectories — no new test csproj needed.
 
-- [ ] Create four projects; net8.0;net9.0; Apache 2.0
-- [ ] NuGet refs: OpenSearch.Client 1.8.x, OpenSearch.Net 1.8.x, Parlot, Hyperbee.Templating, Testcontainers + OpenSearch image (pinned by sha256 digest)
-- [ ] Add to solution; `dotnet build` clean
+- [x] Create `src/Hyperbee.Migrations.Providers.OpenSearch/` provider library — net10.0;net9.0;net8.0 (inherited from Directory.Build.props), Apache 2.0
+- [x] Add NuGet versions to `Directory.Packages.props`: `OpenSearch.Client` 1.8.0, `OpenSearch.Net` 1.8.0, `OpenSearch.Net.Auth.AwsSigV4` 1.8.0 (used in Phase 3)
+- [x] Add to `Hyperbee.Migrations.slnx`; `dotnet build` clean (provider library: 0 warnings, 0 errors across net8/9/10)
+- [x] Initial source files: `OpenSearchMigrationOptions.cs` (with WaitMode, ClusterHealthThreshold, ContextResolutionPolicy enums + lock parameters), `ServiceCollectionExtensions.cs` (`AddOpenSearchMigrations` + `WithProductionDefaults` scaffolded; full impl in Phase 6), README.md
+- [x] **Defer**: Hyperbee.Templating package reference — added in Task 0.4 when the spike actually needs it
+- [x] **Defer**: Testcontainers OpenSearch image setup — moved to Task 0.3
 
 #### 0.3: Single-node Testcontainers harness + hello-world
 
@@ -339,9 +342,9 @@ Before tagging a phase snapshot:
 | 2 — Atomic + Composite + Cross-Cutting | Not Started | |
 | 3 — Distribution + Polish | Not Started | |
 
-**Current task:** Phase 0, Task 0.1 **Done**. Style Reference populated.
-**Next action:** Task 0.2 (project scaffolding) — requires git approval to create `devs/bfarmer/provider-opensearch` branch.
-**Blockers:** Awaiting user authorization for git operations (branch + commits).
+**Current task:** Phase 0, Tasks 0.1 + 0.2 **Done**. Style Reference populated; provider library scaffolded; build clean (0 warnings, 0 errors).
+**Next action:** Task 0.3 (single-node Testcontainers harness + hello-world).
+**Blockers:** None.
 
 ---
 
