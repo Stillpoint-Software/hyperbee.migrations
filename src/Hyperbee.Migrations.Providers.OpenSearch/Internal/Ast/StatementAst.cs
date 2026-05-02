@@ -18,3 +18,11 @@ public abstract record StatementAst
 // The body itself is opaque JSON resolved by the calling code, not by the parser.
 
 public sealed record BodyRef( string Name );
+
+// Reference to an OpenSearch index template whose `template` block becomes the
+// body for a CREATE INDEX. Carried unresolved through parsing (ADR-0015 — parser
+// is offline-pure); resolved at dispatch time via runtime middleware that
+// performs `GET /_index_template/<TemplateName>` immediately before CREATE
+// INDEX is dispatched. Used by the MIGRATE INDEX composite verb (R-30).
+
+public sealed record TemplateBodyRef( string TemplateName );

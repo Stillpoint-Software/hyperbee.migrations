@@ -26,16 +26,24 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Dispatch;
 public sealed class StatementDispatcher
 {
     private readonly SafeDefaultMergeMiddleware _merger;
+    private readonly TemplateResolutionMiddleware _templateResolver;
 
     public StatementDispatcher( SafeDefaultMergeMiddleware merger )
+        : this( merger, new TemplateResolutionMiddleware() )
+    {
+    }
+
+    public StatementDispatcher( SafeDefaultMergeMiddleware merger, TemplateResolutionMiddleware templateResolver )
     {
         _merger = merger;
+        _templateResolver = templateResolver;
     }
 
     public Task<StatementResult> DispatchAsync( StatementAst ast, StatementContext context )
     {
         return ast switch
         {
+            CompositeStatementAst comp => DispatchCompositeAsync( comp, context ),
             CreateIndexAst c => DispatchCreateIndexAsync( c, context ),
             DropIndexAst d => DispatchDropIndexAsync( d, context ),
             UpdateMappingAst um => DispatchUpdateMappingAsync( um, context ),
@@ -56,6 +64,42 @@ public sealed class StatementDispatcher
             _ => throw new InvalidOperationException(
                 $"StatementDispatcher does not handle AST type {ast.GetType().Name}." )
         };
+    }
+
+    // --- composite (MIGRATE INDEX, etc.) ---
+    //
+    // R-30: a composite verb decomposes at parse time into an ordered sequence
+    // of foundation-verb children. Walk them sequentially and halt on the first
+    // failure. The composite's outcome reflects the last dispatched child:
+    // Executed if all succeeded, Failed if any failed (subsequent children are
+    // skipped). Skipped children (IF [NOT] EXISTS guards) do not halt the chain.
+    //
+    // R-19 partial-rollback ledger semantics — tracking which child failed for
+    // `--force-resume` recovery — lands in a later slice (plan task 2.10).
+
+    private async Task<StatementResult> DispatchCompositeAsync( CompositeStatementAst ast, StatementContext context )
+    {
+        var compositeVerb = ast.Verb;
+        var details = new List<string>( ast.Children.Length );
+
+        for ( var i = 0; i < ast.Children.Length; i++ )
+        {
+            var child = ast.Children[i];
+            var childResult = await DispatchAsync( child, context ).ConfigureAwait( false );
+
+            details.Add( $"[{i + 1}/{ast.Children.Length}] {child.Verb}: {childResult.Outcome} ({childResult.Detail})" );
+
+            if ( childResult.Outcome == StatementOutcome.Failed )
+            {
+                return new StatementResult( StatementOutcome.Failed, compositeVerb,
+                    Detail: $"{compositeVerb} halted at child {i + 1}/{ast.Children.Length} ({child.Verb}); {string.Join( " | ", details )}",
+                    OpenSearchResponseStatus: childResult.OpenSearchResponseStatus,
+                    Exception: childResult.Exception );
+            }
+        }
+
+        return new StatementResult( StatementOutcome.Executed, compositeVerb,
+            Detail: $"{compositeVerb} completed {ast.Children.Length} children: {string.Join( " | ", details )}" );
     }
 
     // --- CREATE INDEX ---
@@ -79,7 +123,31 @@ public sealed class StatementDispatcher
             }
         }
 
-        var merged = _merger.Merge( ast, context.ResolvedBody );
+        // Resolve template-source body if the AST carries a TemplateBodyRef
+        // (set by the MIGRATE INDEX composite expansion per R-30). This is the
+        // runtime template-resolution point: parsing stays offline-pure
+        // (ADR-0015), while the actual `GET /_index_template/<id>` happens
+        // here, immediately before the CREATE INDEX request is built. The
+        // resolved body becomes the input to SafeDefaultMergeMiddleware so
+        // dynamic:strict injection (R-17) and composed_of-aware skipping still
+        // apply against the live template body.
+        var resolvedBody = context.ResolvedBody;
+        if ( ast.TemplateBody is not null )
+        {
+            try
+            {
+                resolvedBody = await _templateResolver.ResolveAsync(
+                    ll, ast.TemplateBody, context.CancellationToken ).ConfigureAwait( false );
+            }
+            catch ( Exception ex )
+            {
+                return new StatementResult( StatementOutcome.Failed, verb,
+                    Detail: $"template `{ast.TemplateBody.TemplateName}` resolution failed: {ex.Message}",
+                    Exception: ex );
+            }
+        }
+
+        var merged = _merger.Merge( ast, resolvedBody );
         var body = merged.ToJsonString();
 
         var response = await ll.Indices.CreateAsync<StringResponse>(

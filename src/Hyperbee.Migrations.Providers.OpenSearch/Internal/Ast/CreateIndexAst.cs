@@ -9,12 +9,20 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 //    AND skips injection if the resolved body contains `composed_of` (per R-17,
 //    component-template-aware). Bodies with explicit `mappings.dynamic` are
 //    preserved (user-explicit always wins).
+//
+// Body sources are mutually exclusive:
+//  - Body: sibling-property reference resolved offline by the resource runner
+//    (per R-09)
+//  - TemplateBody: index template reference resolved at dispatch time via
+//    `GET /_index_template/<name>` (used by the MIGRATE INDEX composite
+//    expansion per R-30; ADR-0015 keeps parsing offline-pure)
 
 public sealed record CreateIndexAst(
     string IndexName,
     bool IfNotExists,
     BodyRef? Body,
-    bool InjectDynamicStrict
+    bool InjectDynamicStrict,
+    TemplateBodyRef? TemplateBody = null
 ) : StatementAst
 {
     public override string Verb => "CREATE INDEX";

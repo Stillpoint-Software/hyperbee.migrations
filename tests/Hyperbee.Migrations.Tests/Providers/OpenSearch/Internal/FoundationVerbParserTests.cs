@@ -449,4 +449,107 @@ public class FoundationVerbParserTests
         var act = () => _parser.Parse( "APPLY POLICY hot-warm-cold logs-*" );
         act.Should().Throw<OpenSearchParseException>();
     }
+
+    // ---- MIGRATE INDEX composite (Phase 2, R-30) ----
+
+    [TestMethod]
+    public void MigrateIndex_WithTemplateAndAlias_DecomposesToThreeChildren()
+    {
+        var ast = _parser.Parse( "MIGRATE INDEX users-v1 TO users-v2 WITH TEMPLATE users-template VIA ALIAS users-current" );
+
+        var c = (CompositeStatementAst) ast;
+        c.Verb.Should().Be( "MIGRATE INDEX" );
+        c.Children.Should().HaveCount( 3 );
+
+        var create = (CreateIndexAst) c.Children[0];
+        create.IndexName.Should().Be( "users-v2" );
+        create.TemplateBody!.TemplateName.Should().Be( "users-template" );
+        create.Body.Should().BeNull();
+        create.InjectDynamicStrict.Should().BeTrue();
+
+        var reindex = (ReindexAst) c.Children[1];
+        reindex.Source.Should().Be( "users-v1" );
+        reindex.Destination.Should().Be( "users-v2" );
+        reindex.InjectOpTypeCreate.Should().BeTrue();
+
+        var swap = (AliasSwapAst) c.Children[2];
+        swap.Alias.Should().Be( "users-current" );
+        swap.OldIndex.Should().Be( "users-v1" );
+        swap.NewIndex.Should().Be( "users-v2" );
+    }
+
+    [TestMethod]
+    public void MigrateIndex_WithBodyAndAlias_UsesInlineBody()
+    {
+        var ast = _parser.Parse( "MIGRATE INDEX users-v1 TO users-v2 WITH BODY $newShape VIA ALIAS users-current" );
+
+        var c = (CompositeStatementAst) ast;
+        c.Children.Should().HaveCount( 3 );
+
+        var create = (CreateIndexAst) c.Children[0];
+        create.Body!.Name.Should().Be( "newShape" );
+        create.TemplateBody.Should().BeNull();
+    }
+
+    [TestMethod]
+    public void MigrateIndex_NoAlias_OmitsSwap()
+    {
+        // VIA ALIAS is optional. Without it the composite is just CREATE + REINDEX —
+        // the author owns cutover (R-30 preserves migrations that intentionally
+        // retain both indices for read-traffic comparison).
+        var ast = _parser.Parse( "MIGRATE INDEX users-v1 TO users-v2 WITH TEMPLATE users-template" );
+
+        var c = (CompositeStatementAst) ast;
+        c.Children.Should().HaveCount( 2 );
+        c.Children[0].Should().BeOfType<CreateIndexAst>();
+        c.Children[1].Should().BeOfType<ReindexAst>();
+    }
+
+    [TestMethod]
+    public void MigrateIndex_NoBody_DefaultsToCreateIndexWithoutBody()
+    {
+        // Body source is also optional — if author wants the new index created
+        // with no body (e.g., relies entirely on cluster-side templates with
+        // matching index_patterns), they can skip both WITH TEMPLATE and WITH BODY.
+        var ast = _parser.Parse( "MIGRATE INDEX users-v1 TO users-v2 VIA ALIAS users-current" );
+
+        var c = (CompositeStatementAst) ast;
+        c.Children.Should().HaveCount( 3 );
+        var create = (CreateIndexAst) c.Children[0];
+        create.Body.Should().BeNull();
+        create.TemplateBody.Should().BeNull();
+    }
+
+    [TestMethod]
+    public void MigrateIndex_WithTimeout_Parses()
+    {
+        // TIMEOUT is parsed but not yet threaded through (sync REINDEX uses the
+        // cluster's own wait_for_completion). Forward-compatible parsing for
+        // the async-polling slice.
+        var ast = _parser.Parse( "MIGRATE INDEX users-v1 TO users-v2 WITH TEMPLATE users-template VIA ALIAS users-current TIMEOUT 5m" );
+        ast.Should().BeOfType<CompositeStatementAst>();
+    }
+
+    [TestMethod]
+    public void MigrateIndex_SameSourceAndDestination_ThrowsAtParseTime()
+    {
+        // R-30 same-src-dst rejection (purely syntactic). The grammar callback
+        // raises InvalidOperationException; Parlot may surface it directly or
+        // the parser wrapper may rethrow as OpenSearchParseException — either
+        // is acceptable as long as the rejection happens at parse time and the
+        // message identifies the constraint.
+        var act = () => _parser.Parse( "MIGRATE INDEX users TO users WITH TEMPLATE users-template" );
+
+        var ex = act.Should().Throw<Exception>().Which;
+        ex.Should().Match<Exception>( e =>
+            e is OpenSearchParseException || e is InvalidOperationException );
+        ex.Message.Should().Contain( "distinct" );
+    }
+
+    [TestMethod]
+    public void MigrateIndex_KeywordsCaseInsensitive_Parses()
+    {
+        var ast = _parser.Parse( "migrate index users-v1 to users-v2 with template users-template via alias users-current" );
+        ast.Should().BeOfType<CompositeStatementAst>();
+    }
 }

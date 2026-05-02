@@ -23,6 +23,8 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
 //   DROP COMPONENT <name> [IF EXISTS]
 //   CREATE POLICY <id> [WITH BODY $body]
 //   APPLY POLICY <id> TO <pattern>
+//   MIGRATE INDEX <old> TO <new> [WITH TEMPLATE <id> | WITH BODY $body]
+//                                [VIA ALIAS <alias>] [TIMEOUT <duration>]
 //
 // Per ADR-0011: parser owns intent. AST nodes carry safe-default flags;
 // runtime middleware applies them during JSON tree merge.
@@ -76,6 +78,8 @@ public sealed class OpenSearchStatementParser
         var component = Terms.Text( "COMPONENT", caseInsensitive: true );
         var policy = Terms.Text( "POLICY", caseInsensitive: true );
         var apply = Terms.Text( "APPLY", caseInsensitive: true );
+        var migrate = Terms.Text( "MIGRATE", caseInsensitive: true );
+        var via = Terms.Text( "VIA", caseInsensitive: true );
 
         // identifier: plain, dashed, or backtick-quoted.
         // OpenSearch index names allow letters/digits/-/_/. but the parser is permissive
@@ -363,6 +367,100 @@ public sealed class OpenSearchStatementParser
                 IndexPattern: x.Item2
             ) );
 
+        // MIGRATE INDEX <old> TO <new>
+        //   [WITH TEMPLATE <id> | WITH BODY $body]
+        //   [VIA ALIAS <alias>]
+        //   [TIMEOUT <duration>]
+        //
+        // R-30 composite. Decomposes at parse time into:
+        //   1. CREATE INDEX <new> with body resolved from WITH TEMPLATE (runtime
+        //      `GET /_index_template/<id>`) or WITH BODY $body (sibling-property
+        //      reference). dynamic:strict injection still applies per R-17.
+        //   2. REINDEX FROM <old> TO <new> with auto-injected `op_type: create`.
+        //   3. (optional) ALIAS SWAP <alias> FROM <old> TO <new> when VIA ALIAS
+        //      is present. Without VIA ALIAS, the author retains responsibility
+        //      for cutover (preserves migrations that intentionally retain both
+        //      indices for read-traffic comparison).
+        //
+        // Per ADR-0015 the parser is offline-pure: WITH TEMPLATE produces a
+        // TemplateBodyRef on the CREATE INDEX child; runtime middleware fetches
+        // the template body immediately before CREATE INDEX dispatch.
+
+        var withTemplate = with.SkipAnd( template ).SkipAnd( identifier )
+            .Then( static name => new TemplateBodyRef( name ) );
+
+        // either WITH TEMPLATE <id> or WITH BODY $body, not both. Modeled as a
+        // tuple (TemplateBodyRef? template, BodyRef? body) where exactly one is
+        // populated. Mutual exclusion is enforced by OneOf alternation.
+        var migrateBodySource = OneOf(
+            withTemplate.Then( static t => ((TemplateBodyRef?) t, (BodyRef?) null) ),
+            bodyRef.Then( static b => ((TemplateBodyRef?) null, (BodyRef?) b) )
+        );
+
+        var viaAlias = via.SkipAnd( alias ).SkipAnd( identifier );
+
+        var migrateIndex = migrate
+            .SkipAnd( index )
+            .SkipAnd( identifier )                           // src
+            .AndSkip( to )
+            .And( identifier )                               // dst
+            .And( ZeroOrOne( migrateBodySource ) )
+            .And( ZeroOrOne( viaAlias ) )
+            .And( ZeroOrOne( timeoutClause ) )
+            .Then( static x =>
+            {
+                var src = x.Item1;
+                var dst = x.Item2;
+                var bodySource = x.Item3;                    // tuple may be (null, null) if omitted
+                var aliasName = x.Item4;                     // null if not present
+                // timeout reserved for future async-polling slice; parsed for
+                // forward-compatibility but not threaded through to children
+                // in this slice (sync REINDEX uses cluster-side wait_for_completion).
+                _ = x.Item5;
+
+                // R-30: same-src-dst rejected at parse time (purely syntactic).
+                if ( string.Equals( src, dst, StringComparison.Ordinal ) )
+                {
+                    throw new InvalidOperationException(
+                        $"MIGRATE INDEX requires distinct source and destination; got `{src}` for both." );
+                }
+
+                var templateBody = bodySource.Item1;
+                var inlineBody = bodySource.Item2;
+
+                var children = new List<StatementAst>( capacity: 3 )
+                {
+                    new CreateIndexAst(
+                        IndexName: dst,
+                        IfNotExists: false,
+                        Body: inlineBody,
+                        InjectDynamicStrict: true,
+                        TemplateBody: templateBody
+                    ),
+                    new ReindexAst(
+                        Source: src,
+                        Destination: dst,
+                        Body: null,
+                        InjectOpTypeCreate: true,
+                        UnsafeJustification: null
+                    )
+                };
+
+                if ( aliasName is not null )
+                {
+                    children.Add( new AliasSwapAst(
+                        Alias: aliasName,
+                        OldIndex: src,
+                        NewIndex: dst
+                    ) );
+                }
+
+                return (StatementAst) new CompositeStatementAst(
+                    CompositeVerb: "MIGRATE INDEX",
+                    Children: children.ToArray()
+                );
+            } );
+
         // Top-level OneOf — order matters when prefixes overlap.
         // CREATE TEMPLATE/COMPONENT/POLICY are listed BEFORE CREATE INDEX so the
         // more-specific second keyword wins; same for DROP TEMPLATE/COMPONENT
@@ -389,7 +487,8 @@ public sealed class OpenSearchStatementParser
             aliasSwap,
             aliasAdd,
             aliasRemove,
-            applyPolicy
+            applyPolicy,
+            migrateIndex
         );
     }
 
