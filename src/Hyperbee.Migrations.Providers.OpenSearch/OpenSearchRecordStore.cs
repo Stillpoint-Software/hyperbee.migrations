@@ -107,35 +107,44 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
             LastHeartbeat = now
         };
 
-        var indexResponse = await _client.IndexAsync( doc, idx => idx
-            .Index( _options.LockIndex )
-            .Id( _options.LockName )
-            .OpType( global::OpenSearch.Net.OpType.Create )
-            .Refresh( global::OpenSearch.Net.Refresh.WaitFor )
-        ).ConfigureAwait( false );
-
-        if ( indexResponse.IsValid )
+        // Acquire via op_type=create. 409 surfaces either as a non-valid response
+        // (default settings) OR as OpenSearchClientException (when client has
+        // ThrowExceptions enabled). Handle both paths uniformly.
+        try
         {
-            _logger.LogInformation(
-                "Lock {lockId} acquired by {owner} (seq={seq}, term={term})",
-                _options.LockName, ownerId, indexResponse.SequenceNumber, indexResponse.PrimaryTerm );
+            var indexResponse = await _client.IndexAsync( doc, idx => idx
+                .Index( _options.LockIndex )
+                .Id( _options.LockName )
+                .OpType( global::OpenSearch.Net.OpType.Create )
+                .Refresh( global::OpenSearch.Net.Refresh.WaitFor )
+            ).ConfigureAwait( false );
 
-            return new LockHandle( this, _options.LockName, indexResponse.SequenceNumber, indexResponse.PrimaryTerm );
+            if ( indexResponse.IsValid )
+            {
+                _logger.LogInformation(
+                    "Lock {lockId} acquired by {owner} (seq={seq}, term={term})",
+                    _options.LockName, ownerId, indexResponse.SequenceNumber, indexResponse.PrimaryTerm );
+
+                return new LockHandle( this, _options.LockName, indexResponse.SequenceNumber, indexResponse.PrimaryTerm );
+            }
+
+            // Non-throwing 409: lock document exists.
+            if ( indexResponse.ApiCall.HttpStatusCode == 409 )
+                return await TryTakeOverAsync( doc, cancellationToken: default ).ConfigureAwait( false );
+
+            var detail = indexResponse.OriginalException?.Message
+                ?? indexResponse.ServerError?.Error?.ToString()
+                ?? "Unknown lock acquire failure.";
+
+            throw new MigrationLockUnavailableException(
+                $"Lock {_options.LockName} could not be acquired. {detail}",
+                indexResponse.OriginalException ?? new InvalidOperationException( detail ) );
         }
-
-        // 409 conflict — lock document exists. Realtime-GET to inspect staleness.
-        if ( indexResponse.ApiCall.HttpStatusCode == 409 )
+        catch ( global::OpenSearch.Net.OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 409 )
         {
+            // Throwing 409: same takeover path as the non-throwing case.
             return await TryTakeOverAsync( doc, cancellationToken: default ).ConfigureAwait( false );
         }
-
-        var detail = indexResponse.OriginalException?.Message
-            ?? indexResponse.ServerError?.Error?.ToString()
-            ?? "Unknown lock acquire failure.";
-
-        throw new MigrationLockUnavailableException(
-            $"Lock {_options.LockName} could not be acquired. {detail}",
-            indexResponse.OriginalException ?? new InvalidOperationException( detail ) );
     }
 
     private async Task<IDisposable> TryTakeOverAsync( LockDocument newDoc, CancellationToken cancellationToken )
@@ -173,29 +182,36 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
             _options.LockName, existing.Source.Owner, heldFor.TotalSeconds );
 
         // CAS overwrite via if_seq_no / if_primary_term
-        var takeoverResponse = await _client.IndexAsync( newDoc, idx => idx
-            .Index( _options.LockIndex )
-            .Id( _options.LockName )
-            .IfSequenceNumber( existing.SequenceNumber )
-            .IfPrimaryTerm( existing.PrimaryTerm )
-            .Refresh( global::OpenSearch.Net.Refresh.WaitFor )
-        , cancellationToken ).ConfigureAwait( false );
-
-        if ( takeoverResponse.IsValid )
+        try
         {
-            _logger.LogInformation(
-                "Lock {lockId} taken over from {priorOwner} -> {newOwner} (seq={seq}, term={term})",
-                _options.LockName, existing.Source.Owner, newDoc.Owner,
-                takeoverResponse.SequenceNumber, takeoverResponse.PrimaryTerm );
+            var takeoverResponse = await _client.IndexAsync( newDoc, idx => idx
+                .Index( _options.LockIndex )
+                .Id( _options.LockName )
+                .IfSequenceNumber( existing.SequenceNumber )
+                .IfPrimaryTerm( existing.PrimaryTerm )
+                .Refresh( global::OpenSearch.Net.Refresh.WaitFor )
+            , cancellationToken ).ConfigureAwait( false );
 
-            return new LockHandle( this, _options.LockName, takeoverResponse.SequenceNumber, takeoverResponse.PrimaryTerm );
+            if ( takeoverResponse.IsValid )
+            {
+                _logger.LogInformation(
+                    "Lock {lockId} taken over from {priorOwner} -> {newOwner} (seq={seq}, term={term})",
+                    _options.LockName, existing.Source.Owner, newDoc.Owner,
+                    takeoverResponse.SequenceNumber, takeoverResponse.PrimaryTerm );
+
+                return new LockHandle( this, _options.LockName, takeoverResponse.SequenceNumber, takeoverResponse.PrimaryTerm );
+            }
+
+            // Non-throwing 409 / other failure
+            throw new MigrationLockUnavailableException(
+                $"Lock {_options.LockName} takeover failed: another runner CAS-overwrote first.",
+                takeoverResponse.OriginalException ?? new InvalidOperationException( "CAS conflict during takeover" ) );
         }
-
-        // 409 again — another runner CAS-overwrote between our GET and our PUT.
-        // They get the lock; we surface unavailable.
-        throw new MigrationLockUnavailableException(
-            $"Lock {_options.LockName} takeover failed: another runner CAS-overwrote first.",
-            takeoverResponse.OriginalException ?? new InvalidOperationException( "CAS conflict during takeover" ) );
+        catch ( global::OpenSearch.Net.OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 409 )
+        {
+            throw new MigrationLockUnavailableException(
+                $"Lock {_options.LockName} takeover failed: another runner CAS-overwrote first.", ex );
+        }
     }
 
     /// <summary>
@@ -237,28 +253,36 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
             LastHeartbeat = _timeProvider.GetUtcNow()
         };
 
-        var renewResponse = await _client.IndexAsync( updated, idx => idx
-            .Index( _options.LockIndex )
-            .Id( lockId )
-            .IfSequenceNumber( seqNo )
-            .IfPrimaryTerm( primaryTerm )
-        , cancellationToken ).ConfigureAwait( false );
-
-        if ( !renewResponse.IsValid )
+        try
         {
-            if ( renewResponse.ApiCall.HttpStatusCode == 409 )
+            var renewResponse = await _client.IndexAsync( updated, idx => idx
+                .Index( _options.LockIndex )
+                .Id( lockId )
+                .IfSequenceNumber( seqNo )
+                .IfPrimaryTerm( primaryTerm )
+            , cancellationToken ).ConfigureAwait( false );
+
+            if ( !renewResponse.IsValid )
             {
-                throw new MigrationLockUnavailableException(
-                    $"Lock {lockId} renewal CAS conflict. Another runner has taken the lock." );
+                if ( renewResponse.ApiCall.HttpStatusCode == 409 )
+                {
+                    throw new MigrationLockUnavailableException(
+                        $"Lock {lockId} renewal CAS conflict. Another runner has taken the lock." );
+                }
+
+                throw new OpenSearchProviderException(
+                    $"Lock {lockId} renewal failed: " +
+                    ( renewResponse.OriginalException?.Message ?? "unknown error" ),
+                    renewResponse.OriginalException ?? new InvalidOperationException( "renewal failed" ) );
             }
 
-            throw new OpenSearchProviderException(
-                $"Lock {lockId} renewal failed: " +
-                ( renewResponse.OriginalException?.Message ?? "unknown error" ),
-                renewResponse.OriginalException ?? new InvalidOperationException( "renewal failed" ) );
+            return (renewResponse.SequenceNumber, renewResponse.PrimaryTerm);
         }
-
-        return (renewResponse.SequenceNumber, renewResponse.PrimaryTerm);
+        catch ( global::OpenSearch.Net.OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 409 )
+        {
+            throw new MigrationLockUnavailableException(
+                $"Lock {lockId} renewal CAS conflict. Another runner has taken the lock.", ex );
+        }
     }
 
     /// <summary>
@@ -267,34 +291,46 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
     /// </summary>
     internal async Task ReleaseLockAsync( string lockId, long seqNo, long primaryTerm )
     {
-        var deleteResponse = await _client.DeleteAsync<LockDocument>( lockId, d => d
-            .Index( _options.LockIndex )
-            .IfSequenceNumber( seqNo )
-            .IfPrimaryTerm( primaryTerm )
-        ).ConfigureAwait( false );
-
-        if ( deleteResponse.IsValid )
+        try
         {
-            _logger.LogInformation( "Lock {lockId} released", lockId );
-            return;
-        }
+            var deleteResponse = await _client.DeleteAsync<LockDocument>( lockId, d => d
+                .Index( _options.LockIndex )
+                .IfSequenceNumber( seqNo )
+                .IfPrimaryTerm( primaryTerm )
+            ).ConfigureAwait( false );
 
-        if ( deleteResponse.ApiCall.HttpStatusCode == 409 )
-        {
+            if ( deleteResponse.IsValid )
+            {
+                _logger.LogInformation( "Lock {lockId} released", lockId );
+                return;
+            }
+
+            if ( deleteResponse.ApiCall.HttpStatusCode == 409 )
+            {
+                _logger.LogWarning(
+                    "Lock {lockId} release skipped: CAS mismatch (another runner now holds the lock).", lockId );
+                return;
+            }
+
+            if ( deleteResponse.ApiCall.HttpStatusCode == 404 )
+            {
+                _logger.LogDebug( "Lock {lockId} already gone at release time", lockId );
+                return;
+            }
+
             _logger.LogWarning(
-                "Lock {lockId} release skipped: CAS mismatch (another runner now holds the lock).", lockId );
-            return;
+                "Lock {lockId} release failed (status {status}); will rely on takeover/TTL.",
+                lockId, deleteResponse.ApiCall.HttpStatusCode );
         }
-
-        if ( deleteResponse.ApiCall.HttpStatusCode == 404 )
+        catch ( global::OpenSearch.Net.OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 409 )
+        {
+            _logger.LogWarning( ex,
+                "Lock {lockId} release skipped: CAS mismatch (another runner now holds the lock).", lockId );
+        }
+        catch ( global::OpenSearch.Net.OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 404 )
         {
             _logger.LogDebug( "Lock {lockId} already gone at release time", lockId );
-            return;
         }
-
-        _logger.LogWarning(
-            "Lock {lockId} release failed (status {status}); will rely on takeover/TTL.",
-            lockId, deleteResponse.ApiCall.HttpStatusCode );
     }
 
     public async Task<bool> ExistsAsync( string recordId )

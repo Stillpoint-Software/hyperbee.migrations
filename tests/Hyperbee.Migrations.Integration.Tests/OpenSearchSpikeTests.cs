@@ -108,35 +108,36 @@ public class OpenSearchSpikeTests
     [TestMethod]
     [TestCategory( "OpenSearch" )]
     [TestCategory( "Spike" )]
-    public async Task CreateIndex_BodyWithComposedOf_SkipsInjection_OnTheWire()
+    public void CreateIndex_BodyWithComposedOf_SkipsInjection_AtMergeLayer()
     {
-        // The cluster will reject `composed_of` on a direct index create unless the named
-        // component templates exist. For this spike we just assert the wire body contains
-        // composed_of and does NOT carry an injected mappings.dynamic. The cluster failure
-        // (or success after we pre-create the template) is incidental to the test's purpose.
+        // CORRECTION discovered during integration validation: `composed_of` is a
+        // PUT /_index_template/<name> field — NOT a valid PUT /<index> field.
+        // OpenSearch returns 400 "unknown key [composed_of] for create index" when
+        // we try to send composed_of in a direct index-create body.
+        //
+        // This means the merge-layer composed_of skip in SafeDefaultMergeMiddleware
+        // is actually defensive code that shields the user from a body shape
+        // the cluster rejects anyway. PM-4's risk surface (clobbering a
+        // component-template-defined dynamic:false) lives in the CREATE TEMPLATE /
+        // CREATE COMPONENT verb path (Phase 2), where composed_of IS a valid field.
+        //
+        // For now, we verify the merge-layer skip behavior in isolation rather
+        // than trying to send composed_of to the cluster.
 
         var name = MakeIndexName( "users" );
         var ast = (CreateIndexAst) _parser.Parse( $"CREATE INDEX {name} WITH BODY $body" );
         var body = ParseJson( """
             {
-              "composed_of": ["nonexistent-component-for-spike"],
+              "composed_of": ["some-component"],
               "settings": { "number_of_shards": 1, "number_of_replicas": 0 }
             }
             """ );
         var merged = _middleware.Merge( ast, body );
 
-        // Dispatch via low-level client — failure is acceptable; we audit the wire body.
-        var response = await _client.Indices.CreateAsync<StringResponse>(
-            name,
-            PostData.String( merged.ToJsonString() ) );
-
-        var sentBody = Bytes( response );
-        StringAssert.Contains( sentBody, "composed_of", "Wire body must preserve composed_of." );
+        var sentBody = merged.ToJsonString();
+        StringAssert.Contains( sentBody, "composed_of", "Merged body must preserve composed_of." );
         Assert.DoesNotContain( "\"dynamic\":\"strict\"", sentBody,
             "composed_of bodies must NOT have dynamic:strict injected (R-17 / PM-4)." );
-
-        if ( response.Success )
-            await _client.Indices.DeleteAsync<StringResponse>( name );
     }
 
     [TestMethod]
@@ -337,9 +338,23 @@ public class OpenSearchSpikeTests
             PostData.String( """{ "id": "2", "version": "v2-partial" }""" ),
             new IndexRequestParameters { Refresh = Refresh.True } );
 
-        // Now run REINDEX with op_type:create injection (default)
+        // Now run REINDEX with op_type:create injection (default).
+        // Add `conflicts: "proceed"` so OpenSearch returns the version_conflicts
+        // count in a 200 response instead of aborting at the first conflict
+        // (the default `conflicts: "abort"` would surface as 409 with no body
+        // detail). For real migrations, `conflicts: "proceed"` is the desired
+        // mode — partial-run retries should continue past pre-existing docs.
+        // Whether the safe-default merge should also inject conflicts:proceed
+        // is a Phase 2 design question.
         var ast = (ReindexAst) _parser.Parse( $"REINDEX FROM {src} TO {dst}" );
-        var merged = _middleware.Merge( ast, body: null );
+        var body = ParseJson( $$"""
+            {
+              "conflicts": "proceed",
+              "source": { "index": "{{src}}" },
+              "dest": { "index": "{{dst}}" }
+            }
+            """ );
+        var merged = _middleware.Merge( ast, body );
 
         var reindexResponse = await _client.ReindexOnServerAsync<StringResponse>(
             PostData.String( merged.ToJsonString() ) );
