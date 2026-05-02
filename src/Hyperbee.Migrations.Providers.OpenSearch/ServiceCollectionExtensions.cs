@@ -2,6 +2,10 @@ using System.Reflection;
 using System.Runtime.Loader;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Bootstrap;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Bootstrap.Steps;
+using Hyperbee.Migrations.Providers.OpenSearch.Internal.Dispatch;
+using Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
+using Hyperbee.Migrations.Providers.OpenSearch.Internal.Middleware;
+using Hyperbee.Migrations.Providers.OpenSearch.Resources;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -62,6 +66,16 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IBootstrapStep, LedgerIndexInitStep>();
         services.AddSingleton<IBootstrapStep, LockIndexInitStep>();
         services.AddSingleton<OpenSearchBootstrapper>();
+
+        // Statement pipeline (ADR-0011 hybrid). The parser is offline-pure (ADR-0015);
+        // the dispatcher applies SafeDefaultMergeMiddleware then dispatches.
+        services.AddSingleton<OpenSearchStatementParser>();
+        services.AddSingleton<SafeDefaultMergeMiddleware>();
+        services.AddSingleton<StatementDispatcher>();
+
+        // Resource runner (ADR-0002). Generic over the migration type for resource
+        // path resolution. Transient because each migration instance gets its own logger.
+        services.AddTransient( typeof( OpenSearchResourceRunner<> ) );
 
         return services;
     }
