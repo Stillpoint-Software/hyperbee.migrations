@@ -337,7 +337,23 @@ Before tagging a phase snapshot:
 
 ## Learnings Ledger
 
-(Empty initially. Appended after Reflect surfaces a learning.)
+### Phase 0 Task 0.4 — Hyperbee.Templating first-contact (style)
+
+PM-5 from assessment 0002 was right to worry about first-contact bugs. Background sub-agent found four:
+
+1. **README misleading on `{{#if}}` syntax**. Engine 3.4.1 does NOT accept the leading `#` for control-flow tokens (only the README says it does). Production migrations must use `{{if config.x}}{{else}}{{/if}}` — drop the `#`. Documented in test code.
+
+2. **Default `KeyHelper.ValidateKey` forbids `.` in identifiers**. Without a `Validator` override on `TemplateOptions`, scope-prefixed keys like `config.indexPrefix` fail validation. The renderer ships a custom `IsValidScopedKey` that admits a single `.` joining two letter-led segments plus the bracket-suffix indexing rule (`runtime.nodes[0]`). Future provider work that uses Templating directly must either reuse this validator or invent equivalent rules.
+
+3. **Fat-arrow rewriter cannot traverse dotted keys**. Inside `each`/`while`/`if` fat-arrow expressions, `x.config.indexPrefix` rewrites to `x["config"].indexPrefix` (string has no `.indexPrefix` member). Use the indexer form: `x["runtime.nodes"].Split(",")`. Literal token form `{{config.indexPrefix}}` works directly via the validator override (#2).
+
+4. **`each n,i:...` index variant is documented in source comments but not implemented in 3.4.1**. Workaround used in iteration test: an inline define token (`{{seen:1}}`) flipped after each body to track first-iteration sentinel. Worth checking in future Templating versions.
+
+These are documented inline in the renderer + test code so future contributors don't re-discover them.
+
+### Phase 0 Task 0.5 — Architecture validated at unit level
+
+ADR-0011 hybrid + ADR-0015 offline-pure parser holds: parser produces AST flags, runtime middleware merges into JSON tree. 36 unit tests covering all 5 CREATE INDEX edge cases + REINDEX edge cases + tree-immutability invariant pass on net8/9/10. Phase 0 kill criterion not fired at this level — live-cluster validation (Task 0.6) remains.
 
 ## Status Summary
 
@@ -348,9 +364,13 @@ Before tagging a phase snapshot:
 | 2 — Atomic + Composite + Cross-Cutting | Not Started | |
 | 3 — Distribution + Polish | Not Started | |
 
-**Current task:** Phase 0, Tasks 0.1-0.5 **Done**. Tasks 0.4 + 0.5 ran in parallel (sub-agent did Templating; orchestrator did AST/grammar/middleware). 39 unit tests, 117 test runs across net8/9/10, 0 failures. Phase 0 kill criterion **NOT FIRED** at the unit-test level.
-**Next action:** Task 0.6 (10 wire-level integration tests against real OpenSearch) — requires Docker. Can be deferred to user's local dev env or run in CI.
-**Blockers:** None for unit-level architecture validation. Live-cluster gate requires Docker availability.
+**Current task:** Phase 0 **DONE** (all 6 tasks). 39 unit tests across 4 classes pass on net8/9/10 (117 unit-test executions, 0 failures). 10 wire-level integration tests written and compile clean both with and without `INTEGRATIONS` defined; awaiting user run in Docker env to fire the official Phase 0 kill criterion.
+**Next action:** User runs the integration tests in their Docker env to validate the architecture against real OpenSearch:
+1. Uncomment `//#define INTEGRATIONS` at the top of `OpenSearchSpikeTests.cs` (and `OpenSearchHarnessTest.cs` if running the smoke test too)
+2. `dotnet test tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj --filter "TestCategory=Spike"`
+3. If all 10 pass → Phase 0 gate clears, proceed to Phase 1 (foundation + foundation verbs)
+4. If any fail in a way requiring a new AST flag to resolve ambiguity → fire kill criterion, escalate per `/nop:debug`, fallback architecture documented (Approach A)
+**Blockers:** None — Phase 0 implementation complete; gate is operational verification.
 
 ---
 
