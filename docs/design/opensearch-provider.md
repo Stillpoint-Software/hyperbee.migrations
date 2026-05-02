@@ -172,14 +172,16 @@ internal interface IStatementMiddleware {
 - `runners/samples/Hyperbee.Migrations.OpenSearch.Samples/` — verb showcase (R-27)
 - `tests/Hyperbee.Migrations.Integration.Tests/OpenSearch/` — integration tests; multi-node Compose harness (R-28b is now Must)
 
-## Key Decisions (recommended ADRs)
+## Key Decisions (recorded ADRs)
 
-These decisions cross the ADR threshold (reversal would touch multiple components). Recommend running `/nop:adr` to materialize each:
+These decisions cross the ADR threshold (reversal would touch multiple components):
 
-1. **ADR-0011: Hybrid parser+runtime injection for OpenSearch safe defaults** — parser owns intent (AST flags + parse-time enumeration), runtime owns merge (JSON tree mutation during request build). Reversal would touch every safe-default verb plus all observability hooks.
-2. **ADR-0012: `WithProductionDefaults()` extension method instead of `EnvironmentProfile` enum** — driven by the IR's hidden-coupling concern in assessment 0002. Reversal would change the entire DI surface for the provider.
-3. **ADR-0013: Always-create lock and ledger indices in `InitializeAsync` with explicit override** — `AssumeIndicesExist` option for tightly-scoped IAM contexts. Reversal would change the contract of `InitializeAsync` and affect lock-acquire path performance.
-4. **ADR-0014: State-machine façade over `IBootstrapStep[]` pipeline** — public API matches Couchbase house style; internal composition is testable and replaceable. Reversal would either flatten the pipeline (breaking testability) or expose the pipeline (breaking the simple public contract).
+1. **[ADR-0011](../decisions/0011-hybrid-parser-runtime-injection.md): Hybrid parser+runtime injection for OpenSearch safe defaults** — parser owns intent (AST flags + parse-time enumeration), runtime owns merge (JSON tree mutation during request build). Reversal would touch every safe-default verb plus all observability hooks.
+2. **[ADR-0012](../decisions/0012-with-production-defaults-extension.md): `WithProductionDefaults()` extension method instead of `EnvironmentProfile` enum** — driven by the IR's hidden-coupling concern in assessment 0002. Reversal would change the entire DI surface for the provider.
+3. **[ADR-0013](../decisions/0013-always-create-indices-with-override.md): Always-create lock and ledger indices in `InitializeAsync` with explicit override** — `AssumeIndicesExist` option for tightly-scoped IAM contexts. Reversal would change the contract of `InitializeAsync` and affect lock-acquire path performance.
+4. **[ADR-0014](../decisions/0014-state-machine-facade-over-pipeline.md): State-machine façade over `IBootstrapStep[]` pipeline** — public API matches Couchbase house style; internal composition is testable and replaceable. Reversal would either flatten the pipeline (breaking testability) or expose the pipeline (breaking the simple public contract).
+5. **[ADR-0015](../decisions/0015-parser-offline-pure-all-io-runtime.md): Parser is offline-pure; all I/O is runtime middleware** — clarifying corollary of ADR-0011. Resolves R-30 template-lookup ambiguity. Future verbs that need cluster state must use unresolved-reference AST + runtime middleware.
+6. **[ADR-0016](../decisions/0016-no-file-level-templating.md): OpenSearch provider does not use file-level templating** — strikes R-10; matches Aerospike/Couchbase/MongoDB/Postgres house style. Re-introducing templating requires a superseding ADR.
 
 ## Rejected Approaches
 
