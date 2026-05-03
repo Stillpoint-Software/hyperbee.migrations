@@ -352,7 +352,27 @@ public sealed class StatementDispatcher
         var response = await ll.Indices.PutMappingAsync<StringResponse>(
             ast.IndexName, PostData.String( body ), ctx: context.CancellationToken ).ConfigureAwait( false );
 
-        return BuildResult( verb, response, $"mapping updated on `{ast.IndexName}`" );
+        var result = BuildResult( verb, response, $"mapping updated on `{ast.IndexName}`" );
+
+        // R-24c (c) — the "no reindex" gotcha. UPDATE MAPPING is additive at
+        // the cluster level: the mapping definition changes for new documents,
+        // but existing documents are NOT reanalyzed against the new mapping.
+        // Authors who expect their analyzer / type / multi-field changes to
+        // apply to existing data will hit silently-wrong query results until
+        // they reindex. The diagnostic surfaces the gotcha at INFO so it's
+        // visible in migration logs without blocking; for the canonical
+        // mapping-propagation pattern, MIGRATE INDEX (R-30) does the
+        // create-new + reindex + alias-swap dance.
+        if ( result.IsSuccess )
+        {
+            context.Logger.LogInformation(
+                "{verb} on `{idx}` succeeded. Note: mapping changes do NOT reindex existing documents — " +
+                "fields/types changed in this update apply only to documents written after this point. " +
+                "Use MIGRATE INDEX (R-30) to apply mapping changes to existing data.",
+                verb, ast.IndexName );
+        }
+
+        return result;
     }
 
     // --- UPDATE SETTINGS [CLOSE] ---
