@@ -15,9 +15,9 @@ The Cron Helper uses HangFire Cronos.
 ### Features include:
 
 * Easy integration
-* Supports **Aerospike**, **Couchbase**, **MongoDB** and **PostgreSQL**
+* Supports **Aerospike**, **Couchbase**, **MongoDB**, **OpenSearch**, and **PostgreSQL**
 * Resource Migrations
-    * Migrations can be defined as embedded resource files (SQL, N1QL, AQL, MongoDB commands, JSON documents) alongside code-based migrations, enabling database changes without recompilation.
+    * Migrations can be defined as embedded resource files (SQL, N1QL, AQL, MongoDB commands, OpenSearch DDL, JSON documents) alongside code-based migrations, enabling database changes without recompilation.
 * Preventing simultaneous migrations
     * By default, Hyperbee Migrations prevents parallel migration runner execution.
 * Profiles 

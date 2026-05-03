@@ -16,10 +16,11 @@ Install the NuGet package for your database provider:
 dotnet add package Hyperbee.Migrations.Providers.Aerospike
 dotnet add package Hyperbee.Migrations.Providers.Couchbase
 dotnet add package Hyperbee.Migrations.Providers.MongoDB
+dotnet add package Hyperbee.Migrations.Providers.OpenSearch
 dotnet add package Hyperbee.Migrations.Providers.Postgres
 ```
 
-You only need the package for the provider you are using.
+You only need the package for the provider you are using. For AWS Managed OpenSearch (SigV4 request signing), also reference the optional `Hyperbee.Migrations.Providers.OpenSearch.Aws` extension package.
 
 ## Create Your First Migration
 

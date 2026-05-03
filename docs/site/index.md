@@ -14,9 +14,9 @@ are discovered, ordered, and executed automatically.
 
 ## Key Features
 
-- Supports **Aerospike**, **Couchbase**, **MongoDB**, and **PostgreSQL**
+- Supports **Aerospike**, **Couchbase**, **MongoDB**, **OpenSearch**, and **PostgreSQL**
 - Code migrations with full dependency injection
-- Resource migrations with embedded SQL, N1QL, AQL, and MongoDB commands
+- Resource migrations with embedded SQL, N1QL, AQL, MongoDB commands, and OpenSearch DDL
 - Document seeding from JSON files
 - Distributed locking to prevent concurrent migrations
 - Profile-based environment scoping
