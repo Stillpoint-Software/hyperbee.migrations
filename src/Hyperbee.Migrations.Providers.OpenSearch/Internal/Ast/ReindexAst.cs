@@ -17,7 +17,8 @@ public sealed record ReindexAst(
     string Destination,
     BodySource? Body,
     bool InjectOpTypeCreate,
-    string? UnsafeJustification
+    string? UnsafeJustification,
+    string? NoWaitJustification = null
 ) : StatementAst
 {
     public override string Verb => "REINDEX";

@@ -22,7 +22,8 @@ public sealed record CreateIndexAst(
     bool IfNotExists,
     BodySource? Body,
     bool InjectDynamicStrict,
-    TemplateBodyRef? TemplateBody = null
+    TemplateBodyRef? TemplateBody = null,
+    string? NoWaitJustification = null
 ) : StatementAst
 {
     public override string Verb => "CREATE INDEX";

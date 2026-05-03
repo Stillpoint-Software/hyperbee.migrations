@@ -302,7 +302,7 @@ public sealed class StatementDispatcher
         var result = BuildResult( verb, response, $"created `{ast.IndexName}`" );
 
         if ( result.IsSuccess )
-            await ImplicitWaitIfMutatingAsync( context, ast.IndexName ).ConfigureAwait( false );
+            await ImplicitWaitIfMutatingAsync( context, ast.IndexName, verb, ast.NoWaitJustification ).ConfigureAwait( false );
 
         return result;
     }
@@ -357,7 +357,7 @@ public sealed class StatementDispatcher
 
     // --- UPDATE SETTINGS [CLOSE] ---
 
-    private static async Task<StatementResult> DispatchUpdateSettingsAsync( UpdateSettingsAst ast, StatementContext context )
+    private async Task<StatementResult> DispatchUpdateSettingsAsync( UpdateSettingsAst ast, StatementContext context )
     {
         var verb = ast.Verb;
         var ll = context.Client.LowLevel;
@@ -419,7 +419,7 @@ public sealed class StatementDispatcher
         var result = BuildResult( verb, dynamicResponse, $"settings updated on `{ast.IndexName}`" );
 
         if ( result.IsSuccess )
-            await ImplicitWaitIfMutatingAsync( context, ast.IndexName ).ConfigureAwait( false );
+            await ImplicitWaitIfMutatingAsync( context, ast.IndexName, verb, ast.NoWaitJustification ).ConfigureAwait( false );
 
         return result;
     }
@@ -563,7 +563,7 @@ public sealed class StatementDispatcher
         var result = BuildResult( verb, response, $"reindex {ast.Source} -> {ast.Destination}" );
 
         if ( result.IsSuccess )
-            await ImplicitWaitIfMutatingAsync( context, ast.Destination ).ConfigureAwait( false );
+            await ImplicitWaitIfMutatingAsync( context, ast.Destination, verb, ast.NoWaitJustification ).ConfigureAwait( false );
 
         return result;
     }
@@ -601,7 +601,7 @@ public sealed class StatementDispatcher
         var result = BuildResult( verb, response, $"swapped `{ast.Alias}`: {ast.OldIndex} -> {ast.NewIndex}" );
 
         if ( result.IsSuccess )
-            await ImplicitWaitIfMutatingAsync( context, ast.NewIndex ).ConfigureAwait( false );
+            await ImplicitWaitIfMutatingAsync( context, ast.NewIndex, verb, ast.NoWaitJustification ).ConfigureAwait( false );
 
         return result;
     }
@@ -842,6 +842,12 @@ public sealed class StatementDispatcher
                     Exception: new InvalidOperationException( detail ) );
             }
 
+            // R-12 lists APPLY POLICY among the mutating verbs that participate
+            // in the implicit wait. The wait targets the index pattern; cluster
+            // health endpoint accepts patterns natively.
+            await ImplicitWaitIfMutatingAsync(
+                context, ast.IndexPattern, verb, ast.NoWaitJustification ).ConfigureAwait( false );
+
             return new StatementResult( StatementOutcome.Executed, verb,
                 Detail: $"policy `{ast.PolicyId}` applied to `{ast.IndexPattern}` ({updated} indices)",
                 OpenSearchResponseStatus: response.HttpStatusCode );
@@ -862,23 +868,94 @@ public sealed class StatementDispatcher
     // like .opendistro_security). Honors WaitMode:
     //   - PerStatement (SDK default): wait after each mutating statement
     //   - PerMigration (production via WithProductionDefaults): no per-statement
-    //     wait; the resource runner is responsible for a single consolidated
-    //     wait at migration end (Phase 6 wires this; Phase 1 only implements
-    //     PerStatement)
+    //     wait; the dispatcher accumulates dirty indices in _dirtyIndices and
+    //     the resource runner calls FlushImplicitWaitsAsync at end of migration
+    //     for a single consolidated cluster-health call across all mutated indices
     //   - Off: no implicit waits — author owns explicit WAIT FOR statements
 
-    private static async Task ImplicitWaitIfMutatingAsync( StatementContext context, string mutatedIndex )
+    // R-12 PerMigration tracking: every mutating dispatch records the index it
+    // touched. The resource runner calls FlushImplicitWaitsAsync at end-of-
+    // migration for a single consolidated _cluster/health/<idx1>,<idx2>... call
+    // — avoids the N+1 health-check storm that PerStatement causes on long
+    // migrations. ConcurrentBag isn't needed because dispatch is sequential
+    // within a single resource runner; HashSet with no locking is correct.
+    private readonly HashSet<string> _dirtyIndices = new( StringComparer.Ordinal );
+
+    // Per-statement gate for the implicit wait. Returns whether the wait
+    // happened (true) or was skipped (false, with reason logged where
+    // appropriate). Mutating-verb dispatchers call this after a successful
+    // cluster mutation; the AST's NoWaitJustification (when the author
+    // writes `... NO WAIT("<reason>")`) suppresses the wait with a
+    // structured WARN log.
+    private async Task ImplicitWaitIfMutatingAsync(
+        StatementContext context,
+        string mutatedIndex,
+        string verb,
+        string? noWaitJustification = null )
     {
         if ( context.Options.WaitMode == WaitMode.Off )
             return;
 
-        if ( context.Options.WaitMode == WaitMode.PerMigration )
+        if ( noWaitJustification is not null )
         {
-            // PerMigration deferred to Phase 6 (requires resource-runner-level
-            // dirty-index tracking + consolidated end-of-migration wait).
+            // Per R-12: NO WAIT modifier with non-empty justification is the
+            // documented per-statement opt-out. Structured WARN so PR review
+            // and ops dashboards can grep `migration.no_wait` events. Under
+            // PerMigration mode the per-statement wait is already a no-op
+            // (only the end-of-migration flush runs), so NO WAIT degrades to
+            // a DEBUG-level acknowledgement on that path.
+            if ( context.Options.WaitMode == WaitMode.PerMigration )
+            {
+                context.Logger.LogDebug(
+                    "migration.no_wait: {verb} on `{idx}` carries NO WAIT(\"{reason}\"); no-op under PerMigration (only end-of-migration flush runs)",
+                    verb, mutatedIndex, noWaitJustification );
+            }
+            else
+            {
+                context.Logger.LogWarning(
+                    "migration.no_wait: {verb} on `{idx}` skipped implicit wait per NO WAIT(\"{reason}\")",
+                    verb, mutatedIndex, noWaitJustification );
+            }
             return;
         }
 
+        if ( context.Options.WaitMode == WaitMode.PerMigration )
+        {
+            // Accumulate; the consolidated wait runs in FlushImplicitWaitsAsync.
+            _dirtyIndices.Add( mutatedIndex );
+            return;
+        }
+
+        // PerStatement: existing per-call wait scoped to the mutated index.
+        await ExecuteHealthWaitAsync( context, new[] { mutatedIndex } ).ConfigureAwait( false );
+    }
+
+    // R-12 PerMigration flush. Runs once at the end of a resource-runner pass
+    // (called from OpenSearchResourceRunner.RunStatementsFromJsonAsync). A
+    // no-op when WaitMode != PerMigration or when no dirty indices have been
+    // accumulated. Best-effort: failure surfaces as WARN, not as an
+    // exception, so a flaky cluster-health probe doesn't fail an otherwise-
+    // successful migration.
+    public async Task FlushImplicitWaitsAsync( StatementContext context )
+    {
+        if ( context.Options.WaitMode != WaitMode.PerMigration )
+            return;
+
+        if ( _dirtyIndices.Count == 0 )
+            return;
+
+        var indices = _dirtyIndices.ToArray();
+        _dirtyIndices.Clear();
+
+        context.Logger.LogInformation(
+            "Per-migration consolidated wait: {count} dirty index(es) [{indices}]",
+            indices.Length, string.Join( ",", indices ) );
+
+        await ExecuteHealthWaitAsync( context, indices ).ConfigureAwait( false );
+    }
+
+    private static async Task ExecuteHealthWaitAsync( StatementContext context, IReadOnlyCollection<string> indices )
+    {
         var threshold = context.Options.ClusterHealthThreshold == ClusterHealthThreshold.Green
             ? global::OpenSearch.Net.WaitForStatus.Green
             : global::OpenSearch.Net.WaitForStatus.Yellow;
@@ -891,17 +968,17 @@ public sealed class StatementDispatcher
                 selector: s => s
                     .WaitForStatus( threshold )
                     .Timeout( timeout )
-                    .Index( global::OpenSearch.Client.Indices.Index( mutatedIndex ) ),
+                    .Index( global::OpenSearch.Client.Indices.Index( string.Join( ",", indices ) ) ),
                 ct: context.CancellationToken
             ).ConfigureAwait( false );
         }
         catch ( Exception ex )
         {
-            // Implicit waits are best-effort defense — they don't fail the statement
-            // result. Log + continue. If a stronger guarantee is needed, the author
-            // should write an explicit WAIT FOR statement.
+            // Implicit waits are best-effort defense — they don't fail the
+            // statement result. Log + continue. If a stronger guarantee is
+            // needed, the author should write an explicit WAIT FOR statement.
             context.Logger.LogWarning( ex,
-                "Implicit wait after mutating statement on `{idx}` failed; continuing", mutatedIndex );
+                "Implicit wait on [{indices}] failed; continuing", string.Join( ",", indices ) );
         }
     }
 

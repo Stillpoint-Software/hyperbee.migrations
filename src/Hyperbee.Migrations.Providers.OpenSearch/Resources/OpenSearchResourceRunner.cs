@@ -145,6 +145,21 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
                 "Statement {idx} {outcome}: {detail}",
                 i, result.Outcome, result.Detail ?? "(no detail)" );
         }
+
+        // R-12 PerMigration — single consolidated cluster-health wait at the
+        // end of the resource pass. No-op under PerStatement (the dirty set
+        // stays empty because each statement waited inline) and Off (no
+        // tracking happens). The flush context reuses the last statement's
+        // context shape; only Client / Options / Logger / CT are read.
+        await _dispatcher.FlushImplicitWaitsAsync( new StatementContext
+        {
+            Client = _client,
+            Options = _options,
+            TimeProvider = _timeProvider,
+            Logger = _logger,
+            ResolvedBody = null,
+            CancellationToken = cancellationToken
+        } ).ConfigureAwait( false );
     }
 
     // R-19 — Down direction. Each statement entry in the JSON may carry an
@@ -286,6 +301,20 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
                 "Rollback statement {idx} {outcome}: {detail}",
                 i, result.Outcome, result.Detail ?? "(no detail)" );
         }
+
+        // R-12 PerMigration end-of-rollback flush — symmetric with the up
+        // path. Rollback statements include CREATE / DROP / REINDEX /
+        // ALIAS SWAP, all of which are mutating and contribute to the
+        // dirty index set under PerMigration mode.
+        await _dispatcher.FlushImplicitWaitsAsync( new StatementContext
+        {
+            Client = _client,
+            Options = _options,
+            TimeProvider = _timeProvider,
+            Logger = _logger,
+            ResolvedBody = null,
+            CancellationToken = cancellationToken
+        } ).ConfigureAwait( false );
     }
 
     private async Task WritePartialRollbackIfAvailableAsync( string recordId, int failedStatementIndex, string error )

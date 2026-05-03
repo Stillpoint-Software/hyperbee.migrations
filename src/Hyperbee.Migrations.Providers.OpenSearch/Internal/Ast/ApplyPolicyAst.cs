@@ -12,7 +12,8 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 
 public sealed record ApplyPolicyAst(
     string PolicyId,
-    string IndexPattern
+    string IndexPattern,
+    string? NoWaitJustification = null
 ) : StatementAst
 {
     public override string Verb => "APPLY POLICY";

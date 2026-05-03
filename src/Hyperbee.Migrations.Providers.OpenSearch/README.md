@@ -299,6 +299,25 @@ WAIT UNTIL TASK <id> COMPLETE [TIMEOUT <duration>]
 
 `WAIT UNTIL TASK` polls `_tasks/<id>` with exponential backoff (500ms → 30s ceiling). Used by long-running operations that surface a task id (e.g., reindex async dispatch in a follow-up slice).
 
+#### WaitMode and the `NO WAIT` modifier (R-12)
+
+`OpenSearchMigrationOptions.WaitMode` controls when the implicit cluster-health wait fires after each mutating verb:
+
+| Mode | When it waits | Use when |
+|---|---|---|
+| `PerStatement` (SDK default) | After every mutating statement, scoped to the mutated index | Dev iteration, small migrations |
+| `PerMigration` (production via `WithProductionDefaults()`) | One consolidated wait at end of resource pass, scoped to all dirty indices | Production — avoids the N+1 master-task-queue storm on long migrations |
+| `Off` | Never (only explicit `WAIT FOR` runs) | Author owns all wait timing |
+
+The five mutating verbs that participate are CREATE INDEX, REINDEX, ALIAS SWAP, UPDATE SETTINGS, and APPLY POLICY. Each accepts an optional `NO WAIT("<reason>")` modifier as the very last clause:
+
+```
+CREATE INDEX users WITH BODY @bodies/users.json NO WAIT("massive mapping; manual wait via dashboards")
+REINDEX FROM users-v1 TO users-v2 NO WAIT("Tasks API polling out of band")
+```
+
+`NO WAIT` skips the implicit wait for that one statement under `PerStatement`. Under `PerMigration`, per-statement `NO WAIT` is a DEBUG-level no-op (only the end-of-migration flush runs). Bare `NO WAIT` (no parentheses, no justification) is rejected at parse time — the justification token is the high-signal grep target for PR review and incident postmortems, mirroring the `UNSAFE("...")` precedent.
+
 ### Context filter (R-15)
 
 A statements.json file may declare an optional top-level `context: ["prod", "staging"]` array. The runner uses this to gate the entire file against `OpenSearchMigrationOptions.ActiveContext` (a comma-separated string, bindable via `Migrations:ActiveContext`).
@@ -454,7 +473,7 @@ The runner project's `--user`/`--password` flags map onto Basic; `--api-key-id`/
 | `LockStaleAfter` | 60s | Takeover threshold (must be ≥ 2× renew, < max-lifetime) |
 | `LockMaxLifetime` | 1h | Hard cap; in-flight migration is canceled when reached |
 | `ClusterHealthThreshold` | `Yellow` | `WithProductionDefaults()` flips to `Green` |
-| `WaitMode` | `PerStatement` | `PerMigration` consolidates waits (forthcoming slice) |
+| `WaitMode` | `PerStatement` | `PerMigration` consolidates waits at end of resource pass; `Off` skips entirely |
 | `ImplicitWaitTimeout` | 30s | Per-statement wait ceiling |
 | `RequireUnsafeJustification` | `false` | `WithProductionDefaults()` flips to `true` |
 | `ContextResolutionPolicy` | `SkipIfUnset` | `WithProductionDefaults()` flips to `RequireExplicit` |

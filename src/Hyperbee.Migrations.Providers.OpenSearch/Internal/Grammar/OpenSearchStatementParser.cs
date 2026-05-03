@@ -63,6 +63,7 @@ public sealed class OpenSearchStatementParser
         var from = Terms.Text( "FROM", caseInsensitive: true );
         var to = Terms.Text( "TO", caseInsensitive: true );
         var unsafeKw = Terms.Text( "UNSAFE", caseInsensitive: true );
+        var no = Terms.Text( "NO", caseInsensitive: true );
         var wait = Terms.Text( "WAIT", caseInsensitive: true );
         var @for = Terms.Text( "FOR", caseInsensitive: true );
         var until = Terms.Text( "UNTIL", caseInsensitive: true );
@@ -148,28 +149,8 @@ public sealed class OpenSearchStatementParser
 
         var bodyRef = OneOf( siblingBodyRef, fileBodyRef );
 
-        // CREATE INDEX <name> [IF NOT EXISTS] [WITH BODY $body]
-        // IF NOT EXISTS comes BEFORE WITH BODY in canonical form
-
-        var ifNotExists = @if.SkipAnd( not ).SkipAnd( exists ).Then( static _ => true );
-
-        var createIndex = create
-            .SkipAnd( index )
-            .SkipAnd( identifier )
-            .And( ZeroOrOne( ifNotExists ) )
-            .And( ZeroOrOne( bodyRef ) )
-            .Then( static x => (StatementAst) new CreateIndexAst(
-                IndexName: x.Item1,
-                IfNotExists: x.Item2,
-                Body: x.Item3,
-                InjectDynamicStrict: true
-            ) );
-
-        // REINDEX [UNSAFE("<reason>")] FROM <src> TO <dst> [WITH BODY $body]
-        //
-        // UNSAFE requires a non-empty justification. Bare `UNSAFE` (without parentheses
-        // and a string literal) fails at parse time with a remediation message.
-
+        // Quoted-string parser shared by UNSAFE and NO WAIT modifiers.
+        // Both require a non-empty justification.
         var quotedString = Between(
             Terms.Char( '"' ),
             Terms.Pattern( static c => c != '"' ),
@@ -182,10 +163,46 @@ public sealed class OpenSearchStatementParser
             return s;
         } );
 
+        // R-18 / REINDEX UNSAFE("<reason>") modifier — opt out of the
+        // op_type:create safe-default. Bare `UNSAFE` (no parentheses) fails
+        // at parse time.
         var unsafeWithJustification = unsafeKw
             .SkipAnd( Terms.Char( '(' ) )
             .SkipAnd( quotedString )
             .AndSkip( Terms.Char( ')' ) );
+
+        // R-12 — NO WAIT("<reason>") modifier on mutating verbs. Same shape
+        // as UNSAFE: non-empty justification, bare `NO WAIT` fails. Author
+        // intent surfaces as the AST's NoWaitJustification; the dispatcher
+        // emits a structured WARN log on use under PerStatement and a
+        // DEBUG note under PerMigration.
+        var noWaitWithJustification = no
+            .AndSkip( wait )
+            .AndSkip( Terms.Char( '(' ) )
+            .SkipAnd( quotedString )
+            .AndSkip( Terms.Char( ')' ) );
+
+        // CREATE INDEX <name> [IF NOT EXISTS] [WITH BODY $body] [NO WAIT("<reason>")]
+        // IF NOT EXISTS comes BEFORE WITH BODY in canonical form
+
+        var ifNotExists = @if.SkipAnd( not ).SkipAnd( exists ).Then( static _ => true );
+
+        var createIndex = create
+            .SkipAnd( index )
+            .SkipAnd( identifier )
+            .And( ZeroOrOne( ifNotExists ) )
+            .And( ZeroOrOne( bodyRef ) )
+            .And( ZeroOrOne( noWaitWithJustification ) )
+            .Then( static x => (StatementAst) new CreateIndexAst(
+                IndexName: x.Item1,
+                IfNotExists: x.Item2,
+                Body: x.Item3,
+                InjectDynamicStrict: true,
+                NoWaitJustification: x.Item4
+            ) );
+
+        // REINDEX [UNSAFE("<reason>")] FROM <src> TO <dst> [WITH BODY $body] [NO WAIT("<reason>")]
+        // (UNSAFE / NO WAIT modifiers shared from above.)
 
         var reindexCore = reindex
             .SkipAnd( ZeroOrOne( unsafeWithJustification ) )
@@ -194,18 +211,21 @@ public sealed class OpenSearchStatementParser
             .AndSkip( to )
             .And( identifier )
             .And( ZeroOrOne( bodyRef ) )
+            .And( ZeroOrOne( noWaitWithJustification ) )
             .Then( static x =>
             {
                 var unsafeReason = x.Item1; // null if not present
                 var src = x.Item2;
                 var dst = x.Item3;
                 var bodyR = x.Item4;
+                var noWaitReason = x.Item5;
                 return (StatementAst) new ReindexAst(
                     Source: src,
                     Destination: dst,
                     Body: bodyR,
                     InjectOpTypeCreate: unsafeReason == null,
-                    UnsafeJustification: unsafeReason
+                    UnsafeJustification: unsafeReason,
+                    NoWaitJustification: noWaitReason
                 );
             } );
 
@@ -244,10 +264,12 @@ public sealed class OpenSearchStatementParser
             .SkipAnd( identifier )
             .And( ZeroOrOne( closeFlag ) )
             .And( ZeroOrOne( bodyRef ) )
+            .And( ZeroOrOne( noWaitWithJustification ) )
             .Then( static x => (StatementAst) new UpdateSettingsAst(
                 IndexName: x.Item1,
                 Close: x.Item2,
-                Body: x.Item3
+                Body: x.Item3,
+                NoWaitJustification: x.Item4
             ) );
 
         // REFRESH <name>
@@ -317,10 +339,12 @@ public sealed class OpenSearchStatementParser
             .And( identifier )           // old index
             .AndSkip( to )
             .And( identifier )           // new index
+            .And( ZeroOrOne( noWaitWithJustification ) )
             .Then( static x => (StatementAst) new AliasSwapAst(
                 Alias: x.Item1,
                 OldIndex: x.Item2,
-                NewIndex: x.Item3
+                NewIndex: x.Item3,
+                NoWaitJustification: x.Item4
             ) );
 
         // ALIAS ADD <alias> ON <idx>
@@ -409,9 +433,11 @@ public sealed class OpenSearchStatementParser
             .SkipAnd( identifier )
             .AndSkip( to )
             .And( indexPattern )
+            .And( ZeroOrOne( noWaitWithJustification ) )
             .Then( static x => (StatementAst) new ApplyPolicyAst(
                 PolicyId: x.Item1,
-                IndexPattern: x.Item2
+                IndexPattern: x.Item2,
+                NoWaitJustification: x.Item3
             ) );
 
         // MIGRATE INDEX <old> TO <new>

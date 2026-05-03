@@ -19,7 +19,8 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 public sealed record AliasSwapAst(
     string Alias,
     string OldIndex,
-    string NewIndex
+    string NewIndex,
+    string? NoWaitJustification = null
 ) : StatementAst
 {
     public override string Verb => "ALIAS SWAP";
