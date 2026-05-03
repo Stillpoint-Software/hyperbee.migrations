@@ -464,6 +464,36 @@ The runner project's `--user`/`--password` flags map onto Basic; `--api-key-id`/
 
 `WithProductionDefaults()` is an extension method on `IServiceCollection` that opts into production-safe defaults wholesale (Green threshold, PerMigration waits, justifications required, RequireExplicit context). Per-option settings chained after it win — the marker is a forcing function, not a lock.
 
+## Bulk document loading (R-20)
+
+Use `OpenSearchResourceRunner.BulkLoadAsync` to seed many documents into an index. The helper wraps OpenSearch.Client's `BulkAllObservable` with R-20-spec defaults and surfaces 429 retries as structured WARN logs.
+
+```csharp
+[Migration( 1100 )]
+public class SeedUsers( OpenSearchResourceRunner<SeedUsers> runner ) : Migration
+{
+    public override async Task UpAsync( CancellationToken ct = default )
+    {
+        await runner.StatementsFromAsync( "statements.json", ct );
+
+        var docs = LoadUserDocs();   // IEnumerable<UserDoc>
+        await runner.BulkLoadAsync( "users", docs, cancellationToken: ct );
+    }
+}
+```
+
+Defaults (per R-20):
+
+| Option | Default | Notes |
+|---|---|---|
+| `BatchSize` | 1000 docs | Targets ~5MB at typical document shapes; override for very large/small docs |
+| `MaxDegreeOfParallelism` | 8 | Lower on small clusters that self-throttle (PA-6) |
+| `BackOffRetries` | 5 | Per-batch retry budget |
+| `InitialBackOff` | 1s | 1s -> 2s -> 4s -> 8s -> 16s with the default 5 retries |
+| `RefreshOnCompleted` | true | Single `_refresh` at end; per-batch refresh stays off (segment-merge storm anti-pattern) |
+
+Pass a `BulkLoadOptions` instance to override; every default is overridable. Each retried 429 surfaces as `WARN` with the page index and retry count so cluster dashboards can spot self-induced-throttling patterns.
+
 ## Distributed lock (R-04, R-05, NF-1)
 
 A single lock document on `LockIndex` keyed by `LockName`. Acquisition uses `op_type=create` for atomic claim. On 409, the provider does a **realtime** GET (not a search-layer read — search lag could fool a takeover decision) to inspect the existing holder; if the document is past `LockStaleAfter` since last heartbeat, the new owner CAS-overwrites via `if_seq_no`/`if_primary_term`. The renewal loop refreshes `LastHeartbeat` at `LockRenewInterval`; CAS conflicts on renew signal that another runner has taken over and the in-flight migration is canceled cleanly. `LockMaxLifetime` caps total wall-clock hold so a hung migration cannot lock forever.

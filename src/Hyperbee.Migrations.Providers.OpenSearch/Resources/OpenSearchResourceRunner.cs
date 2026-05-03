@@ -502,6 +502,93 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
         };
     }
 
+    // R-20 — bulk-load helper. Wraps BulkAllObservable with the
+    // production-safe defaults (8x parallelism, 1s exponential backoff,
+    // 5 retries, refresh-once-at-end). Each retried 429 surfaces as a
+    // structured WARN log so operator dashboards can spot
+    // self-induced-throttling patterns.
+    //
+    // Per-batch refresh is intentionally disabled (BulkAllDescriptor sets
+    // it to false on each request); the single-refresh-at-end path is
+    // the documented production pattern. Authors who need per-batch
+    // refresh have bigger correctness concerns and should hand-roll.
+
+    public Task BulkLoadAsync<T>(
+        string indexName,
+        IEnumerable<T> documents,
+        BulkLoadOptions? options = null,
+        CancellationToken cancellationToken = default )
+        where T : class
+    {
+        ArgumentException.ThrowIfNullOrEmpty( indexName );
+        ArgumentNullException.ThrowIfNull( documents );
+
+        var opts = options ?? new BulkLoadOptions();
+
+        var bulkAll = _client.BulkAll( documents, b => b
+            .Index( indexName )
+            .Size( opts.BatchSize )
+            .MaxDegreeOfParallelism( opts.MaxDegreeOfParallelism )
+            .BackOffRetries( opts.BackOffRetries )
+            .BackOffTime( opts.InitialBackOff )
+            .RefreshOnCompleted( opts.RefreshOnCompleted )
+            .ContinueAfterDroppedDocuments( false ),
+            cancellationToken );
+
+        var tcs = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously );
+
+        var observer = new BulkAllObserver(
+            onNext: response =>
+            {
+                if ( response.Retries > 0 )
+                {
+                    _logger.LogWarning(
+                        "Bulk load: page {page} succeeded after {retries} retries (batch size {size} on `{idx}`)",
+                        response.Page, response.Retries, opts.BatchSize, indexName );
+                }
+            },
+            onError: ex =>
+            {
+                _logger.LogError( ex,
+                    "Bulk load against `{idx}` failed after {retries} retry tier(s).",
+                    indexName, opts.BackOffRetries );
+                tcs.TrySetException( ex );
+            },
+            onCompleted: () =>
+            {
+                _logger.LogInformation( "Bulk load to `{idx}` completed.", indexName );
+                tcs.TrySetResult( true );
+            } );
+
+        bulkAll.Subscribe( observer );
+
+        return tcs.Task;
+    }
+
+    // Lightweight inline IObserver — avoids pulling in a full Rx wrapper
+    // for one bulk-load helper.
+    private sealed class BulkAllObserver : IObserver<global::OpenSearch.Client.BulkAllResponse>
+    {
+        private readonly Action<global::OpenSearch.Client.BulkAllResponse> _onNext;
+        private readonly Action<Exception> _onError;
+        private readonly Action _onCompleted;
+
+        public BulkAllObserver(
+            Action<global::OpenSearch.Client.BulkAllResponse> onNext,
+            Action<Exception> onError,
+            Action onCompleted )
+        {
+            _onNext = onNext;
+            _onError = onError;
+            _onCompleted = onCompleted;
+        }
+
+        public void OnNext( global::OpenSearch.Client.BulkAllResponse value ) => _onNext( value );
+        public void OnError( Exception error ) => _onError( error );
+        public void OnCompleted() => _onCompleted();
+    }
+
     private static void ThrowIfNoResourceLocationFor()
     {
         var exists = typeof( TMigration )
