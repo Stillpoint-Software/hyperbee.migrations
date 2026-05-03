@@ -362,18 +362,14 @@ ADR-0011 hybrid + ADR-0015 offline-pure parser holds: parser produces AST flags,
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| 0 — Scaffold + Spike | Not Started | Critical gate; if spike fails, ADR-0011 needs revision and Approach A becomes fallback |
-| 1 — Foundation + Foundation Verbs | **Done** | All Phase 1 deliverables landed: bootstrapper façade + 4 default steps; auto-renewing LockHandle with realtime-GET takeover + LockMaxLifetime cancellation; ledger with forensic fields; OpenSearchRecordStore (full IMigrationRecordStore impl); foundation verb grammar (8 verbs); StatementDispatcher (all 8 verbs end-to-end); OpenSearchResourceRunner (load statements.json → parse → dispatch); ImplicitWaitMiddleware (R-12 PerStatement; PerMigration deferred to Phase 6 with documented hook); R-24b lock contention/crash recovery tests with FakeTimeProvider. **R-18 syntactic body-content enumeration deferred to Phase 2** (requires body-content inspection beyond pure parser; UNSAFE/NO WAIT justification tokens already enforced at parse). 74 unit tests + 34 integration tests pass against real OpenSearch 2.18.0. |
-| 2 — Atomic + Composite + Cross-Cutting | Not Started | |
-| 3 — Distribution + Polish | Not Started | |
+| 0 — Scaffold + Spike | **Done** | Spike kill criterion cleared; ADR-0011 hybrid parser+runtime injection validated against real OpenSearch. |
+| 1 — Foundation + Foundation Verbs | **Done** | Bootstrapper façade + 4 default steps; auto-renewing LockHandle with realtime-GET takeover; ledger with forensic fields; OpenSearchRecordStore; foundation verb grammar (8 verbs); StatementDispatcher; OpenSearchResourceRunner; ImplicitWaitMiddleware (PerStatement). |
+| 2 — Atomic + Composite + Cross-Cutting | **Done** | All atomic/composite verbs (CREATE TEMPLATE, ALIAS SWAP, REINDEX, MIGRATE INDEX, APPLY POLICY, UPDATE SETTINGS/MAPPING, WAIT FOR/UNTIL TASK); R-15 context filter; R-12 WaitMode.PerMigration + NO WAIT justification; R-24b/c integration tests; multi-node Testcontainers harness (3-node Docker network). |
+| 3 — Distribution + Polish | **Done** | Auth (Basic, ApiKey, mTLS); SigV4 separate package per ADR-0021/option-E; AWS endpoint loud-fail; ISM capability detection; BulkAllObservable wrapper (R-20); runner project; samples project (10 samples); multi-node CI workflow; AWS validation runbook; top-level docs (provider page, FAQ, README); ADR compliance audit (0001-0017 PASS, 17/17 honored). |
 
-**Current task:** Phase 0 **DONE** (5 tasks effectively; 0.4 reverted per ADR-0016). 36 unit tests across 3 classes pass on net8/9/10 (108 unit-test executions, 0 failures). 10 wire-level integration tests written and compile clean both with and without `INTEGRATIONS` defined; awaiting user run in Docker env to fire the official Phase 0 kill criterion.
-**Next action:** User runs the integration tests in their Docker env to validate the architecture against real OpenSearch:
-1. Uncomment `//#define INTEGRATIONS` at the top of `OpenSearchSpikeTests.cs` (and `OpenSearchHarnessTest.cs` if running the smoke test too)
-2. `dotnet test tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj --filter "TestCategory=Spike"`
-3. If all 10 pass → Phase 0 gate clears, proceed to Phase 1 (foundation + foundation verbs)
-4. If any fail in a way requiring a new AST flag to resolve ambiguity → fire kill criterion, escalate per `/nop:debug`, fallback architecture documented (Approach A)
-**Blockers:** None — Phase 0 implementation complete; gate is operational verification.
+**Current task:** All phases complete. ADR compliance audit (0001-0017) PASS — 17/17 honored, 3 soft spots noted (none blocking). See `docs/research/0004-adr-compliance-audit.md`.
+**Next action:** Move plan to `docs/plans/archive/` after final user signoff and tag `opensearch/v1`.
+**Blockers:** None.
 
 ---
 
