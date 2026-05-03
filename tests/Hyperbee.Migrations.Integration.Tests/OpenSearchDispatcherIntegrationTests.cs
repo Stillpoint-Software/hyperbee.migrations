@@ -1,13 +1,13 @@
-//#define INTEGRATIONS
+﻿//#define INTEGRATIONS
 #nullable enable
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Hyperbee.Migrations.Integration.Tests.Container.OpenSearch;
+using Hyperbee.Migrations.Providers.OpenSearch;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Dispatch;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Middleware;
-using Hyperbee.Migrations.Providers.OpenSearch;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenSearch.Net;
 

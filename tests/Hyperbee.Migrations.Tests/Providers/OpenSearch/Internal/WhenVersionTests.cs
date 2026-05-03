@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using FluentAssertions;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
@@ -157,23 +157,23 @@ public class WhenVersionTests
     {
         var cluster = new Version( 2, 10, 0 );
 
-        MakeWhen( VersionComparator.Eq,    new Version( 2, 10 ) ).Evaluate( cluster ).Should().BeTrue();
-        MakeWhen( VersionComparator.Eq,    new Version( 2, 11 ) ).Evaluate( cluster ).Should().BeFalse();
+        MakeWhen( VersionComparator.Eq, new Version( 2, 10 ) ).Evaluate( cluster ).Should().BeTrue();
+        MakeWhen( VersionComparator.Eq, new Version( 2, 11 ) ).Evaluate( cluster ).Should().BeFalse();
 
         MakeWhen( VersionComparator.NotEq, new Version( 2, 10 ) ).Evaluate( cluster ).Should().BeFalse();
         MakeWhen( VersionComparator.NotEq, new Version( 2, 11 ) ).Evaluate( cluster ).Should().BeTrue();
 
-        MakeWhen( VersionComparator.Lt,    new Version( 2, 11 ) ).Evaluate( cluster ).Should().BeTrue();
-        MakeWhen( VersionComparator.Lt,    new Version( 2, 10 ) ).Evaluate( cluster ).Should().BeFalse();
+        MakeWhen( VersionComparator.Lt, new Version( 2, 11 ) ).Evaluate( cluster ).Should().BeTrue();
+        MakeWhen( VersionComparator.Lt, new Version( 2, 10 ) ).Evaluate( cluster ).Should().BeFalse();
 
-        MakeWhen( VersionComparator.LtEq,  new Version( 2, 10 ) ).Evaluate( cluster ).Should().BeTrue();
-        MakeWhen( VersionComparator.LtEq,  new Version( 2, 9 ) ).Evaluate( cluster ).Should().BeFalse();
+        MakeWhen( VersionComparator.LtEq, new Version( 2, 10 ) ).Evaluate( cluster ).Should().BeTrue();
+        MakeWhen( VersionComparator.LtEq, new Version( 2, 9 ) ).Evaluate( cluster ).Should().BeFalse();
 
-        MakeWhen( VersionComparator.Gt,    new Version( 2, 9 ) ).Evaluate( cluster ).Should().BeTrue();
-        MakeWhen( VersionComparator.Gt,    new Version( 2, 10 ) ).Evaluate( cluster ).Should().BeFalse();
+        MakeWhen( VersionComparator.Gt, new Version( 2, 9 ) ).Evaluate( cluster ).Should().BeTrue();
+        MakeWhen( VersionComparator.Gt, new Version( 2, 10 ) ).Evaluate( cluster ).Should().BeFalse();
 
-        MakeWhen( VersionComparator.GtEq,  new Version( 2, 10 ) ).Evaluate( cluster ).Should().BeTrue();
-        MakeWhen( VersionComparator.GtEq,  new Version( 2, 11 ) ).Evaluate( cluster ).Should().BeFalse();
+        MakeWhen( VersionComparator.GtEq, new Version( 2, 10 ) ).Evaluate( cluster ).Should().BeTrue();
+        MakeWhen( VersionComparator.GtEq, new Version( 2, 11 ) ).Evaluate( cluster ).Should().BeFalse();
     }
 
     [TestMethod]

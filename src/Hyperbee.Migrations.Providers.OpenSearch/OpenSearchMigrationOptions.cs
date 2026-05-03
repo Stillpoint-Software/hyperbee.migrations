@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Providers.OpenSearch;
+﻿namespace Hyperbee.Migrations.Providers.OpenSearch;
 
 public enum ClusterHealthThreshold
 {

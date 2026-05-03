@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using FluentAssertions;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;

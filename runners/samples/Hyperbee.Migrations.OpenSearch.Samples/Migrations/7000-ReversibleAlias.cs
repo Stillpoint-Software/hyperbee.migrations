@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Providers.OpenSearch.Resources;
+﻿using Hyperbee.Migrations.Providers.OpenSearch.Resources;
 
 namespace Hyperbee.Migrations.OpenSearch.Samples.Migrations;
 

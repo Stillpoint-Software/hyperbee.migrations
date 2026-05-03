@@ -1,4 +1,4 @@
-//#define INTEGRATIONS
+﻿//#define INTEGRATIONS
 #nullable enable
 using System.Diagnostics;
 using System.Text.Json;

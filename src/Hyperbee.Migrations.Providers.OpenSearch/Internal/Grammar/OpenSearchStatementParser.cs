@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 using Parlot.Fluent;
 using static Parlot.Fluent.Parsers;

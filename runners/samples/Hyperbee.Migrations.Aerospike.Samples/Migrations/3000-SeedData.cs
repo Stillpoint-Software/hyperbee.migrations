@@ -1,4 +1,4 @@
-using Aerospike.Client;
+﻿using Aerospike.Client;
 using Hyperbee.Migrations.Providers.Aerospike;
 using Hyperbee.Migrations.Providers.Aerospike.Extensions;
 using Microsoft.Extensions.Logging;

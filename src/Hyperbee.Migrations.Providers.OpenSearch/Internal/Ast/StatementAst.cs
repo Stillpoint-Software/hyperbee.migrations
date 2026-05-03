@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System.Text.Json.Nodes;
 
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;

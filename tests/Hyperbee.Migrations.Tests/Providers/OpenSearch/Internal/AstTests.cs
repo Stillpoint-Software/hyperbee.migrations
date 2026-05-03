@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 
 namespace Hyperbee.Migrations.Tests.Providers.OpenSearch.Internal;

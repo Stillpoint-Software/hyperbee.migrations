@@ -1,4 +1,4 @@
-using DotNet.Testcontainers.Builders;
+﻿using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using OpenSearch.Client;
 using OpenSearch.Net;

@@ -1,4 +1,4 @@
-using Aerospike.Client;
+﻿using Aerospike.Client;
 using Hyperbee.Migrations.Wait;
 
 namespace Hyperbee.Migrations.Providers.Aerospike.Extensions;

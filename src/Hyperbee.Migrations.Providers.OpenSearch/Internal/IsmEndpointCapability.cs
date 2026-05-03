@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal;
 
 // R-21 #3 — ISM endpoint capability resolution.

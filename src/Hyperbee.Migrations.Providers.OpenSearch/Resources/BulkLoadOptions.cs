@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 namespace Hyperbee.Migrations.Providers.OpenSearch.Resources;
 
 // R-20 — bulk-load tuning surface. Defaults match the requirement spec

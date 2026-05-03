@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 
 // ALIAS ADD <alias> ON <idx>

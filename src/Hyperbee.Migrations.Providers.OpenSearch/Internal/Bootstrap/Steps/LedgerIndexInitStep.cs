@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
@@ -130,7 +130,7 @@ public sealed class LedgerIndexInitStep : IBootstrapStep
         {
             throw new OpenSearchLedgerSchemaMismatchException(
                 $"Could not read existing mapping for ledger index `{indexName}`: " +
-                ( mappingResponse.OriginalException?.Message ?? mappingResponse.Body ?? "unknown error" ) );
+                (mappingResponse.OriginalException?.Message ?? mappingResponse.Body ?? "unknown error") );
         }
 
         var doc = JsonNode.Parse( mappingResponse.Body );

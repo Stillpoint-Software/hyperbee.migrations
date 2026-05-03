@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 
 // CREATE INDEX <name> [IF NOT EXISTS] [WITH BODY $body]

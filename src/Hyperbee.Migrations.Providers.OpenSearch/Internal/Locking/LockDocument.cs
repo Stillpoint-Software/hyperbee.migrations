@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using OpenSearch.Client;
 
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Locking;

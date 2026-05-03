@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 namespace Hyperbee.Migrations.Providers.OpenSearch;
 
 // R-06 forensic ledger record. Extends the base MigrationRecord with the

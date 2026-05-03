@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 
 // Composite statement: a single source-line verb whose semantics decompose into

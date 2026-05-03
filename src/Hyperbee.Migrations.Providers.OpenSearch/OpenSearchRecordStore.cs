@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Bootstrap;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Locking;
 using Microsoft.Extensions.Logging;
@@ -272,7 +272,7 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
 
                 throw new OpenSearchProviderException(
                     $"Lock {lockId} renewal failed: " +
-                    ( renewResponse.OriginalException?.Message ?? "unknown error" ),
+                    (renewResponse.OriginalException?.Message ?? "unknown error"),
                     renewResponse.OriginalException ?? new InvalidOperationException( "renewal failed" ) );
             }
 

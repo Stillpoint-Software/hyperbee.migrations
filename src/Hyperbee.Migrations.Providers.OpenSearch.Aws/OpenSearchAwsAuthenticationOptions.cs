@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using Amazon.Runtime;
 
 namespace Hyperbee.Migrations.Providers.OpenSearch.Aws;

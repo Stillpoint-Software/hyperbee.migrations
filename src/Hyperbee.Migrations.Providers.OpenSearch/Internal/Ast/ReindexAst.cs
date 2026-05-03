@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 
 // REINDEX [UNSAFE("<reason>")] FROM <src> TO <dst> [WITH BODY $body]

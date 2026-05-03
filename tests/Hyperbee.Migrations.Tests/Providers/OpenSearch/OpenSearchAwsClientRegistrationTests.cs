@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using Amazon.Runtime;
 using FluentAssertions;
 using Hyperbee.Migrations.Providers.OpenSearch;

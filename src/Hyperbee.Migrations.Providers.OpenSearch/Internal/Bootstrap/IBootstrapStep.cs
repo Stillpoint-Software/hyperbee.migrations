@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Bootstrap;
 
 // Pluggable bootstrap step contract per ADR-0014.

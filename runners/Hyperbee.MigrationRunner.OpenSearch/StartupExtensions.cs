@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Providers.OpenSearch;
+﻿using Hyperbee.Migrations.Providers.OpenSearch;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenSearch.Client;

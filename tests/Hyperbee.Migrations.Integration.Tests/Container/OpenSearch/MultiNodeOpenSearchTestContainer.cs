@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using OpenSearch.Client;

@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using Microsoft.Extensions.Logging;
 using OpenSearch.Net;
 

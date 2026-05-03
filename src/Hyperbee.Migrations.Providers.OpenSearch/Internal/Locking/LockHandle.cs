@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Locking;

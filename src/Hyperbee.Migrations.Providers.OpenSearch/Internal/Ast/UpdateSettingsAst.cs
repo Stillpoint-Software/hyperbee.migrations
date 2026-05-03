@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 
 // UPDATE SETTINGS ON <idx> [CLOSE] WITH BODY $body

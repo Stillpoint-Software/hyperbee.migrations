@@ -1,4 +1,4 @@
-//#define INTEGRATIONS
+﻿//#define INTEGRATIONS
 #nullable enable
 using Hyperbee.Migrations.Integration.Tests.Container.OpenSearch;
 using Hyperbee.Migrations.Providers.OpenSearch;

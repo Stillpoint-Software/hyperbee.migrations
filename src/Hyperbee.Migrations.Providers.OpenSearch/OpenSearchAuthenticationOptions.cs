@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System.Security.Cryptography.X509Certificates;
 
 namespace Hyperbee.Migrations.Providers.OpenSearch;

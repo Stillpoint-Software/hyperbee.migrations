@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 namespace Hyperbee.Migrations.Providers.OpenSearch;
 
 // Provider-specific exception hierarchy. Typed exceptions allow callers to

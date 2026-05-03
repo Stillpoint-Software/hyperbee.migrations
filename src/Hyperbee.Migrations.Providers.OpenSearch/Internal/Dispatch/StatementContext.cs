@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using OpenSearch.Client;
