@@ -2,6 +2,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
+using Hyperbee.Migrations.Providers.OpenSearch.Internal.Bootstrap.Steps;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Middleware;
 using Microsoft.Extensions.Logging;
 using OpenSearch.Net;
@@ -27,6 +28,7 @@ public sealed class StatementDispatcher
 {
     private readonly SafeDefaultMergeMiddleware _merger;
     private readonly TemplateResolutionMiddleware _templateResolver;
+    private readonly IsmEndpointCapability _ismCapability;
 
     // R-15a: cluster version is fetched once per dispatcher lifetime and
     // cached. The dispatcher is per-resource-runner so this cache is bounded
@@ -35,15 +37,32 @@ public sealed class StatementDispatcher
     private Lazy<Task<Version>>? _clusterVersionCache;
 
     public StatementDispatcher( SafeDefaultMergeMiddleware merger )
-        : this( merger, new TemplateResolutionMiddleware() )
+        : this( merger, new TemplateResolutionMiddleware(), new IsmEndpointCapability() )
     {
     }
 
     public StatementDispatcher( SafeDefaultMergeMiddleware merger, TemplateResolutionMiddleware templateResolver )
+        : this( merger, templateResolver, new IsmEndpointCapability() )
+    {
+    }
+
+    public StatementDispatcher(
+        SafeDefaultMergeMiddleware merger,
+        TemplateResolutionMiddleware templateResolver,
+        IsmEndpointCapability ismCapability )
     {
         _merger = merger;
         _templateResolver = templateResolver;
+        _ismCapability = ismCapability;
     }
+
+    // R-21 #3 — Resolves the ISM API path prefix. The bootstrap step
+    // populates IsmEndpointCapability; if the dispatcher is constructed
+    // without bootstrap (e.g., a test that bypasses Initialize), the
+    // unresolved capability falls back to the modern path so non-AWS
+    // single-node OpenSearch deployments work without explicit setup.
+    private string IsmPathPrefix
+        => _ismCapability.IsmPathPrefix ?? IsmEndpointDetectStep.ModernPrefix;
 
     public Task<StatementResult> DispatchAsync( StatementAst ast, StatementContext context )
     {
@@ -751,7 +770,7 @@ public sealed class StatementDispatcher
 
     // --- CREATE POLICY <id> WITH BODY $body ---
 
-    private static async Task<StatementResult> DispatchCreatePolicyAsync( CreatePolicyAst ast, StatementContext context )
+    private async Task<StatementResult> DispatchCreatePolicyAsync( CreatePolicyAst ast, StatementContext context )
     {
         var verb = ast.Verb;
         var ll = context.Client.LowLevel;
@@ -769,7 +788,7 @@ public sealed class StatementDispatcher
 
         var response = await ll.DoRequestAsync<StringResponse>(
             global::OpenSearch.Net.HttpMethod.PUT,
-            $"_plugins/_ism/policies/{ast.PolicyId}",
+            $"{IsmPathPrefix}/policies/{ast.PolicyId}",
             context.CancellationToken,
             data: PostData.String( body ) ).ConfigureAwait( false );
 
@@ -778,7 +797,7 @@ public sealed class StatementDispatcher
 
     // --- APPLY POLICY <id> TO <pattern> ---
 
-    private static async Task<StatementResult> DispatchApplyPolicyAsync( ApplyPolicyAst ast, StatementContext context )
+    private async Task<StatementResult> DispatchApplyPolicyAsync( ApplyPolicyAst ast, StatementContext context )
     {
         var verb = ast.Verb;
         var ll = context.Client.LowLevel;
@@ -799,7 +818,7 @@ public sealed class StatementDispatcher
 
         var response = await ll.DoRequestAsync<StringResponse>(
             global::OpenSearch.Net.HttpMethod.POST,
-            $"_plugins/_ism/add/{ast.IndexPattern}",
+            $"{IsmPathPrefix}/add/{ast.IndexPattern}",
             context.CancellationToken,
             data: PostData.String( body ) ).ConfigureAwait( false );
 

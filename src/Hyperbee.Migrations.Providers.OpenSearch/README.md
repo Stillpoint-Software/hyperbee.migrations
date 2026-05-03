@@ -360,14 +360,21 @@ To recover:
 
 ## Authentication (R-21)
 
-The provider supports four auth modes for the core package; SigV4 ships in a separate opt-in extension (plan task 3.2). Configure via `services.AddOpenSearchClient(endpoint, opts => ...)` or via `IConfiguration` under the `OpenSearch:Authentication:*` section. The runner project surfaces all four through CLI flags.
+The provider supports five auth modes split across two packages.
 
-| Mode | Use when | Required fields |
-|------|----------|-----------------|
-| `Anonymous` | Local dev cluster with the security plugin disabled | (none — emits a startup WARN) |
-| `Basic` | Standard username/password setup | `UserName` (Password may be empty) |
-| `ApiKey` | OpenSearch security-plugin API keys (recommended for service-to-service) | `ApiKeyId`, `ApiKey` |
-| `ClientCertificate` | mTLS — corporate compliance and zero-trust setups | `ClientCertificatePath` (PFX) **or** `ClientCertificate` (X509Certificate instance); optional `ClientCertificatePassword` |
+| Mode | Package | Use when | Required fields |
+|------|---------|----------|-----------------|
+| `Anonymous` | core | Local dev cluster with the security plugin disabled | (none — emits a startup WARN) |
+| `Basic` | core | Standard username/password setup | `UserName` (Password may be empty) |
+| `ApiKey` | core | OpenSearch security-plugin API keys (recommended for service-to-service) | `ApiKeyId`, `ApiKey` |
+| `ClientCertificate` | core | mTLS — corporate compliance and zero-trust setups | `ClientCertificatePath` (PFX) **or** `ClientCertificate` (X509Certificate instance); optional `ClientCertificatePassword` |
+| **AWS SigV4** | **`Hyperbee.Migrations.Providers.OpenSearch.Aws`** (opt-in extension) | **AWS Managed OpenSearch Service / OpenSearch Serverless** | `Region`, optional `Service` (`"es"` default; `"aoss"` for Serverless), optional `Credentials` (default chain otherwise) |
+
+Header-based modes (Basic, ApiKey, mTLS, Anonymous) ship in core via `services.AddOpenSearchClient(endpoint, opts => ...)`. AWS SigV4 is *transport-replacing* auth (signs every HTTP request with AWS-fresh credentials per request) and lives in a separate extension package so the core stays free of the AWSSDK transitive dependency tree. See [the AWS extension README](../Hyperbee.Migrations.Providers.OpenSearch.Aws/README.md) for SigV4 details.
+
+The two registration paths are **mutually exclusive** — call `services.AddOpenSearchClient(...)` for the four core modes OR `services.AddOpenSearchAwsClient(...)` for SigV4. Each guards against being called after the other; the boundary tracks the actual technical seam between header-based and transport-replacing auth.
+
+If the configured endpoint hostname ends with `.amazonaws.com` and the operator forgot to reference the AWS extension, `AddOpenSearchClient` throws `AwsSigV4NotConfiguredException` at startup with the exact `services.AddOpenSearchAwsClient(...)` snippet to add. Pure URL string check, no DI introspection across packages.
 
 Validation runs at client-build time so missing required fields fail at startup with the configuration key to set, not at first wire request.
 

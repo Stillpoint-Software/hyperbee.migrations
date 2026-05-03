@@ -2,6 +2,7 @@
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Security.Cryptography.X509Certificates;
+using Hyperbee.Migrations.Providers.OpenSearch.Internal;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Bootstrap;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Bootstrap.Steps;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Dispatch;
@@ -69,6 +70,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IBootstrapStep, ClusterHealthStep>();
         services.AddSingleton<IBootstrapStep, LedgerIndexInitStep>();
         services.AddSingleton<IBootstrapStep, LockIndexInitStep>();
+        // R-21 #3 — ISM endpoint capability detection. Singleton so the
+        // resolved prefix is shared across the dispatcher's lifetime;
+        // detection runs once at bootstrap.
+        services.AddSingleton<IsmEndpointCapability>();
+        services.AddSingleton<IBootstrapStep, IsmEndpointDetectStep>();
         services.AddSingleton<OpenSearchBootstrapper>();
 
         // Statement pipeline (ADR-0011 hybrid). The parser is offline-pure (ADR-0015);
@@ -122,6 +128,26 @@ public static class ServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull( services );
         ArgumentNullException.ThrowIfNull( endpoint );
+
+        // R-21 #2 — AWS endpoint loud-fail. AWS Managed OpenSearch domains
+        // and OpenSearch Serverless collections both live under the
+        // *.amazonaws.com namespace and require SigV4. The core package
+        // doesn't carry the AWSSDK transitive dependency tree, so it
+        // can't sign requests; loud-fail at startup with the exact
+        // alternative API that does.
+        //
+        // Pure URL string check — no DI introspection, no marker dance,
+        // no cross-package conditional flow. The check fires regardless
+        // of which auth mode the operator configured (Basic, ApiKey, mTLS,
+        // Anonymous all hit it equally) because the cluster will reject
+        // anything but SigV4.
+        ThrowIfAwsEndpoint( endpoint );
+
+        // Mutual exclusion guard — only one OpenSearch client registration
+        // path may be used per service collection. AddOpenSearchAwsClient
+        // (in the .Aws extension package) carries the equivalent guard
+        // pointed in the opposite direction.
+        ThrowIfClientAlreadyRegistered( services );
 
         var auth = new OpenSearchAuthenticationOptions();
         configure?.Invoke( auth );
@@ -221,6 +247,38 @@ public static class ServiceCollectionExtensions
             opts.ClientCertificatePath = configuration["OpenSearch:Authentication:ClientCertificatePath"];
             opts.ClientCertificatePassword = configuration["OpenSearch:Authentication:ClientCertificatePassword"];
         } );
+    }
+
+    private static void ThrowIfAwsEndpoint( Uri endpoint )
+    {
+        if ( !endpoint.Host.EndsWith( ".amazonaws.com", StringComparison.OrdinalIgnoreCase ) )
+            return;
+
+        throw new AwsSigV4NotConfiguredException(
+            $"OpenSearch endpoint `{endpoint}` is an AWS Managed OpenSearch domain or OpenSearch Serverless " +
+            "collection (host ends with .amazonaws.com), which requires AWS SigV4 request signing. " +
+            "The core Hyperbee.Migrations.Providers.OpenSearch package does not include AWS SDK support. " +
+            "Add a reference to Hyperbee.Migrations.Providers.OpenSearch.Aws and call:" + Environment.NewLine +
+            Environment.NewLine +
+            "    services.AddOpenSearchAwsClient( new Uri( connectionString ), opts =>" + Environment.NewLine +
+            "    {" + Environment.NewLine +
+            "        opts.Region = \"us-east-1\";   // your region" + Environment.NewLine +
+            "        opts.Service = \"es\";        // \"aoss\" for OpenSearch Serverless" + Environment.NewLine +
+            "    } );" + Environment.NewLine +
+            Environment.NewLine +
+            "instead of AddOpenSearchClient(...). The runner project's --auth-mode flag is " +
+            "Basic / ApiKey / ClientCertificate-only; SigV4 wires through the .Aws extension." );
+    }
+
+    private static void ThrowIfClientAlreadyRegistered( IServiceCollection services )
+    {
+        if ( services.Any( d => d.ServiceType == typeof( IOpenSearchClient ) ) )
+        {
+            throw new OpenSearchProviderException(
+                "AddOpenSearchClient cannot be called when an OpenSearch client has already been registered. " +
+                "Call exactly one of: AddOpenSearchClient (for Basic / ApiKey / mTLS / Anonymous) " +
+                "OR AddOpenSearchAwsClient (for AWS SigV4) — they are mutually exclusive." );
+        }
     }
 
     private static X509Certificate ResolveClientCertificate( OpenSearchAuthenticationOptions auth )

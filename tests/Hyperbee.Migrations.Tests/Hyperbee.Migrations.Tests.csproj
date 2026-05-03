@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Aerospike\Hyperbee.Migrations.Providers.Aerospike.csproj" />
     <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.MongoDB\Hyperbee.Migrations.Providers.MongoDB.csproj" />
     <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.OpenSearch\Hyperbee.Migrations.Providers.OpenSearch.csproj" />
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.OpenSearch.Aws\Hyperbee.Migrations.Providers.OpenSearch.Aws.csproj" />
     <ProjectReference Include="..\..\src\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
   </ItemGroup>
   <ItemGroup>
