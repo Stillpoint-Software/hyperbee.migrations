@@ -40,13 +40,20 @@ These are NOT compliance failures — the ADRs are honored. They are areas where
 
 1. **ADR-0012 (WithProductionDefaults)** — the extension method exists and registers a marker, but the options-factory wiring that flips the four defaults (Green threshold, PerMigration waits, RequireExplicit context, RequireUnsafeJustification) on options-instance construction is a Phase 6 follow-up per the ADR's own consequences section. Today, calling `WithProductionDefaults()` is the marker registration; the user still has to set the four options manually. Worth a follow-up slice once the options-factory pattern is settled. Not a regression — the slice was scoped this way intentionally per the requirements doc.
 
-2. **ADR-0009 (Convention-Based Record IDs)** — verified indirectly through ledger-bearing tests rather than a dedicated unit test. The convention is simple enough (version + type name) that the indirect coverage is sufficient, but a focused convention-output test would tighten the regression net for any future ID-format change.
+2. ~~**ADR-0009 (Convention-Based Record IDs)**~~ — **CLOSED 2026-05-03 (commit 163196f)**. Focused convention test added at `tests/Hyperbee.Migrations.Tests/DefaultMigrationConventionsTests.cs` covering the documented `record.<version>.<kebab-cased-name>` format and the missing-attribute throw path.
 
-3. **ADR-0016 (No File-Level Templating)** — verified through absence (no Hyperbee.Templating reference in the project file). A code-level "no positive test for absence" is correct but means a future contributor adding the dependency wouldn't be alerted by CI. The provider's csproj is small enough that a dependency-scan grep in the build is the cheapest possible safeguard if future drift becomes a concern.
+3. ~~**ADR-0016 (No File-Level Templating)**~~ — **CLOSED 2026-05-03 (commit 163196f)**. Dependency-scan unit test added at `tests/Hyperbee.Migrations.Tests/Providers/OpenSearch/OpenSearchProviderDependencyTests.cs` that asserts the OpenSearch provider assembly references no `Hyperbee.Templating*` package. CI fails if a future contributor adds the dependency.
+
+### Hardening landed alongside the audit
+
+Two adjacent items were addressed in the same hardening pass (commit 163196f):
+
+- **EOF-anchored parser** — the OpenSearch statement parser now applies `.Eof()` to the top-level Parlot parser, so trailing tokens after a successful prefix-match are reported as parse errors instead of silently dropped. Closes the documented `NO WAIT` UX gap (bare `NO WAIT` without parens-and-justification used to parse as `<verb>` + trailing garbage; now correctly fails). Four parse-time-rejection tests previously deferred are now passing.
+- **Domain-exception wrapping** — grammar-level `InvalidOperationException` (raised inside Parlot `.Then(...)` callbacks for empty-justification and malformed version-literal validation) is now wrapped into `OpenSearchParseException` at the `Parse()` boundary. Callers handle one exception type.
 
 ### Open Questions during the audit
 
-None. All ADRs cleanly map to code + tests with the soft spots noted above.
+None. All ADRs cleanly map to code + tests with the one remaining soft spot (ADR-0012) noted above.
 
 ## Release readiness
 
@@ -54,7 +61,7 @@ The OpenSearch provider's ADR set (0011-0017) plus the cross-provider ADRs (0001
 
 The DoD line on the release checklist:
 
-> 2026-05-03  ADR compliance audit (0001-0017): PASS  (17/17 honored; 3 soft spots noted in docs/research/0004-adr-compliance-audit.md, none blocking)
+> 2026-05-03  ADR compliance audit (0001-0017): PASS  (17/17 honored; 1 soft spot remaining (ADR-0012, non-blocking — deferred per its own consequences section); 2 closed in commit 163196f. See docs/research/0004-adr-compliance-audit.md)
 
 ## Method
 
