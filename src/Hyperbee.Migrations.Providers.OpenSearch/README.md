@@ -299,6 +299,34 @@ WAIT UNTIL TASK <id> COMPLETE [TIMEOUT <duration>]
 
 `WAIT UNTIL TASK` polls `_tasks/<id>` with exponential backoff (500ms → 30s ceiling). Used by long-running operations that surface a task id (e.g., reindex async dispatch in a follow-up slice).
 
+### Context filter (R-15)
+
+A statements.json file may declare an optional top-level `context: ["prod", "staging"]` array. The runner uses this to gate the entire file against `OpenSearchMigrationOptions.ActiveContext` (a comma-separated string, bindable via `Migrations:ActiveContext`).
+
+```json
+{
+  "context": ["prod", "staging"],
+  "statements": [
+    { "statement": "CREATE INDEX users WITH BODY @bodies/users-mapping.json" }
+  ]
+}
+```
+
+Resolution rules:
+
+| File context | `ActiveContext` | `ContextResolutionPolicy` | Outcome |
+|---|---|---|---|
+| (none) | (any) | (any) | run |
+| `["prod"]` | `"prod"` | (any) | run |
+| `["prod","staging"]` | `"canary,prod"` | (any) | run (any tag matches) |
+| `["prod"]` | `"dev"` | (any) | skip (INFO log) |
+| `["prod"]` | `null` | `SkipIfUnset` (SDK default) | skip (INFO log) |
+| `["prod"]` | `null` | `RequireExplicit` (production) | **throw `MissingActiveContextException`** |
+
+`WithProductionDefaults()` flips `ContextResolutionPolicy` to `RequireExplicit` so production deployments fail loudly when `ActiveContext` is missing — silent prod-everywhere behavior is forbidden by the trust boundary. There is no `RunIfUnset` mode (R-15).
+
+Matching is case-sensitive — context tags are identifiers. The check is per-file: skipped files don't dispatch any statements (Up) or run any rollbacks (Down). Combine with `WHEN VERSION` for finer-grained statement-level gating within a file that's already been admitted by context.
+
 ### WHEN VERSION (R-15a)
 
 ```

@@ -99,6 +99,13 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
         var statements = root["statements"]?.AsArray()
             ?? throw new InvalidOperationException( "Statements JSON missing required `statements` array." );
 
+        // R-15 — context filter at the resource-file level. Returns false
+        // (with INFO log) when the file should be skipped; throws
+        // MissingActiveContextException under RequireExplicit when the
+        // operator hasn't supplied ActiveContext.
+        if ( !ShouldRunForActiveContext( root ) )
+            return;
+
         for ( var i = 0; i < statements.Count; i++ )
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -199,6 +206,12 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
 
         var statements = root["statements"]?.AsArray()
             ?? throw new InvalidOperationException( "Statements JSON missing required `statements` array." );
+
+        // R-15 — same context filter as the up path. Skipped files don't
+        // touch the ledger either (no record was written; nothing to roll
+        // back).
+        if ( !ShouldRunForActiveContext( root ) )
+            return;
 
         // First pass: validate that every statement has a rollback. R-19 is
         // explicit: missing-rollback is an author-time decision; running half
@@ -324,6 +337,76 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
     //
     // The lookup order (bodies first, sibling fallback) means new authors
     // discover the structured form first, but legacy resources need no edits.
+
+    // R-15 — file-level context filter. Reads an optional top-level
+    // `context: ["prod", "staging"]` array from the statements.json wrapper
+    // and decides whether the runner should process the file under the
+    // configured ContextResolutionPolicy.
+    //
+    //   No `context:` block in the file        -> always run (returns true)
+    //   File has `context:` AND ActiveContext null:
+    //       SkipIfUnset       -> skip (INFO log)            -> false
+    //       RequireExplicit   -> throw MissingActiveContextException
+    //   File has `context:` AND ActiveContext set:
+    //       any tag in ActiveContext intersects the file's list -> run -> true
+    //       no intersection                                      -> skip -> false
+    //
+    // ActiveContext is comma-separated (e.g., "prod,canary") so a single
+    // runner deployment can claim membership in multiple contexts. Matching
+    // is case-sensitive — context tags are identifiers, not free-form text.
+    private bool ShouldRunForActiveContext( JsonNode root )
+    {
+        var contextNode = root["context"];
+        if ( contextNode is null )
+            return true;   // file has no context block — always runs
+
+        var fileContexts = contextNode.AsArray()
+            .Select( n => n!.GetValue<string>() )
+            .Where( s => !string.IsNullOrWhiteSpace( s ) )
+            .ToArray();
+
+        if ( fileContexts.Length == 0 )
+            return true;   // empty `context: []` is degenerate; treat as no filter
+
+        var activeRaw = _options.ActiveContext;
+
+        if ( string.IsNullOrWhiteSpace( activeRaw ) )
+        {
+            if ( _options.ContextResolutionPolicy == ContextResolutionPolicy.RequireExplicit )
+            {
+                throw new MissingActiveContextException(
+                    "Resource file declares a `context:` block " +
+                    $"({string.Join( ", ", fileContexts )}) but ContextResolutionPolicy = RequireExplicit " +
+                    "and OpenSearchMigrationOptions.ActiveContext is not set. " +
+                    "Set Migrations:ActiveContext in configuration to a comma-separated list of " +
+                    "context tags (e.g., \"prod\" or \"prod,canary\"). " +
+                    "RequireExplicit is the production default; silent prod-everywhere behavior is forbidden." );
+            }
+
+            // SkipIfUnset (SDK default) — skip the file with INFO so ops can
+            // see the gate fired.
+            _logger.LogInformation(
+                "Resource file skipped: declares `context: [{contexts}]` but ActiveContext is unset (policy = SkipIfUnset).",
+                string.Join( ", ", fileContexts ) );
+            return false;
+        }
+
+        var activeTags = activeRaw
+            .Split( ',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries )
+            .ToHashSet( StringComparer.Ordinal );
+
+        var match = fileContexts.Any( tag => activeTags.Contains( tag ) );
+
+        if ( !match )
+        {
+            _logger.LogInformation(
+                "Resource file skipped: ActiveContext `{active}` does not intersect file context `[{contexts}]`.",
+                activeRaw, string.Join( ", ", fileContexts ) );
+            return false;
+        }
+
+        return true;
+    }
 
     private JsonNode? ResolveBody( Internal.Ast.StatementAst ast, JsonObject entry, int statementIndex, string? contextLabel )
     {

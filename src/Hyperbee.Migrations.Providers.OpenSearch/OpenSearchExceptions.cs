@@ -46,6 +46,19 @@ public sealed class RollbackNotSupportedException : OpenSearchProviderException
     }
 }
 
+// R-15: thrown at the resource-runner entry point when a statements.json
+// file declares a `context:` block AND the runner is configured with
+// ContextResolutionPolicy.RequireExplicit AND ActiveContext is null/empty.
+// `RequireExplicit` is the production default (set by WithProductionDefaults
+// per R-29); silent prod-everywhere behavior is forbidden by the trust
+// boundary, so the runner must fail loud rather than guess.
+
+public sealed class MissingActiveContextException : OpenSearchProviderException
+{
+    public MissingActiveContextException( string message )
+        : base( message ) { }
+}
+
 // R-19: thrown when a migration's ledger record is in `partially_rolled_back`
 // state and the operator has not opted into recovery via OpenSearchMigrationOptions.ForceResume.
 // Subsequent runs are refused in either direction until the operator
