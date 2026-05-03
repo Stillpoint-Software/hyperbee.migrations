@@ -110,10 +110,12 @@ JSON bodies attach to a statement via `WITH BODY <ref>`. The provider supports *
 #### Form 1 — Direct file reference (least ceremony)
 
 ```json
-{ "statement": "CREATE INDEX users WITH BODY @bodies/users-mapping.json" }
+{ "statement": "CREATE INDEX users WITH BODY @users-mapping.json" }
 ```
 
 The `@`-prefixed path loads an embedded resource **relative to the migration's own resource folder**. Use this for any body that would otherwise dominate the `statements.json` file — large mappings, ISM policies, reusable templates. The file must be marked `EmbeddedResource` in the project csproj (same convention as `statements.json`).
+
+Subfolders are optional. The path is just a relative file reference — `@foo.json`, `@bodies/foo.json`, and `@configs/users/v2.json` are all equally valid. Group bodies into subfolders when a single migration has many of them; otherwise leave them flat at the migration root.
 
 Path validation is parse-time:
 - Absolute paths (leading `/` or `\`) are rejected — body files must stay inside the migration's resource folder.
