@@ -100,23 +100,38 @@ public class NoWaitParserTests
         ast.NoWaitJustification.Should().Contain( "metadata" );
     }
 
-    // Parse-time rejection of bare/empty NO WAIT and DROP-INDEX-NO-WAIT
-    // is a SPEC requirement (R-12) but blocked on a wider parser-hygiene
-    // issue: Parlot's TryParse doesn't anchor to EOF, so trailing tokens
-    // after a successful prefix-match are silently dropped. `CREATE INDEX
-    // users NO WAIT` parses as `CREATE INDEX users` + trailing garbage,
-    // not as a NO-WAIT-without-parens failure. Same issue affects bare
-    // UNSAFE, MIGRATE INDEX with extra clauses, etc. — it isn't specific
-    // to NO WAIT.
+    // ---- parse-time rejection (R-12 spec) ----
     //
-    // Fix is to add `.Eof()` to the top-level OneOf, which would cleanly
-    // reject all trailing-garbage cases. That's a separate hardening
-    // slice (touches every verb's accept criteria; needs broader test
-    // coverage than this one feature warrants). Tracked as a known
-    // limitation; the user-visible impact today is "NO WAIT is silently
-    // dropped if the parens are missing" — not a correctness hazard,
-    // just a worse UX than the spec promises.
-    //
-    // Once EOF-anchoring lands, restore the four parse-time-rejection
-    // tests above (bare, empty, whitespace-only, DROP INDEX + NO WAIT).
+    // EOF-anchoring on the top-level parser ensures bare / empty / whitespace-only
+    // NO WAIT, and NO WAIT on non-mutating verbs (DROP INDEX), all fail at parse time.
+
+    [TestMethod]
+    public void CreateIndex_BareNoWait_NoParens_ParseFails()
+    {
+        var act = () => _parser.Parse( "CREATE INDEX users NO WAIT" );
+        act.Should().Throw<OpenSearchParseException>();
+    }
+
+    [TestMethod]
+    public void CreateIndex_NoWaitEmptyJustification_ParseFails()
+    {
+        var act = () => _parser.Parse( "CREATE INDEX users NO WAIT(\"\")" );
+        act.Should().Throw<OpenSearchParseException>();
+    }
+
+    [TestMethod]
+    public void CreateIndex_NoWaitWhitespaceJustification_ParseFails()
+    {
+        var act = () => _parser.Parse( "CREATE INDEX users NO WAIT(\"   \")" );
+        act.Should().Throw<OpenSearchParseException>();
+    }
+
+    [TestMethod]
+    public void DropIndex_NoWaitNotPermitted_ParseFails()
+    {
+        // DROP INDEX is non-mutating in the R-12 sense (no shard movement
+        // to wait on); the modifier is reserved for the five mutating verbs.
+        var act = () => _parser.Parse( "DROP INDEX users NO WAIT(\"nothing to wait on\")" );
+        act.Should().Throw<OpenSearchParseException>();
+    }
 }

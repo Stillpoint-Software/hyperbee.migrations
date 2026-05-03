@@ -39,7 +39,13 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
 
 public sealed class OpenSearchStatementParser
 {
-    private static readonly Parser<StatementAst> ParlotParser = BuildParser();
+    // .Eof() anchors the top-level parser so that any unconsumed trailing
+    // tokens are reported as a parse error rather than silently dropped.
+    // Without it, e.g. `CREATE INDEX users NO WAIT` would succeed as the
+    // prefix `CREATE INDEX users` with trailing garbage, defeating R-12's
+    // requirement that bare `NO WAIT` (without parens + justification)
+    // fail at parse time.
+    private static readonly Parser<StatementAst> ParlotParser = BuildParser().Eof();
 
     private static Parser<StatementAst> BuildParser()
     {
@@ -613,14 +619,26 @@ public sealed class OpenSearchStatementParser
     {
         ArgumentException.ThrowIfNullOrWhiteSpace( statement );
 
-        if ( !ParlotParser.TryParse( statement, out var result, out var error ) )
+        try
         {
-            var hint = error?.Message ?? "no recognized verb prefix";
-            throw new OpenSearchParseException(
-                $"Unable to parse statement: `{statement}`. {hint}." );
-        }
+            if ( !ParlotParser.TryParse( statement, out var result, out var error ) )
+            {
+                var hint = error?.Message ?? "no recognized verb prefix";
+                throw new OpenSearchParseException(
+                    $"Unable to parse statement: `{statement}`. {hint}." );
+            }
 
-        return result;
+            return result;
+        }
+        catch ( InvalidOperationException ex )
+        {
+            // Grammar-level validation (empty UNSAFE/NO WAIT justification,
+            // malformed WHEN VERSION literal) is reported by the parser via
+            // InvalidOperationException inside .Then(...) callbacks. Surface
+            // it as a parse failure so callers only need to handle one type.
+            throw new OpenSearchParseException(
+                $"Unable to parse statement: `{statement}`. {ex.Message}", ex );
+        }
     }
 
     // R-15a version literal parsing.
