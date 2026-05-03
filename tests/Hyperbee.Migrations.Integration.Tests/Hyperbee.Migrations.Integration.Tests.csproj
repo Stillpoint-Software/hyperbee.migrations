@@ -2,6 +2,15 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!--
+      Integration tests use Testcontainers and are gated by `#if INTEGRATIONS`
+      so a vanilla `dotnet test` run skips them by default. Set
+      `EnableIntegrationTests=true` to compile them in:
+        dotnet test /p:EnableIntegrationTests=true
+      The CI workflow `.github/workflows/multi_node_tests.yml` sets this for
+      multi-node-tagged tests on every PR (R-28b).
+    -->
+    <DefineConstants Condition="'$(EnableIntegrationTests)' == 'true'">$(DefineConstants);INTEGRATIONS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

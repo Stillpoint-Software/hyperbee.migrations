@@ -1,0 +1,85 @@
+name: Multi-Node Integration Tests
+
+# R-28b — multi-node Testcontainers Compose CI runs every PR.
+# Spins up a 3-node OpenSearch cluster and runs the [TestCategory("MultiNode")]
+# tests that exercise behaviors single-node Testcontainers fundamentally
+# masks (GREEN-threshold, replica allocation, shard relocation under load,
+# PA-2 lock-index replicas:0 invariant).
+#
+# This workflow is intentionally separate from the shared `Run Tests`
+# workflow because:
+#   - It requires Docker (the shared workflow may not).
+#   - It is heavier than unit tests (3 JVMs at ~512MB each, ~30s cluster
+#     formation per test class).
+#   - It compiles the integration test assembly with EnableIntegrationTests
+#     (which flips the `#if INTEGRATIONS` gate) — a property-driven
+#     define-constants flip rather than a source-level edit.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: multi-node-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  multi-node:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      - name: Restore
+        run: dotnet restore tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj
+
+      - name: Build (with EnableIntegrationTests)
+        run: >-
+          dotnet build
+          tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj
+          -c Release
+          --no-restore
+          /p:EnableIntegrationTests=true
+
+      - name: Run multi-node tests (TestCategory=MultiNode)
+        # Tests use [TestCategory("MultiNode")] so this filter picks them up
+        # without affecting other test classes. The MultiNode test class's
+        # [ClassInitialize] spins up the 3-node cluster.
+        # HYPERBEE_TESTS_SKIP_SINGLE_NODE=true bypasses the assembly-level
+        # single-node container startup (Mongo, Postgres, Couchbase,
+        # Aerospike, single-node OpenSearch) since the MultiNode tests
+        # don't need any of them.
+        env:
+          HYPERBEE_TESTS_SKIP_SINGLE_NODE: "true"
+        run: >-
+          dotnet test
+          tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj
+          -c Release
+          -f net10.0
+          --no-build
+          --filter "TestCategory=MultiNode"
+          --logger "trx;LogFileName=multinode.trx"
+          --logger "console;verbosity=normal"
+          /p:EnableIntegrationTests=true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-node-test-results
+          path: '**/*.trx'
+          if-no-files-found: warn
