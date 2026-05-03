@@ -38,7 +38,7 @@ Every Accepted ADR has both a code implementation path and a verification mechan
 
 These are NOT compliance failures — the ADRs are honored. They are areas where the verification could be tighter:
 
-1. **ADR-0012 (WithProductionDefaults)** — the extension method exists and registers a marker, but the options-factory wiring that flips the four defaults (Green threshold, PerMigration waits, RequireExplicit context, RequireUnsafeJustification) on options-instance construction is a Phase 6 follow-up per the ADR's own consequences section. Today, calling `WithProductionDefaults()` is the marker registration; the user still has to set the four options manually. Worth a follow-up slice once the options-factory pattern is settled. Not a regression — the slice was scoped this way intentionally per the requirements doc.
+1. ~~**ADR-0012 (WithProductionDefaults)**~~ — **CLOSED 2026-05-03**. Options-factory wiring landed in `ServiceCollectionExtensions.AddOpenSearchMigrations`: when the `UseProductionDefaultsMarker` is registered, the factory flips the four documented defaults (Green threshold, PerMigration waits, RequireUnsafeJustification, RequireExplicit context) on the `OpenSearchMigrationOptions` instance BEFORE invoking the user's configuration callback, so explicit user overrides still win. Coverage: `tests/Hyperbee.Migrations.Tests/Providers/OpenSearch/WithProductionDefaultsTests.cs` (3 tests).
 
 2. ~~**ADR-0009 (Convention-Based Record IDs)**~~ — **CLOSED 2026-05-03 (commit 163196f)**. Focused convention test added at `tests/Hyperbee.Migrations.Tests/DefaultMigrationConventionsTests.cs` covering the documented `record.<version>.<kebab-cased-name>` format and the missing-attribute throw path.
 
@@ -46,14 +46,15 @@ These are NOT compliance failures — the ADRs are honored. They are areas where
 
 ### Hardening landed alongside the audit
 
-Two adjacent items were addressed in the same hardening pass (commit 163196f):
+Items addressed in commits 163196f and the follow-up:
 
 - **EOF-anchored parser** — the OpenSearch statement parser now applies `.Eof()` to the top-level Parlot parser, so trailing tokens after a successful prefix-match are reported as parse errors instead of silently dropped. Closes the documented `NO WAIT` UX gap (bare `NO WAIT` without parens-and-justification used to parse as `<verb>` + trailing garbage; now correctly fails). Four parse-time-rejection tests previously deferred are now passing.
 - **Domain-exception wrapping** — grammar-level `InvalidOperationException` (raised inside Parlot `.Then(...)` callbacks for empty-justification and malformed version-literal validation) is now wrapped into `OpenSearchParseException` at the `Parse()` boundary. Callers handle one exception type.
+- **R-24c (f) bulk-load 429 retry coverage** — the OpenSearch.Net library owns the actual 429-retry mechanism (configured via `BulkAll`'s `BackOffRetries` / `BackOffTime` options, threaded through from `BulkLoadOptions` per R-20). The provider-owned behavior is the `BulkAllObserver`'s WARN-logging path when `response.Retries > 0`. Coverage: `tests/Hyperbee.Migrations.Tests/Providers/OpenSearch/BulkAllObserverRetryTests.cs` (4 unit tests driving the observer with synthetic responses) plus the joint cluster-level scenario added as Step 4 of `docs/runbooks/opensearch-aws-validation.md` (chaos via cluster-saturation against an undersized AWS instance).
 
 ### Open Questions during the audit
 
-None. All ADRs cleanly map to code + tests with the one remaining soft spot (ADR-0012) noted above.
+None. All ADRs cleanly map to code + tests; all soft spots noted in the original audit have been closed.
 
 ## Release readiness
 
@@ -61,7 +62,7 @@ The OpenSearch provider's ADR set (0011-0017) plus the cross-provider ADRs (0001
 
 The DoD line on the release checklist:
 
-> 2026-05-03  ADR compliance audit (0001-0017): PASS  (17/17 honored; 1 soft spot remaining (ADR-0012, non-blocking — deferred per its own consequences section); 2 closed in commit 163196f. See docs/research/0004-adr-compliance-audit.md)
+> 2026-05-03  ADR compliance audit (0001-0017): PASS  (17/17 honored; all soft spots closed). See docs/research/0004-adr-compliance-audit.md
 
 ## Method
 

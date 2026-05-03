@@ -595,9 +595,12 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
         return tcs.Task;
     }
 
-    // Lightweight inline IObserver — avoids pulling in a full Rx wrapper
-    // for one bulk-load helper.
-    private sealed class BulkAllObserver : IObserver<global::OpenSearch.Client.BulkAllResponse>
+    // Lightweight inline IObserver - avoids pulling in a full Rx wrapper
+    // for one bulk-load helper. Internal so the test project (via
+    // InternalsVisibleTo) can drive the retry-WARN logging path with a
+    // synthetic BulkAllResponse, satisfying R-24c (f) without standing
+    // up a chaos provider.
+    internal sealed class BulkAllObserver : IObserver<global::OpenSearch.Client.BulkAllResponse>
     {
         private readonly Action<global::OpenSearch.Client.BulkAllResponse> _onNext;
         private readonly Action<Exception> _onError;

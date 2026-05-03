@@ -116,7 +116,31 @@ grep "ism-detect" runner.log
 
 **If neither prefix works**, the runbook surfaces the IAM-permission failure: the bootstrap step fails with `OpenSearchProviderException` naming `es:ESHttp*` against the ISM resource ARN. Add the IAM action to the deploy role and rerun.
 
-### 4 — Credential rotation (long-running)
+### 4 — Bulk-load 429 chaos injection (R-24c (f))
+
+Verifies end-to-end that the bulk-load wrapper retries on 429 against a real cluster. The unit suite covers the observer's WARN-logging path (BulkAllObserverRetryTests); this step exercises the joint behavior under load.
+
+The simplest reproducible path uses a small AWS instance type (`t3.small.search`) and bursts a 50K-document bulk into the cluster. The cluster's request queue saturates, OpenSearch returns 429, the OpenSearch.Net library backs off per `BulkLoadOptions.InitialBackOff`, the wrapper logs `Bulk load: page N succeeded after R retries`, and the bulk eventually completes.
+
+```bash
+# Run the bulk-seed sample (sample 5 in the runner) against the AWS domain.
+# 50K docs at default 1000-doc batches and 8x parallelism is enough to
+# induce 429s on t3.small.search.
+DOTNET_ENVIRONMENT=aws-validation \
+  ./Hyperbee.MigrationRunner.OpenSearch \
+  --target 5000
+
+# Watch for the WARN log line:
+grep "Bulk load: page" runner.log
+```
+
+**Expected:** at least one `Bulk load: page N succeeded after R retries` line in the log (R > 0). The bulk completes; the runner exits 0.
+
+**Pass criterion:** retries observed AND bulk completes successfully. Zero retries observed on a single run is acceptable on larger instance types — record the instance type alongside the validation result.
+
+**If the bulk fails** with `RejectedExecutionException` after exhausting retries, the cluster is undersized OR `BackOffRetries` is too aggressive for the workload. Increase the instance type for validation; production deployments should size for the steady-state bulk rate, not a worst-case validation burst.
+
+### 5 — Credential rotation (long-running)
 
 Optional. If the validation runs for ≥1 hour against an IRSA-authenticated workload, the IAM session token should rotate at least once during the run without runner restart.
 
@@ -156,7 +180,9 @@ Failure during step 2 (smoke) → look at the FIRST failing sample and which ver
 
 Failure during step 3 (ISM detection) → the `IsmEndpointDetectStep`'s probe path is failing for non-404 reasons. Common causes: the IAM role lacks `es:ESHttp*` against `_plugins/_ism/*` (or `_opendistro_*` for older domains). The exception message names the IAM action required.
 
-Failure during step 4 (rotation) → uncommon. Check the AWS SDK version pinned by the OpenSearch.Net.Auth.AwsSigV4 package; older AWSSDK.Core versions had IRSA refresh bugs. Workaround: explicit `Credentials = new InstanceProfileAWSCredentials()` with a refresh interval rather than the default chain.
+Failure during step 4 (bulk 429 chaos) → if no retries are observed across multiple runs against a small instance, either the cluster has more headroom than the burst exercises (record the instance type and consider a larger burst) or the BackOffRetries config did not propagate (the unit-test suite's `BulkAllObserverRetryTests` and `BulkLoadOptionsTests` would have caught this — check that they're passing on the same commit).
+
+Failure during step 5 (rotation) → uncommon. Check the AWS SDK version pinned by the OpenSearch.Net.Auth.AwsSigV4 package; older AWSSDK.Core versions had IRSA refresh bugs. Workaround: explicit `Credentials = new InstanceProfileAWSCredentials()` with a refresh interval rather than the default chain.
 
 ## Out of scope
 

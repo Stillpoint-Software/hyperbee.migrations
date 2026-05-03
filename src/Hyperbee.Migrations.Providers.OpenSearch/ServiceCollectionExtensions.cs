@@ -31,6 +31,18 @@ public static class ServiceCollectionExtensions
         {
             var options = new OpenSearchMigrationOptions( new DefaultMigrationActivator( provider ) );
 
+            // ADR-0012 — apply production defaults BEFORE user configuration so
+            // explicit per-option settings still win. The marker is registered
+            // by WithProductionDefaults(); when present, flip the four defaults
+            // documented in the ADR consequences section.
+            if ( provider.GetService<UseProductionDefaultsMarker>() is not null )
+            {
+                options.ClusterHealthThreshold = ClusterHealthThreshold.Green;
+                options.WaitMode = WaitMode.PerMigration;
+                options.RequireUnsafeJustification = true;
+                options.ContextResolutionPolicy = ContextResolutionPolicy.RequireExplicit;
+            }
+
             configuration?.Invoke( options );
 
             // concat options.Assemblies with IConfiguration `FromAssemblies` and `FromPaths`
@@ -91,16 +103,15 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Marks the registration to apply production-safe defaults: Green health threshold,
-    /// PerMigration waits, UNSAFE/NO WAIT justification required, RequireExplicit context
-    /// resolution. Per ADR-0012 — explicit forcing function over hidden environment-profile
-    /// coupling. Per-option settings chained after this win (handled by the options factory
-    /// applying user configuration after defaults).
+    /// Applies production-safe defaults to the OpenSearch migration options:
+    /// <list type="bullet">
+    ///   <item><description><c>ClusterHealthThreshold = Green</c> — bootstrap waits for full shard allocation, not just primaries.</description></item>
+    ///   <item><description><c>WaitMode = PerMigration</c> — implicit waits coalesce to the end of each migration instead of after each statement.</description></item>
+    ///   <item><description><c>RequireUnsafeJustification = true</c> — bare <c>UNSAFE</c> / <c>NO WAIT</c> without a justification string fails at parse time.</description></item>
+    ///   <item><description><c>ContextResolutionPolicy = RequireExplicit</c> — context-scoped resources without an <c>ActiveContext</c> set are a loud error rather than silently skipped.</description></item>
+    /// </list>
+    /// Per ADR-0012 — explicit forcing function over hidden environment-profile coupling. Defaults are applied by the options factory BEFORE user configuration runs, so any per-option setting in the <c>configuration</c> callback wins.
     /// </summary>
-    /// <remarks>
-    /// Phase 0 scaffolding registers the marker only. Phase 6 lands the options-factory
-    /// integration that applies the four defaults before user configuration runs.
-    /// </remarks>
     public static IServiceCollection WithProductionDefaults( this IServiceCollection services )
     {
         services.TryAddSingleton<UseProductionDefaultsMarker>();
