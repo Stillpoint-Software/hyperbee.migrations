@@ -1,0 +1,16 @@
+{
+  "statements": [
+    {
+      "//": "Shared mappings + settings extracted as a component template. Indices that match the next statement's index_patterns will compose this in.",
+      "statement": "CREATE COMPONENT sample_app_events_mappings WITH BODY @bodies/component.json"
+    },
+    {
+      "//": "Index template with `aliases:` block — the cluster wires the alias automatically when a matching index is created. No runtime ALIAS ADD needed.",
+      "statement": "CREATE TEMPLATE sample_app_events WITH BODY @bodies/template.json"
+    },
+    {
+      "//": "ISM policy with `ism_template.index_patterns` — the cluster attaches this policy to any matching index at creation time. No runtime APPLY POLICY needed.",
+      "statement": "CREATE POLICY sample_app_events_lifecycle WITH BODY @bodies/policy.json"
+    }
+  ]
+}

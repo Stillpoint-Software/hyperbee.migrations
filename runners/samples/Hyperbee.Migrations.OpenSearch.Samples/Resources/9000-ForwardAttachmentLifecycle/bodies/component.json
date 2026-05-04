@@ -1,0 +1,18 @@
+{
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 1,
+      "refresh_interval": "30s"
+    },
+    "mappings": {
+      "dynamic": "strict",
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "level":      { "type": "keyword" },
+        "msg":        { "type": "text" },
+        "service":    { "type": "keyword" }
+      }
+    }
+  }
+}

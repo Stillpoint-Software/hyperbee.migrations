@@ -288,7 +288,29 @@ CREATE POLICY <id> [WITH BODY $body]
 APPLY POLICY <id> TO <pattern>
 ```
 
-`CREATE POLICY` uploads the policy to `_plugins/_ism/policies`. `APPLY POLICY` attaches it to existing indices matching the pattern via `_plugins/_ism/add` — the dispatcher inspects the response body and surfaces logical failures explicitly: HTTP 200 with `updated_indices: 0` is mapped to `Failed`, not silent OK. For future-only attachment, declare `ism_template.index_patterns` in the policy body (handled at index-creation time by the cluster).
+`CREATE POLICY` uploads the policy to `_plugins/_ism/policies`. `APPLY POLICY` attaches it to existing indices matching the pattern via `_plugins/_ism/add` — the dispatcher inspects the response body and surfaces logical failures explicitly: HTTP 200 with `updated_indices: 0` is mapped to `Failed`, not silent OK.
+
+#### Forward attachment vs runtime apply
+
+There are two ways to wire a policy (and an alias) to an index. Pick by whether the indices exist when the migration runs.
+
+**Forward attachment (preferred for greenfield).** When the index series doesn't exist yet — daily rollover indices for a new pipeline, fresh log streams, anything that the application or daily rollover will create later — let the cluster handle attachment lazily:
+
+- Inside the index template body, declare `template.aliases: { "<alias>": {} }`. The cluster wires the alias when a matching index is created.
+- Inside the ISM policy body, declare `ism_template.index_patterns: ["<pattern>"]`. The cluster attaches the policy to any matching index at creation time.
+
+The migration installs only the cluster-level scaffolding (component templates, index templates, ISM policies). No runtime `APPLY POLICY`, no runtime `ALIAS ADD`. Sample 9000 (`ForwardAttachmentLifecycle`) demonstrates the full pattern.
+
+**Runtime apply (required for existing indices).** When indices already exist and need a new policy or alias attached, runtime statements are the only path:
+
+- `APPLY POLICY <id> TO <pattern>` for ISM.
+- `ALIAS ADD <alias> ON <idx>` for aliases.
+
+Sample 4000 (`IsmPolicyAndApply`) demonstrates this case. The dispatcher's zero-updated-→-Failed escalation makes it loud when the pattern matches nothing.
+
+**Mixed.** If a new policy needs to apply to BOTH existing and future indices, do both: declare `ism_template` in the policy body for the future and run `APPLY POLICY` once for the current set.
+
+Caveat: `ism_template` inside a policy body is the modern endpoint shape. Older AWS-managed clusters served by the legacy `_opendistro/_ism` endpoint may not honor it; if `IsmEndpointDetectStep` resolves to the legacy endpoint, fall back to the runtime `APPLY POLICY` path even for forward attachment. Modern OpenSearch (2.x and the modern AWS endpoint) supports `ism_template` natively.
 
 ### Cluster waits
 

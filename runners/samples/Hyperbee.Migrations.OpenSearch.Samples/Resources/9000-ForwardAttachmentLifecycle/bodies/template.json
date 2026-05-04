@@ -1,0 +1,10 @@
+{
+  "index_patterns": ["sample_app_events-*"],
+  "priority": 100,
+  "composed_of": ["sample_app_events_mappings"],
+  "template": {
+    "aliases": {
+      "sample_app_events": {}
+    }
+  }
+}

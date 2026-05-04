@@ -15,10 +15,21 @@ this assembly via `Migrations:FromPaths` and runs them in version order.
 | 6000 | **`MigrateIndexComposite`** | **Featured: `MIGRATE INDEX` composite — the canonical template-propagation pattern (R-30)** | Form 2 |
 | 7000 | `ReversibleAlias` | Opt-in `rollback` per statement; partial-rollback ledger semantics (R-19) | (no bodies — DDL-only rollback) |
 | 8000 | `UnsafeReindex` | `REINDEX UNSAFE("<justification>")` — opt-out of `op_type:create` | Form 2 |
+| 9000 | `ForwardAttachmentLifecycle` | Greenfield-only: declarative attachment via `template.aliases` + `ism_template` — **no runtime `APPLY POLICY` or `ALIAS ADD`** | Form 1 — direct `WITH BODY @path` for each body |
 
 **Sample 6 is the headline.** Adopters asking "how do I apply a template/mapping
 change to existing data?" should be pointed at `MigrateIndexComposite` first;
 the long-form sample 2 exists to show what the composite expands to.
+
+**Samples 4 and 9 are paired.** Sample 4 demonstrates runtime attachment —
+`APPLY POLICY` on a wildcard pattern, used when the indices already exist.
+Sample 9 demonstrates declarative attachment — the policy's `ism_template`
+block and the template's `aliases:` block — used when the migration runs
+before the indices exist (greenfield rollover series). For most new
+pipelines, sample 9's pattern is preferred: the cluster handles attachment
+lazily, no follow-up migration is needed when the first index is created,
+and the wired-state of the cluster is fully described by the templates and
+policies, not by ad-hoc runtime calls.
 
 **Body-source forms.** ADR-0017 defines three resolution forms for `WITH BODY`
 references. The samples deliberately demonstrate all of them so authors can

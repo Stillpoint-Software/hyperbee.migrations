@@ -1,0 +1,26 @@
+{
+  "policy": {
+    "description": "Forward-attaching lifecycle policy. The `ism_template.index_patterns` block tells the cluster to attach this policy to any new index whose name matches `sample_app_events-*` at creation time. No runtime APPLY POLICY is required for indices that don't exist yet.",
+    "default_state": "hot",
+    "states": [
+      {
+        "name": "hot",
+        "actions": [],
+        "transitions": [
+          { "state_name": "delete", "conditions": { "min_index_age": "30d" } }
+        ]
+      },
+      {
+        "name": "delete",
+        "actions": [{ "delete": {} }],
+        "transitions": []
+      }
+    ],
+    "ism_template": [
+      {
+        "index_patterns": ["sample_app_events-*"],
+        "priority": 100
+      }
+    ]
+  }
+}

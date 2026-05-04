@@ -97,6 +97,34 @@ public class BodySourceParserTests
             .Where( e => e.Message.Contains( "absolute" ) || e.Message.Contains( "relative" ) );
     }
 
+    // Drive-letter prefix rejection (cross-platform asymmetry guard).
+    // `Path.IsPathRooted` is platform-dependent — `C:/foo` reads as rooted on
+    // Windows but not on Linux — so an author editing on one host could
+    // produce a manifest that's silently rooted on another. The validator
+    // checks the rooted shape explicitly.
+    [TestMethod]
+    [DataRow( "C:/foo/bar.json" )]
+    [DataRow( @"C:\foo\bar.json" )]
+    [DataRow( "c:/foo/bar.json" )]
+    [DataRow( @"Z:\bar.json" )]
+    [DataRow( "a:/x.json" )]
+    public void AtPath_DriveLetterPrefix_RejectedAtParseTime( string path )
+    {
+        var act = () => _parser.Parse( $"CREATE INDEX users WITH BODY @{path}" );
+        act.Should().Throw<Exception>()
+            .Where( e => e.Message.Contains( "absolute" ) || e.Message.Contains( "drive-letter" ) );
+    }
+
+    // Colon anywhere in a body path is rejected — embedded resource names
+    // never use it, and accepting it would muddy the drive-letter check.
+    [TestMethod]
+    public void AtPath_ColonInPath_RejectedAtParseTime()
+    {
+        var act = () => _parser.Parse( "CREATE INDEX users WITH BODY @bodies/foo:bar.json" );
+        act.Should().Throw<Exception>()
+            .Where( e => e.Message.Contains( ":" ) );
+    }
+
     [TestMethod]
     public void AtPath_ParentTraversal_RejectedAtParseTime()
     {
