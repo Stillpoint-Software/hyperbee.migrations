@@ -6,6 +6,8 @@ using Hyperbee.Migrations.Providers.OpenSearch.Internal.Bootstrap.Steps;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Middleware;
 using Microsoft.Extensions.Logging;
 using OpenSearch.Net;
+using HttpMethod = OpenSearch.Net.HttpMethod;
+using Osc = OpenSearch.Client;
 
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Dispatch;
 
@@ -140,7 +142,7 @@ public sealed class StatementDispatcher
     {
         var ll = context.Client.LowLevel;
         var response = await ll.DoRequestAsync<StringResponse>(
-            global::OpenSearch.Net.HttpMethod.GET, string.Empty, context.CancellationToken ).ConfigureAwait( false );
+            HttpMethod.GET, string.Empty, context.CancellationToken ).ConfigureAwait( false );
 
         if ( !response.Success )
         {
@@ -433,8 +435,19 @@ public sealed class StatementDispatcher
                 OpenSearchResponseStatus: 200 );
         }
 
-        var dynamicResponse = await ll.Indices.UpdateSettingsAsync<StringResponse>(
-            ast.IndexName, PostData.String( body ), ctx: context.CancellationToken ).ConfigureAwait( false );
+        StringResponse dynamicResponse;
+        try
+        {
+            dynamicResponse = await ll.Indices.UpdateSettingsAsync<StringResponse>(
+                ast.IndexName, PostData.String( body ), ctx: context.CancellationToken ).ConfigureAwait( false );
+        }
+        catch ( OpenSearchClientException ex )
+        {
+            return new StatementResult( StatementOutcome.Failed, verb,
+                Detail: ex.Message,
+                OpenSearchResponseStatus: ex.Response?.HttpStatusCode,
+                Exception: ex );
+        }
 
         var result = BuildResult( verb, dynamicResponse, $"settings updated on `{ast.IndexName}`" );
 
@@ -464,8 +477,8 @@ public sealed class StatementDispatcher
         var verb = ast.Verb;
 
         var threshold = ast.Threshold == HealthStatus.Green
-            ? global::OpenSearch.Net.WaitForStatus.Green
-            : global::OpenSearch.Net.WaitForStatus.Yellow;
+            ? WaitForStatus.Green
+            : WaitForStatus.Yellow;
 
         var timeout = ast.Timeout ?? context.Options.ImplicitWaitTimeout;
 
@@ -474,7 +487,7 @@ public sealed class StatementDispatcher
             {
                 var sel = s.WaitForStatus( threshold ).Timeout( timeout );
                 if ( ast.IndexName is not null )
-                    sel = sel.Index( global::OpenSearch.Client.Indices.Index( ast.IndexName ) );
+                    sel = sel.Index( Osc.Indices.Index( ast.IndexName ) );
                 return sel;
             },
             ct: context.CancellationToken
@@ -577,8 +590,19 @@ public sealed class StatementDispatcher
         // is a Phase 2 enhancement (R-11) — authors who need it can compose with
         // WAIT UNTIL TASK once the runner exposes the task id.
 
-        var response = await ll.ReindexOnServerAsync<StringResponse>(
-            PostData.String( body ), ctx: context.CancellationToken ).ConfigureAwait( false );
+        StringResponse response;
+        try
+        {
+            response = await ll.ReindexOnServerAsync<StringResponse>(
+                PostData.String( body ), ctx: context.CancellationToken ).ConfigureAwait( false );
+        }
+        catch ( OpenSearchClientException ex )
+        {
+            return new StatementResult( StatementOutcome.Failed, verb,
+                Detail: ex.Message,
+                OpenSearchResponseStatus: ex.Response?.HttpStatusCode,
+                Exception: ex );
+        }
 
         var result = BuildResult( verb, response, $"reindex {ast.Source} -> {ast.Destination}" );
 
@@ -613,7 +637,7 @@ public sealed class StatementDispatcher
             """;
 
         var response = await ll.DoRequestAsync<StringResponse>(
-            global::OpenSearch.Net.HttpMethod.POST,
+            HttpMethod.POST,
             "_aliases",
             context.CancellationToken,
             data: PostData.String( body ) ).ConfigureAwait( false );
@@ -638,7 +662,7 @@ public sealed class StatementDispatcher
             """;
 
         var response = await ll.DoRequestAsync<StringResponse>(
-            global::OpenSearch.Net.HttpMethod.POST,
+            HttpMethod.POST,
             "_aliases",
             context.CancellationToken,
             data: PostData.String( body ) ).ConfigureAwait( false );
@@ -658,7 +682,7 @@ public sealed class StatementDispatcher
             """;
 
         var response = await ll.DoRequestAsync<StringResponse>(
-            global::OpenSearch.Net.HttpMethod.POST,
+            HttpMethod.POST,
             "_aliases",
             context.CancellationToken,
             data: PostData.String( body ) ).ConfigureAwait( false );
@@ -686,7 +710,7 @@ public sealed class StatementDispatcher
         // Idempotent: PUT replaces an existing template definition.
 
         var response = await ll.DoRequestAsync<StringResponse>(
-            global::OpenSearch.Net.HttpMethod.PUT,
+            HttpMethod.PUT,
             $"_index_template/{ast.TemplateName}",
             context.CancellationToken,
             data: PostData.String( body ) ).ConfigureAwait( false );
@@ -714,7 +738,7 @@ public sealed class StatementDispatcher
         // by composable index templates via `composed_of`.
 
         var response = await ll.DoRequestAsync<StringResponse>(
-            global::OpenSearch.Net.HttpMethod.PUT,
+            HttpMethod.PUT,
             $"_component_template/{ast.ComponentName}",
             context.CancellationToken,
             data: PostData.String( body ) ).ConfigureAwait( false );
@@ -732,7 +756,7 @@ public sealed class StatementDispatcher
         if ( ast.IfExists )
         {
             var existsResponse = await ll.DoRequestAsync<StringResponse>(
-                global::OpenSearch.Net.HttpMethod.HEAD,
+                HttpMethod.HEAD,
                 $"_index_template/{ast.TemplateName}",
                 context.CancellationToken ).ConfigureAwait( false );
 
@@ -746,7 +770,7 @@ public sealed class StatementDispatcher
         }
 
         var response = await ll.DoRequestAsync<StringResponse>(
-            global::OpenSearch.Net.HttpMethod.DELETE,
+            HttpMethod.DELETE,
             $"_index_template/{ast.TemplateName}",
             context.CancellationToken ).ConfigureAwait( false );
 
@@ -763,7 +787,7 @@ public sealed class StatementDispatcher
         if ( ast.IfExists )
         {
             var existsResponse = await ll.DoRequestAsync<StringResponse>(
-                global::OpenSearch.Net.HttpMethod.HEAD,
+                HttpMethod.HEAD,
                 $"_component_template/{ast.ComponentName}",
                 context.CancellationToken ).ConfigureAwait( false );
 
@@ -781,7 +805,7 @@ public sealed class StatementDispatcher
         // dispatcher surfaces that error verbatim via BuildResult.
 
         var response = await ll.DoRequestAsync<StringResponse>(
-            global::OpenSearch.Net.HttpMethod.DELETE,
+            HttpMethod.DELETE,
             $"_component_template/{ast.ComponentName}",
             context.CancellationToken ).ConfigureAwait( false );
 
@@ -819,21 +843,35 @@ public sealed class StatementDispatcher
         // not under _source — unusual but documented), retry PUT with the
         // CAS query parameters. Mirrors LockHandle.RenewLockAsync's
         // optimistic-concurrency pattern.
+        //
+        // 409 surfaces either as a non-Success StringResponse (default
+        // settings) OR as OpenSearchClientException (when the consumer
+        // configured ConnectionSettings.ThrowExceptions(), which test
+        // containers and some prod deployments do). Handle both uniformly,
+        // matching the pattern in OpenSearchRecordStore.AcquireLockAsync.
 
-        var firstResponse = await ll.DoRequestAsync<StringResponse>(
-            global::OpenSearch.Net.HttpMethod.PUT,
-            policyPath,
-            context.CancellationToken,
-            data: PostData.String( body ) ).ConfigureAwait( false );
+        var (firstResponse, firstHit409) = await PutPolicyAsync(
+            ll, policyPath, body, context.CancellationToken ).ConfigureAwait( false );
 
-        if ( firstResponse.HttpStatusCode != 409 )
-            return BuildResult( verb, firstResponse, $"policy `{ast.PolicyId}` created/updated" );
+        if ( !firstHit409 )
+            return BuildResult( verb, firstResponse!, $"policy `{ast.PolicyId}` created/updated" );
 
         // 409 — read the current version to retry with CAS.
-        var getResponse = await ll.DoRequestAsync<StringResponse>(
-            global::OpenSearch.Net.HttpMethod.GET,
-            policyPath,
-            context.CancellationToken ).ConfigureAwait( false );
+        StringResponse? getResponse;
+        try
+        {
+            getResponse = await ll.DoRequestAsync<StringResponse>(
+                HttpMethod.GET,
+                policyPath,
+                context.CancellationToken ).ConfigureAwait( false );
+        }
+        catch ( OpenSearchClientException ex )
+        {
+            return new StatementResult( StatementOutcome.Failed, verb,
+                Detail: $"policy `{ast.PolicyId}` returned 409 on PUT but the follow-up GET to read _seq_no/_primary_term for CAS retry threw: HTTP {ex.Response?.HttpStatusCode}, {ex.Message}",
+                OpenSearchResponseStatus: ex.Response?.HttpStatusCode,
+                Exception: ex );
+        }
 
         if ( !getResponse.Success || getResponse.Body is null )
         {
@@ -866,28 +904,63 @@ public sealed class StatementDispatcher
                 Exception: ex );
         }
 
-        // Retry the PUT with CAS query params. Inline rather than via a typed
-        // IRequestParameters because there's no ISM-specific request-parameters
-        // type in OpenSearch.Net (the endpoint is plugin-served).
-        var retryPath = $"{policyPath}?if_seq_no={seqNo}&if_primary_term={primaryTerm}";
-        var retryResponse = await ll.DoRequestAsync<StringResponse>(
-            global::OpenSearch.Net.HttpMethod.PUT,
-            retryPath,
-            context.CancellationToken,
-            data: PostData.String( body ) ).ConfigureAwait( false );
+        // Retry the PUT with CAS query params passed via IRequestParameters —
+        // OpenSearch.Net rejects paths that embed query strings directly.
+        var (retryResponse, retryHit409) = await PutPolicyAsync(
+            ll, policyPath, body, context.CancellationToken,
+            new CasPutParameters( seqNo, primaryTerm ) ).ConfigureAwait( false );
 
-        if ( retryResponse.HttpStatusCode == 409 )
+        if ( retryHit409 )
         {
             // Second 409 means another writer beat us between the GET and
             // the retry PUT. The lock should make this rare; treat as hard
             // failure rather than recursing.
             return new StatementResult( StatementOutcome.Failed, verb,
                 Detail: $"policy `{ast.PolicyId}` CAS retry hit a second 409 — concurrent writer between GET (_seq_no={seqNo}, _primary_term={primaryTerm}) and retry PUT.",
-                OpenSearchResponseStatus: retryResponse.HttpStatusCode,
-                Exception: retryResponse.OriginalException ?? new InvalidOperationException( $"concurrent writer on policy {ast.PolicyId}" ) );
+                OpenSearchResponseStatus: 409,
+                Exception: retryResponse?.OriginalException ?? new InvalidOperationException( $"concurrent writer on policy {ast.PolicyId}" ) );
         }
 
-        return BuildResult( verb, retryResponse, $"policy `{ast.PolicyId}` updated via CAS retry (seq={seqNo}, term={primaryTerm})" );
+        return BuildResult( verb, retryResponse!, $"policy `{ast.PolicyId}` updated via CAS retry (seq={seqNo}, term={primaryTerm})" );
+    }
+
+    // PUT a policy body and report whether the result was a 409, transparent
+    // to whether the consumer's ConnectionSettings has ThrowExceptions enabled.
+    // Returns (response, hit409). When hit409 is true, response may be null
+    // (the throwing path).
+    private static async Task<(StringResponse? Response, bool Hit409)> PutPolicyAsync(
+        IOpenSearchLowLevelClient ll,
+        string path,
+        string body,
+        CancellationToken cancellationToken,
+        IRequestParameters? requestParameters = null )
+    {
+        try
+        {
+            var response = await ll.DoRequestAsync<StringResponse>(
+                HttpMethod.PUT,
+                path,
+                cancellationToken,
+                data: PostData.String( body ),
+                requestParameters: requestParameters ).ConfigureAwait( false );
+            return (response, response.HttpStatusCode == 409);
+        }
+        catch ( OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 409 )
+        {
+            return (null, true);
+        }
+    }
+
+    private sealed class CasPutParameters : RequestParameters<CasPutParameters>
+    {
+        public override HttpMethod DefaultHttpMethod => HttpMethod.PUT;
+        public override bool SupportsBody => true;
+
+        public CasPutParameters( long seqNo, long primaryTerm )
+        {
+            QueryString["if_seq_no"] = seqNo;
+            QueryString["if_primary_term"] = primaryTerm;
+        }
     }
 
     // --- APPLY POLICY <id> TO <pattern> ---
@@ -912,7 +985,7 @@ public sealed class StatementDispatcher
             """;
 
         var response = await ll.DoRequestAsync<StringResponse>(
-            global::OpenSearch.Net.HttpMethod.POST,
+            HttpMethod.POST,
             $"{IsmPathPrefix}/add/{ast.IndexPattern}",
             context.CancellationToken,
             data: PostData.String( body ) ).ConfigureAwait( false );
@@ -1052,8 +1125,8 @@ public sealed class StatementDispatcher
     private static async Task ExecuteHealthWaitAsync( StatementContext context, IReadOnlyCollection<string> indices )
     {
         var threshold = context.Options.ClusterHealthThreshold == ClusterHealthThreshold.Green
-            ? global::OpenSearch.Net.WaitForStatus.Green
-            : global::OpenSearch.Net.WaitForStatus.Yellow;
+            ? WaitForStatus.Green
+            : WaitForStatus.Yellow;
 
         var timeout = context.Options.ImplicitWaitTimeout;
 
@@ -1063,7 +1136,7 @@ public sealed class StatementDispatcher
                 selector: s => s
                     .WaitForStatus( threshold )
                     .Timeout( timeout )
-                    .Index( global::OpenSearch.Client.Indices.Index( string.Join( ",", indices ) ) ),
+                    .Index( Osc.Indices.Index( string.Join( ",", indices ) ) ),
                 ct: context.CancellationToken
             ).ConfigureAwait( false );
         }

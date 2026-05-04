@@ -29,7 +29,13 @@ public class CouchbaseTestContainer
             .WithNetwork( network )
             .WithNetworkAliases( "db" )
 
-            .WithPortBinding( 80, 80 )
+            // Couchbase Server's documented ports are 8091-8096 (REST/UI/services)
+            // and 11210/11211 (data) — port 80 is not in the cluster-map and the
+            // SDK never connects to it, so binding host:80 was always vestigial.
+            // The previous binding ran into HTTP.sys URL-ACL conflicts on Windows
+            // hosts where Windows services (SSDP, WinRM, etc.) hold reservations
+            // on port 80; removing it eliminates the conflict everywhere without
+            // changing test behavior.
             .WithPortBinding( 11210, 11210 )
             .WithPortBinding( 8091, 8091 )
             .WithPortBinding( 8092, 8092 )
