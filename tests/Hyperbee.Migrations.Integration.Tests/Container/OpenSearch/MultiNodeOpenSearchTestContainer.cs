@@ -167,12 +167,23 @@ public class MultiNodeOpenSearchTestContainer
 
     private static async Task WaitForFullClusterAsync( CancellationToken cancellationToken )
     {
-        // Poll _cluster/health until it reports number_of_nodes == NodeCount,
-        // up to a generous deadline. 3 nodes typically converge within 10–20s
-        // after node3 starts; bail out at 60s with a clear error so a stuck
-        // cluster surfaces as a fixture failure rather than a confusing
+        // Poll _cluster/health until the cluster is fully formed AND green —
+        // not just "3 nodes joined" but "all shards allocated". On shared CI
+        // runners cluster formation can take well over a minute (image pull,
+        // JVM warm-up, election); local Docker typically converges in 10–20s.
+        // We deliberately accept a long deadline because a genuinely-stuck
+        // cluster is rare and the cost of a false negative (a flake) is much
+        // higher than the cost of a slow happy-path. Bailing out with a
+        // clear error keeps a real hang from masquerading as a confusing
         // test-time symptom.
-        var deadline = DateTimeOffset.UtcNow.AddSeconds( 60 );
+        //
+        // Returning only on GREEN is load-bearing for tests that REINDEX or
+        // hit `_aliases` immediately after fixture setup — they get
+        // connection resets if shards are still being assigned.
+        const int DeadlineSeconds = 180;
+        var deadline = DateTimeOffset.UtcNow.AddSeconds( DeadlineSeconds );
+        var nodesJoined = false;
+        string? lastStatus = null;
         while ( DateTimeOffset.UtcNow < deadline )
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -182,8 +193,28 @@ public class MultiNodeOpenSearchTestContainer
                 var resp = await LowLevelClient.DoRequestAsync<StringResponse>(
                     global::OpenSearch.Net.HttpMethod.GET, "_cluster/health", cancellationToken ).ConfigureAwait( false );
 
-                if ( resp.Success && resp.Body!.Contains( $"\"number_of_nodes\":{NodeCount}" ) )
-                    return;
+                if ( resp.Success && resp.Body is not null )
+                {
+                    if ( resp.Body.Contains( $"\"number_of_nodes\":{NodeCount}" ) )
+                        nodesJoined = true;
+
+                    if ( nodesJoined )
+                    {
+                        // Cheap substring check on the JSON body avoids pulling
+                        // in System.Text.Json here; the body is small and the
+                        // status field is unique.
+                        if ( resp.Body.Contains( "\"status\":\"green\"" ) )
+                        {
+                            lastStatus = "green";
+                            return;
+                        }
+
+                        if ( resp.Body.Contains( "\"status\":\"yellow\"" ) )
+                            lastStatus = "yellow";
+                        else if ( resp.Body.Contains( "\"status\":\"red\"" ) )
+                            lastStatus = "red";
+                    }
+                }
             }
             catch
             {
@@ -194,7 +225,8 @@ public class MultiNodeOpenSearchTestContainer
         }
 
         throw new InvalidOperationException(
-            $"Multi-node OpenSearch cluster did not reach number_of_nodes={NodeCount} within 60s. " +
+            $"Multi-node OpenSearch cluster did not converge to GREEN within {DeadlineSeconds}s " +
+            $"(nodesJoined={nodesJoined}, lastStatus={lastStatus ?? "<none>"}). " +
             "Check Docker resources (3 JVMs at ~512MB each) and the test container logs." );
     }
 }
