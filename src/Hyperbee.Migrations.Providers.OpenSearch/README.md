@@ -290,27 +290,21 @@ APPLY POLICY <id> TO <pattern>
 
 `CREATE POLICY` uploads the policy to `_plugins/_ism/policies`. `APPLY POLICY` attaches it to existing indices matching the pattern via `_plugins/_ism/add` — the dispatcher inspects the response body and surfaces logical failures explicitly: HTTP 200 with `updated_indices: 0` is mapped to `Failed`, not silent OK.
 
-#### Forward attachment vs runtime apply
+#### Three temporal scopes for ISM attachment
 
-There are two ways to wire a policy (and an alias) to an index. Pick by whether the indices exist when the migration runs.
+ISM attachment to an index series isn't one problem with three solutions — it's three different problems, each with its own right tool. Pick by *when* the indices that need the policy come into existence relative to the migration that owns the policy.
 
-**Forward attachment (preferred for greenfield).** When the index series doesn't exist yet — daily rollover indices for a new pipeline, fresh log streams, anything that the application or daily rollover will create later — let the cluster handle attachment lazily:
+| Scope | Right tool | Sample | Notes |
+|---|---|---|---|
+| **Greenfield** — attach to indices that will be created in the future | `ism_template.index_patterns` in the policy body, `template.aliases` in the index template | 9000 — `ForwardAttachmentLifecycle` | Cluster handles it lazily at index-creation time. No migration runtime cost. Won't help with indices that already exist when the migration runs. |
+| **One-time backfill** — attach a policy to a set of indices that already exist at migration run time | Runtime `APPLY POLICY <id> TO <pattern>` in a normal `[Migration(N)]` | 4000 — `IsmPolicyAndApply` | Single-shot, journaled. Wildcards adapt to current cluster state at run time. Zero-updated → `Failed` escalation makes it loud when the pattern matches nothing. |
+| **Ongoing reconciliation** — keep all matching existing indices on the current policy as the policy evolves | Runtime `APPLY POLICY <id> TO <pattern>` in a `[Migration(N, journal: false)]` | 9001 — `OngoingPolicyReconciliation` | Re-runs on every startup. Idempotent on the wire (ISM's `change_policy` is a no-op for already-on-policy indices). The wildcard form is correct because the set of indices to reconcile changes as new ones roll over and old ones are deleted. |
 
-- Inside the index template body, declare `template.aliases: { "<alias>": {} }`. The cluster wires the alias when a matching index is created.
-- Inside the ISM policy body, declare `ism_template.index_patterns: ["<pattern>"]`. The cluster attaches the policy to any matching index at creation time.
+The three are stackable. A typical mature pipeline uses **greenfield** at install time, **one-time backfill** when an existing series first adopts the policy, and **ongoing reconciliation** as the policy definition evolves over the project's lifetime. Many pipelines never need more than one — but you should choose deliberately rather than reach for runtime `APPLY POLICY` by default.
 
-The migration installs only the cluster-level scaffolding (component templates, index templates, ISM policies). No runtime `APPLY POLICY`, no runtime `ALIAS ADD`. Sample 9000 (`ForwardAttachmentLifecycle`) demonstrates the full pattern.
+The wildcard form of `APPLY POLICY` is the correct expression of "apply to whatever matches now" — that's exactly what backfill and reconciliation want. Don't try to pin to a literal index list as a substitute for forward-attachment; if the goal is "future indices auto-attach," `ism_template` is the right answer.
 
-**Runtime apply (required for existing indices).** When indices already exist and need a new policy or alias attached, runtime statements are the only path:
-
-- `APPLY POLICY <id> TO <pattern>` for ISM.
-- `ALIAS ADD <alias> ON <idx>` for aliases.
-
-Sample 4000 (`IsmPolicyAndApply`) demonstrates this case. The dispatcher's zero-updated-→-Failed escalation makes it loud when the pattern matches nothing.
-
-**Mixed.** If a new policy needs to apply to BOTH existing and future indices, do both: declare `ism_template` in the policy body for the future and run `APPLY POLICY` once for the current set.
-
-Caveat: `ism_template` inside a policy body is the modern endpoint shape. Older AWS-managed clusters served by the legacy `_opendistro/_ism` endpoint may not honor it; if `IsmEndpointDetectStep` resolves to the legacy endpoint, fall back to the runtime `APPLY POLICY` path even for forward attachment. Modern OpenSearch (2.x and the modern AWS endpoint) supports `ism_template` natively.
+Caveat: `ism_template` inside a policy body is the modern endpoint shape. Older AWS-managed clusters served by the legacy `_opendistro/_ism` endpoint may not honor it; if `IsmEndpointDetectStep` resolves to the legacy endpoint, the greenfield row falls back to runtime `APPLY POLICY` (sample 4000's pattern, run once at install time, plus sample 9001's reconciliation pattern for ongoing changes). Modern OpenSearch (2.x and the modern AWS endpoint) supports `ism_template` natively.
 
 ### Cluster waits
 

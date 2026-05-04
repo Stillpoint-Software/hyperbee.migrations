@@ -19,6 +19,7 @@
     <None Remove="Resources\9000-ForwardAttachmentLifecycle\bodies\component.json" />
     <None Remove="Resources\9000-ForwardAttachmentLifecycle\bodies\template.json" />
     <None Remove="Resources\9000-ForwardAttachmentLifecycle\bodies\policy.json" />
+    <None Remove="Resources\9001-OngoingPolicyReconciliation\statements.json" />
   </ItemGroup>
 
   <ItemGroup>
@@ -36,6 +37,7 @@
     <EmbeddedResource Include="Resources\9000-ForwardAttachmentLifecycle\bodies\component.json" />
     <EmbeddedResource Include="Resources\9000-ForwardAttachmentLifecycle\bodies\template.json" />
     <EmbeddedResource Include="Resources\9000-ForwardAttachmentLifecycle\bodies\policy.json" />
+    <EmbeddedResource Include="Resources\9001-OngoingPolicyReconciliation\statements.json" />
   </ItemGroup>
 
   <ItemGroup>
