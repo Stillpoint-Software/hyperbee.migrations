@@ -503,6 +503,8 @@ Uploads the policy to `_plugins/_ism/policies` (or `_opendistro/_ism/policies` o
 }
 ```
 
+`CREATE POLICY` is **idempotent**. ISM versions policies internally, so a plain `PUT` to an already-existing policy returns HTTP 409 `version_conflict_engine_exception`. The dispatcher transparently handles this: on 409 it reads the current `_seq_no` and `_primary_term` from the existing policy and retries the `PUT` with `if_seq_no` / `if_primary_term` query parameters. The result is upsert semantics -- no behavior change when the policy doesn't exist; safe re-execution when it does. This makes `CREATE POLICY` usable inside `[Migration(N, journal: false)]` reconciliation migrations that re-run on every startup. A second 409 on the retry indicates a concurrent writer between the GET and the retry PUT and is surfaced as a hard failure (the migration lock should make this rare).
+
 ### APPLY POLICY (ISM)
 
 ```
