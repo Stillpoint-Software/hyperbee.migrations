@@ -308,6 +308,8 @@ The wildcard form of `APPLY POLICY` is the correct expression of "apply to whate
 
 Caveat: `ism_template` inside a policy body is the modern endpoint shape. Older AWS-managed clusters served by the legacy `_opendistro/_ism` endpoint may not honor it; if `IsmEndpointDetectStep` resolves to the legacy endpoint, the greenfield row falls back to runtime `APPLY POLICY` (sample 4000's pattern, run once at install time, plus sample 9001's reconciliation pattern for ongoing changes). Modern OpenSearch (2.x and the modern AWS endpoint) supports `ism_template` natively.
 
+`CREATE POLICY` is **idempotent**. ISM versions policies internally, so a plain `PUT` to an already-existing policy returns HTTP 409 `version_conflict_engine_exception`. The dispatcher transparently handles this: on 409 it reads the current `_seq_no` and `_primary_term` from the existing policy and retries the `PUT` with `if_seq_no` / `if_primary_term` query parameters. The result is upsert semantics — no behavior change when the policy doesn't exist; safe re-execution when it does. This makes `CREATE POLICY` usable inside `[Migration(N, journal: false)]` reconciliation migrations that re-run on every startup. A second 409 on the retry indicates a concurrent writer between the GET and the retry PUT and is surfaced as a hard failure (the migration lock should make this rare).
+
 ### Cluster waits
 
 ```

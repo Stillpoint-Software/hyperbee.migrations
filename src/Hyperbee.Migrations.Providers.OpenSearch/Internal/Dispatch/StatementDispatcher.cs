@@ -803,16 +803,91 @@ public sealed class StatementDispatcher
         }
 
         var body = context.ResolvedBody.ToJsonString();
+        var policyPath = $"{IsmPathPrefix}/policies/{ast.PolicyId}";
 
         // PUT /_plugins/_ism/policies/<id> — Index State Management policy.
+        //
+        // ISM policies are versioned in OpenSearch: a plain PUT to an
+        // existing policy fails with HTTP 409 `version_conflict_engine_exception`.
+        // Authors using the [Migration(N, journal: false)] reconciliation
+        // pattern (see provider README's "Three temporal scopes for ISM
+        // attachment") need CREATE POLICY to be idempotent so the policy
+        // body can be upserted from source-of-truth on every startup.
+        //
+        // On 409: GET the existing policy, read `_seq_no` + `_primary_term`
+        // from the response root (ISM surfaces these at the document root,
+        // not under _source — unusual but documented), retry PUT with the
+        // CAS query parameters. Mirrors LockHandle.RenewLockAsync's
+        // optimistic-concurrency pattern.
 
-        var response = await ll.DoRequestAsync<StringResponse>(
+        var firstResponse = await ll.DoRequestAsync<StringResponse>(
             global::OpenSearch.Net.HttpMethod.PUT,
-            $"{IsmPathPrefix}/policies/{ast.PolicyId}",
+            policyPath,
             context.CancellationToken,
             data: PostData.String( body ) ).ConfigureAwait( false );
 
-        return BuildResult( verb, response, $"policy `{ast.PolicyId}` created/updated" );
+        if ( firstResponse.HttpStatusCode != 409 )
+            return BuildResult( verb, firstResponse, $"policy `{ast.PolicyId}` created/updated" );
+
+        // 409 — read the current version to retry with CAS.
+        var getResponse = await ll.DoRequestAsync<StringResponse>(
+            global::OpenSearch.Net.HttpMethod.GET,
+            policyPath,
+            context.CancellationToken ).ConfigureAwait( false );
+
+        if ( !getResponse.Success || getResponse.Body is null )
+        {
+            return new StatementResult( StatementOutcome.Failed, verb,
+                Detail: $"policy `{ast.PolicyId}` returned 409 on PUT but the follow-up GET to read _seq_no/_primary_term for CAS retry failed: HTTP {getResponse.HttpStatusCode}",
+                OpenSearchResponseStatus: getResponse.HttpStatusCode,
+                Exception: getResponse.OriginalException );
+        }
+
+        long seqNo = 0;
+        long primaryTerm = 0;
+        try
+        {
+            using var doc = JsonDocument.Parse( getResponse.Body );
+            if ( !doc.RootElement.TryGetProperty( "_seq_no", out var seqEl )
+                 || !doc.RootElement.TryGetProperty( "_primary_term", out var termEl )
+                 || !seqEl.TryGetInt64( out seqNo )
+                 || !termEl.TryGetInt64( out primaryTerm ) )
+            {
+                return new StatementResult( StatementOutcome.Failed, verb,
+                    Detail: $"policy `{ast.PolicyId}` 409 conflict; CAS retry could not extract _seq_no/_primary_term from GET response (response did not contain the expected fields).",
+                    OpenSearchResponseStatus: getResponse.HttpStatusCode );
+            }
+        }
+        catch ( JsonException ex )
+        {
+            return new StatementResult( StatementOutcome.Failed, verb,
+                Detail: $"policy `{ast.PolicyId}` 409 conflict; CAS retry could not parse GET response body as JSON: {ex.Message}",
+                OpenSearchResponseStatus: getResponse.HttpStatusCode,
+                Exception: ex );
+        }
+
+        // Retry the PUT with CAS query params. Inline rather than via a typed
+        // IRequestParameters because there's no ISM-specific request-parameters
+        // type in OpenSearch.Net (the endpoint is plugin-served).
+        var retryPath = $"{policyPath}?if_seq_no={seqNo}&if_primary_term={primaryTerm}";
+        var retryResponse = await ll.DoRequestAsync<StringResponse>(
+            global::OpenSearch.Net.HttpMethod.PUT,
+            retryPath,
+            context.CancellationToken,
+            data: PostData.String( body ) ).ConfigureAwait( false );
+
+        if ( retryResponse.HttpStatusCode == 409 )
+        {
+            // Second 409 means another writer beat us between the GET and
+            // the retry PUT. The lock should make this rare; treat as hard
+            // failure rather than recursing.
+            return new StatementResult( StatementOutcome.Failed, verb,
+                Detail: $"policy `{ast.PolicyId}` CAS retry hit a second 409 — concurrent writer between GET (_seq_no={seqNo}, _primary_term={primaryTerm}) and retry PUT.",
+                OpenSearchResponseStatus: retryResponse.HttpStatusCode,
+                Exception: retryResponse.OriginalException ?? new InvalidOperationException( $"concurrent writer on policy {ast.PolicyId}" ) );
+        }
+
+        return BuildResult( verb, retryResponse, $"policy `{ast.PolicyId}` updated via CAS retry (seq={seqNo}, term={primaryTerm})" );
     }
 
     // --- APPLY POLICY <id> TO <pattern> ---
