@@ -1,0 +1,8 @@
+{
+  "statements": [
+    {
+      "//": "Re-apply the lifecycle policy to every matching index. The wildcard adapts to current cluster state — newer indices that the policy already auto-attached are a no-op via ISM's idempotent change_policy semantics. Cheap to re-run on every startup; this migration is `journal: false` so it's expected to re-run.",
+      "statement": "APPLY POLICY sample_app_events_lifecycle TO sample_app_events-*"
+    }
+  ]
+}

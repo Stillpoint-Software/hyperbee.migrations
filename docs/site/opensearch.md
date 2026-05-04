@@ -175,6 +175,8 @@ JSON bodies attach to a statement via `WITH BODY <ref>`. The provider supports t
 The `@`-prefixed path loads an embedded resource relative to the migration's own resource folder. Use this for any body that would otherwise dominate the `statements.json` file -- large mappings, ISM policies, reusable templates. Subfolders are optional. Path validation is parse-time:
 
 - Absolute paths (leading `/` or `\`) are rejected -- body files must stay inside the migration's resource folder.
+- Drive-letter prefixes (`C:`, `c:`, ...) are rejected -- same reason. `Path.IsPathRooted` is platform-dependent (`C:/foo` reads as rooted on Windows but not on Linux); the validator checks the rooted shape explicitly so an author editing on one host can't produce a path that's silently rooted on another.
+- Any other `:` in the path is rejected -- embedded resource names don't use it.
 - `..` segments are rejected -- no parent-directory traversal.
 - Allowed characters: letters, digits, `_`, `-`, `.`, `/`, `\`.
 
@@ -509,11 +511,25 @@ Uploads the policy to `_plugins/_ism/policies` (or `_opendistro/_ism/policies` o
 APPLY POLICY <id> TO <pattern> [NO WAIT("<reason>")]
 ```
 
-Attaches the policy to existing indices matching the pattern via `_plugins/_ism/add`. The dispatcher inspects the response body and surfaces logical failures explicitly: HTTP 200 with `updated_indices: 0` is mapped to `Failed`, not silent OK. For future-only attachment, declare `ism_template.index_patterns` in the policy body (handled at index-creation time by the cluster).
+Attaches the policy to existing indices matching the pattern via `_plugins/_ism/add`. The dispatcher inspects the response body and surfaces logical failures explicitly: HTTP 200 with `updated_indices: 0` is mapped to `Failed`, not silent OK.
 
 ```json
 { "statement": "APPLY POLICY hot-warm-cold TO logs-*" }
 ```
+
+#### Three temporal scopes for ISM attachment
+
+ISM attachment to an index series isn't one problem with three solutions -- it's three different problems, each with its own right tool. Pick by *when* the indices that need the policy come into existence relative to the migration that owns the policy.
+
+| Scope | Right tool | Sample | Notes |
+|---|---|---|---|
+| **Greenfield** -- attach to indices that will be created in the future | `ism_template.index_patterns` in the policy body, `template.aliases` in the index template | 9000 -- `ForwardAttachmentLifecycle` | Cluster handles it lazily at index-creation time. No migration runtime cost. Won't help with indices that already exist when the migration runs. |
+| **One-time backfill** -- attach a policy to a set of indices that already exist at migration run time | Runtime `APPLY POLICY <id> TO <pattern>` in a normal `[Migration(N)]` | 4000 -- `IsmPolicyAndApply` | Single-shot, journaled. Wildcards adapt to current cluster state at run time. Zero-updated -> `Failed` escalation makes it loud when the pattern matches nothing. |
+| **Ongoing reconciliation** -- keep all matching existing indices on the current policy as the policy evolves | Runtime `APPLY POLICY <id> TO <pattern>` in a `[Migration(N, journal: false)]` | 9001 -- `OngoingPolicyReconciliation` | Re-runs on every startup. Idempotent on the wire (ISM's `change_policy` is a no-op for already-on-policy indices). The wildcard form is correct because the set of indices to reconcile changes as new ones roll over and old ones are deleted. |
+
+The three are stackable. A typical mature pipeline uses **greenfield** at install time, **one-time backfill** when an existing series first adopts the policy, and **ongoing reconciliation** as the policy definition evolves over the project's lifetime. Many pipelines never need more than one -- but you should choose deliberately rather than reach for runtime `APPLY POLICY` by default.
+
+Caveat: `ism_template` inside a policy body is the modern endpoint shape. Older AWS-managed clusters served by the legacy `_opendistro/_ism` endpoint may not honor it; if `IsmEndpointDetectStep` resolves to the legacy endpoint, the greenfield row falls back to runtime `APPLY POLICY` (sample 4000's pattern, run once at install time, plus sample 9001's reconciliation pattern for ongoing changes). Modern OpenSearch (2.x and the modern AWS endpoint) supports `ism_template` natively.
 
 ### WAIT FOR (cluster health)
 

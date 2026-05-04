@@ -119,9 +119,14 @@ public sealed class OpenSearchStatementParser
         //                                policies, reusable templates).
         //
         // Path validation is parse-time only: we reject leading `/` or `\`
-        // (absolute paths) and any `..` segment (parent-directory traversal)
-        // so each migration's body files stay self-contained — keeps repeatable
-        // dotnet publish boundaries honest.
+        // (Unix-rooted), drive-letter prefixes like `C:` or `c:` (Windows-
+        // rooted), and any `..` segment (parent-directory traversal) so each
+        // migration's body files stay self-contained — keeps repeatable
+        // dotnet publish boundaries honest. Path.IsPathRooted is platform-
+        // dependent ("C:/foo" reads as rooted on Windows but not on Linux),
+        // so the validator checks the rooted shapes explicitly: an author
+        // editing on one host can't produce a path that's silently rooted
+        // on another.
 
         var dollar = Terms.Char( '$' );
         var at = Terms.Char( '@' );
@@ -129,15 +134,28 @@ public sealed class OpenSearchStatementParser
         var siblingBodyRef = with.SkipAnd( body ).SkipAnd( dollar ).SkipAnd( identifier )
             .Then( static name => (BodySource) new BodyRef( name ) );
 
-        // path: letters/digits/_/-/./forward+back-slash. Terminates at whitespace.
+        // path: letters/digits/_/-/./forward+back-slash, plus `:` so a
+        // drive-letter prefix surfaces a clear "absolute path" error
+        // instead of a generic parse failure when an author writes
+        // `@C:/foo`. Terminates at whitespace.
         var bodyPath = Terms.Pattern(
-            static c => char.IsLetterOrDigit( c ) || c is '_' or '-' or '.' or '/' or '\\'
+            static c => char.IsLetterOrDigit( c ) || c is '_' or '-' or '.' or '/' or '\\' or ':'
         ).Then( static buf =>
         {
             var path = buf.ToString()!;
             if ( path.StartsWith( '/' ) || path.StartsWith( '\\' ) )
                 throw new InvalidOperationException(
                     $"WITH BODY `@{path}` is absolute. Body files must live inside the migration's resource folder; use a path relative to it." );
+            // Drive-letter prefix (`C:`, `c:`, `Z:`...). Reject before the
+            // segment scan so the message names the actual shape that
+            // tripped validation. We don't need to allow `:` anywhere
+            // else in body paths — embedded resource names don't use it.
+            if ( path.Length >= 2 && path[1] == ':' && IsDriveLetter( path[0] ) )
+                throw new InvalidOperationException(
+                    $"WITH BODY `@{path}` is absolute (drive-letter prefix). Body files must live inside the migration's resource folder; use a path relative to it." );
+            if ( path.Contains( ':' ) )
+                throw new InvalidOperationException(
+                    $"WITH BODY `@{path}` contains `:`. Body file paths must not contain `:` — embedded resource names don't use it." );
             // `..` segment = parent traversal. Allow `.` (current dir) but not
             // `..` anywhere — split-and-check rather than substring so file
             // names that legitimately contain dots (`.json`) aren't false-
@@ -692,6 +710,8 @@ public sealed class OpenSearchStatementParser
 
         return version;
     }
+
+    private static bool IsDriveLetter( char c ) => c is >= 'A' and <= 'Z' or >= 'a' and <= 'z';
 }
 
 public sealed class OpenSearchParseException : Exception

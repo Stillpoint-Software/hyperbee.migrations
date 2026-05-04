@@ -139,11 +139,19 @@ contract; migrating existing resources is optional.
 
 ### Path validation (parse-time)
 
-The grammar accepts characters `[a-zA-Z0-9_\-./\\]` in `@path`.
+The grammar accepts characters `[a-zA-Z0-9_\-./\\:]` in `@path`. The
+`:` is in the lexer's accept set only so a drive-letter prefix surfaces
+as a clean "absolute path" error rather than a generic parse failure.
 Validation rejects at parse time:
 
 - Absolute paths (leading `/` or `\`) — body files must be inside the
   migration's resource folder.
+- Drive-letter prefix (`C:`, `c:`, ...) — same reason. `Path.IsPathRooted`
+  is platform-dependent so an author editing on one host could otherwise
+  produce a manifest that's silently rooted on another.
+- Any other `:` in the path — embedded resource names don't use it; the
+  reject is mechanical because a `:` that isn't a drive-letter prefix
+  is almost certainly an authoring mistake.
 - `..` segments — no parent-directory traversal; each migration's
   body files stay self-contained.
 

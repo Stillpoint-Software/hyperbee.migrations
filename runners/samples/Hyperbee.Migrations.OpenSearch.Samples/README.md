@@ -15,10 +15,29 @@ this assembly via `Migrations:FromPaths` and runs them in version order.
 | 6000 | **`MigrateIndexComposite`** | **Featured: `MIGRATE INDEX` composite — the canonical template-propagation pattern (R-30)** | Form 2 |
 | 7000 | `ReversibleAlias` | Opt-in `rollback` per statement; partial-rollback ledger semantics (R-19) | (no bodies — DDL-only rollback) |
 | 8000 | `UnsafeReindex` | `REINDEX UNSAFE("<justification>")` — opt-out of `op_type:create` | Form 2 |
+| 9000 | `ForwardAttachmentLifecycle` | Greenfield: declarative attachment via `template.aliases` + `ism_template` — **no runtime `APPLY POLICY` or `ALIAS ADD`** | Form 1 — direct `WITH BODY @path` for each body |
+| 9001 | `OngoingPolicyReconciliation` | `[Migration(N, journal: false)]` + `APPLY POLICY ON <pattern>` — re-runs every startup; keeps matching indices on the current policy as it evolves | (no bodies — APPLY-only) |
 
 **Sample 6 is the headline.** Adopters asking "how do I apply a template/mapping
 change to existing data?" should be pointed at `MigrateIndexComposite` first;
 the long-form sample 2 exists to show what the composite expands to.
+
+**Samples 4, 9, and 9.1 are the three temporal scopes for ISM attachment.**
+Pick the one that matches *when* the indices that need the policy come into
+existence relative to the migration that owns the policy:
+
+| Scope | Sample | When |
+|---|---|---|
+| Greenfield (future indices auto-attach) | 9000 | Index series doesn't exist yet — daily rollover for a new pipeline, fresh log streams |
+| One-time backfill (existing indices) | 4000 | Indices already exist and need the policy attached once |
+| Ongoing reconciliation (future + existing, policy evolves) | 9001 | Policy definition evolves over time; re-attach every startup so already-attached indices pick up the new version |
+
+The three are stackable in a mature pipeline (greenfield at install,
+backfill when an existing series first adopts a policy, reconciliation as
+the policy evolves). Many pipelines never need more than one — but choose
+deliberately rather than reach for runtime `APPLY POLICY` by default.
+The provider README's "Three temporal scopes for ISM attachment" section
+is the canonical explainer.
 
 **Body-source forms.** ADR-0017 defines three resolution forms for `WITH BODY`
 references. The samples deliberately demonstrate all of them so authors can
