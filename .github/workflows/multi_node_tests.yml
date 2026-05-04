@@ -16,9 +16,14 @@ name: Multi-Node Integration Tests
 #     define-constants flip rather than a source-level edit.
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [main]
+  schedule:
+    # Nightly at 03:00 UTC. Multi-node Testcontainers (3 OpenSearch JVMs)
+    # is too heavy and currently too flaky on shared `ubuntu-latest` PR
+    # runners to gate PRs (connection-reset under load on a single-endpoint
+    # connection pool, and inter-class container churn). The tests pass
+    # locally; running them nightly catches regressions without holding up
+    # PR merges. Stabilization for PR-trigger is tracked as follow-up work.
+    - cron: '0 3 * * *'
   workflow_dispatch:
 
 permissions:
