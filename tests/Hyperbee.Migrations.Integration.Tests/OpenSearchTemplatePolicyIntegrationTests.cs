@@ -259,6 +259,60 @@ public class OpenSearchTemplatePolicyIntegrationTests
     [TestMethod]
     [TestCategory( "OpenSearch" )]
     [TestCategory( "Phase2" )]
+    public async Task CreatePolicy_TwiceWithMutatedBody_SecondCallSucceedsViaCasRetry()
+    {
+        // CREATE POLICY is idempotent — re-running with a mutated body
+        // upserts via a CAS retry on _seq_no/_primary_term. Required for
+        // the [Migration(N, journal: false)] reconciliation pattern (see
+        // provider README "Three temporal scopes for ISM attachment");
+        // a non-idempotent CREATE POLICY would fail with HTTP 409 on
+        // every re-run after the first.
+        var firstBody = MinimalIsmPolicyBody();
+        var firstResult = await DispatchAsync(
+            $"CREATE POLICY {_policyId} WITH BODY $body", firstBody );
+        Assert.IsTrue( firstResult.IsSuccess, $"first create failed: {firstResult.Detail}" );
+
+        // Mutate the description so we can verify the retry actually
+        // overwrote the policy rather than no-op'd. A semantically
+        // meaningful change (different default_state, additional state)
+        // would also work; description is enough for the post-condition
+        // and keeps the policy minimal.
+        var mutatedBody = JsonNode.Parse( """
+            {
+              "policy": {
+                "description": "test policy (mutated)",
+                "default_state": "hot",
+                "states": [
+                  {
+                    "name": "hot",
+                    "actions": [],
+                    "transitions": []
+                  }
+                ]
+              }
+            }
+            """ );
+        var secondResult = await DispatchAsync(
+            $"CREATE POLICY {_policyId} WITH BODY $body", mutatedBody );
+
+        Assert.IsTrue( secondResult.IsSuccess,
+            $"second create (CAS retry path) failed: {secondResult.Detail}" );
+        StringAssert.Contains( secondResult.Detail!, "CAS retry",
+            $"expected detail to indicate CAS retry path; got: {secondResult.Detail}" );
+
+        // Post-condition: GET shows the mutated description, confirming
+        // the retry actually overwrote rather than silently succeeded.
+        var ll = OpenSearchTestContainer.LowLevelClient;
+        var get = await ll.DoRequestAsync<StringResponse>(
+            OpenSearch.Net.HttpMethod.GET, $"_plugins/_ism/policies/{_policyId}", default );
+        Assert.AreEqual( 200, get.HttpStatusCode );
+        StringAssert.Contains( get.Body!, "test policy (mutated)",
+            $"expected mutated description in policy body after CAS retry; got: {get.Body}" );
+    }
+
+    [TestMethod]
+    [TestCategory( "OpenSearch" )]
+    [TestCategory( "Phase2" )]
     public async Task ApplyPolicy_NoMatchingIndices_Fails()
     {
         // R-30 contract: ISM's add returns HTTP 200 even when zero indices
