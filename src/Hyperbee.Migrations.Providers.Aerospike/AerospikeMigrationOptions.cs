@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Providers.Aerospike;
+﻿namespace Hyperbee.Migrations.Providers.Aerospike;
 
 public class AerospikeMigrationOptions : MigrationOptions
 {

@@ -2,6 +2,15 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!--
+      Integration tests use Testcontainers and are gated by `#if INTEGRATIONS`
+      so a vanilla `dotnet test` run skips them by default. Set
+      `EnableIntegrationTests=true` to compile them in:
+        dotnet test /p:EnableIntegrationTests=true
+      The CI workflow `.github/workflows/multi_node_tests.yml` sets this for
+      multi-node-tagged tests on every PR (R-28b).
+    -->
+    <DefineConstants Condition="'$(EnableIntegrationTests)' == 'true'">$(DefineConstants);INTEGRATIONS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,8 +24,11 @@
     <PackageReference Include="MSTest.TestFramework" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="MSTest.TestAdapter" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="Aerospike.Client" />
     <PackageReference Include="Npgsql" />
+    <PackageReference Include="OpenSearch.Client" />
+    <PackageReference Include="OpenSearch.Net" />
     <PackageReference Include="Testcontainers"  />
     <PackageReference Include="Testcontainers.Couchbase"  />
     <PackageReference Include="Testcontainers.MongoDb"/>
@@ -36,6 +48,7 @@
     <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.MongoDB\Hyperbee.Migrations.Providers.MongoDB.csproj" />
     <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Aerospike\Hyperbee.Migrations.Providers.Aerospike.csproj" />
     <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Couchbase\Hyperbee.Migrations.Providers.Couchbase.csproj" />
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.OpenSearch\Hyperbee.Migrations.Providers.OpenSearch.csproj" />
   </ItemGroup>
 
   <ItemGroup>

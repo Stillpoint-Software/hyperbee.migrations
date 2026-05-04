@@ -1,0 +1,17 @@
+{
+  "statements": [
+    {
+      "statement": "CREATE INDEX sample_metrics-2026.01.01 IF NOT EXISTS WITH BODY $idx",
+      "bodies": {
+        "idx": {
+          "settings": { "number_of_shards": 1, "number_of_replicas": 0 }
+        }
+      }
+    },
+    {
+      "//": "Form 1 — direct file reference in the statement string. Least ceremony for a single body that lives in its own file. The path is relative to the migration's resource folder; subfolders are optional and useful only when grouping multiple body files (see sample 3000 for that case). Real production ISM policies are large enough that file-based is the right default.",
+      "statement": "CREATE POLICY sample_hot_warm_cold WITH BODY @hot-warm-cold-policy.json"
+    },
+    { "statement": "APPLY POLICY sample_hot_warm_cold TO sample_metrics-*" }
+  ]
+}

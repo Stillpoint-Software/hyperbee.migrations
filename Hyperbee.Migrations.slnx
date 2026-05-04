@@ -4,12 +4,14 @@
     <Project Path="runners/Hyperbee.MigrationRunner.Couchbase/Hyperbee.MigrationRunner.Couchbase.csproj" />
     <Project Path="runners/Hyperbee.MigrationRunner.MongoDB/Hyperbee.MigrationRunner.MongoDB.csproj" />
     <Project Path="runners/Hyperbee.MigrationRunner.Postgres/Hyperbee.MigrationRunner.Postgres.csproj" />
+    <Project Path="runners/Hyperbee.MigrationRunner.OpenSearch/Hyperbee.MigrationRunner.OpenSearch.csproj" />
   </Folder>
   <Folder Name="/Samples/">
     <Project Path="runners/samples/Hyperbee.Migrations.Aerospike.Samples/Hyperbee.Migrations.Aerospike.Samples.csproj" />
     <Project Path="runners/samples/Hyperbee.Migrations.Couchbase.Samples/Hyperbee.Migrations.Couchbase.Samples.csproj" />
     <Project Path="runners/samples/Hyperbee.Migrations.MongoDB.Samples/Hyperbee.Migrations.MongoDB.Samples.csproj" />
     <Project Path="runners/samples/Hyperbee.Migrations.Postgres.Samples/Hyperbee.Migrations.Postgres.Samples.csproj" />
+    <Project Path="runners/samples/Hyperbee.Migrations.OpenSearch.Samples/Hyperbee.Migrations.OpenSearch.Samples.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="Directory.Build.props" />
@@ -40,6 +42,8 @@
   </Folder>
   <Project Path="src/Hyperbee.Migrations.Providers.Aerospike/Hyperbee.Migrations.Providers.Aerospike.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.Couchbase/Hyperbee.Migrations.Providers.Couchbase.csproj" />
+  <Project Path="src/Hyperbee.Migrations.Providers.OpenSearch/Hyperbee.Migrations.Providers.OpenSearch.csproj" />
+  <Project Path="src/Hyperbee.Migrations.Providers.OpenSearch.Aws/Hyperbee.Migrations.Providers.OpenSearch.Aws.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.MongoDB/Hyperbee.Migrations.Providers.MongoDB.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.Postgres/Hyperbee.Migrations.Providers.Postgres.csproj" />
   <Project Path="src/Hyperbee.Migrations/Hyperbee.Migrations.csproj" />

@@ -1,4 +1,4 @@
-using Aerospike.Client;
+﻿using Aerospike.Client;
 using Hyperbee.Migrations.Providers.Aerospike.Extensions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;
