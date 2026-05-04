@@ -119,6 +119,8 @@ Subfolders are optional. The path is just a relative file reference — `@foo.js
 
 Path validation is parse-time:
 - Absolute paths (leading `/` or `\`) are rejected — body files must stay inside the migration's resource folder.
+- Drive-letter prefixes (`C:`, `c:`, ...) are rejected — same reason. `Path.IsPathRooted` is platform-dependent (`C:/foo` reads as rooted on Windows but not on Linux); the validator checks the rooted shape explicitly so an author editing on one host can't produce a path that's silently rooted on another.
+- Any other `:` in the path is rejected — embedded resource names don't use it.
 - `..` segments are rejected — no parent-directory traversal.
 - Allowed characters: letters, digits, `_`, `-`, `.`, `/`, `\`.
 
