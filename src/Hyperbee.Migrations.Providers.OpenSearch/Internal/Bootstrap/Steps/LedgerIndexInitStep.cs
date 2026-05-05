@@ -84,14 +84,35 @@ public sealed class LedgerIndexInitStep : IBootstrapStep
 
             logger.LogInformation( "{step} creating ledger index `{idx}` with strict mapping", Name, indexName );
 
-            var createResponse = await context.Client.LowLevel.Indices.CreateAsync<StringResponse>(
-                indexName,
-                PostData.String( DefaultMappingJson ),
-                ctx: context.CancellationToken
-            ).ConfigureAwait( false );
+            StringResponse createResponse;
+            try
+            {
+                createResponse = await context.Client.LowLevel.Indices.CreateAsync<StringResponse>(
+                    indexName,
+                    PostData.String( DefaultMappingJson ),
+                    ctx: context.CancellationToken
+                ).ConfigureAwait( false );
+            }
+            catch ( OpenSearchClientException ex ) when ( IsResourceAlreadyExists( ex.Response ) )
+            {
+                // TOCTOU race: another runner created the index between our Exists()
+                // check and Create(). Verify the mapping and treat as success.
+                logger.LogDebug( "{step} ledger index `{idx}` created concurrently by another runner; verifying mapping", Name, indexName );
+                var verifyDetail = await VerifyMappingAsync( context, indexName, logger ).ConfigureAwait( false );
+                var raceElapsed = context.TimeProvider.GetElapsedTime( start );
+                return StepOutcome.Succeeded( Name, raceElapsed, $"{verifyDetail} (raced)" );
+            }
 
             if ( !createResponse.Success )
             {
+                if ( IsResourceAlreadyExists( createResponse ) )
+                {
+                    logger.LogDebug( "{step} ledger index `{idx}` created concurrently by another runner; verifying mapping", Name, indexName );
+                    var verifyDetail = await VerifyMappingAsync( context, indexName, logger ).ConfigureAwait( false );
+                    var raceElapsed = context.TimeProvider.GetElapsedTime( start );
+                    return StepOutcome.Succeeded( Name, raceElapsed, $"{verifyDetail} (raced)" );
+                }
+
                 var detail = createResponse.OriginalException?.Message ?? createResponse.Body ?? "Unknown create failure";
                 var ex = new OpenSearchProviderException(
                     $"{Name} could not create ledger index `{indexName}`. {detail}",
@@ -154,5 +175,30 @@ public sealed class LedgerIndexInitStep : IBootstrapStep
 
         logger.LogDebug( "{step} ledger schema verified ({count} required fields present)", "ledger-init", RequiredFields.Length );
         return "verified existing schema";
+    }
+
+    // Detects the OpenSearch-specific 400 body that signals a TOCTOU race
+    // between Exists() and Create() — another runner won. Inspect the body
+    // string rather than the status code alone because OS reuses 400 for
+    // genuine bad-request shapes (malformed mapping, invalid settings).
+    private static bool IsResourceAlreadyExists( IApiCallDetails? response )
+    {
+        if ( response is null || response.HttpStatusCode != 400 )
+            return false;
+
+        var body = response.ResponseBodyInBytes is { Length: > 0 } bytes
+            ? System.Text.Encoding.UTF8.GetString( bytes )
+            : null;
+
+        return body is not null && body.Contains( "resource_already_exists_exception", StringComparison.Ordinal );
+    }
+
+    private static bool IsResourceAlreadyExists( StringResponse response )
+    {
+        if ( response.HttpStatusCode != 400 )
+            return false;
+
+        return !string.IsNullOrEmpty( response.Body )
+            && response.Body.Contains( "resource_already_exists_exception", StringComparison.Ordinal );
     }
 }

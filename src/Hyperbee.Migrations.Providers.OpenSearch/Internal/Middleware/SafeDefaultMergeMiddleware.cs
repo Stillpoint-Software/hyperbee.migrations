@@ -77,13 +77,18 @@ public sealed class SafeDefaultMergeMiddleware
     //   1. If InjectOpTypeCreate is false (UNSAFE branch): pass body through
     //      unchanged. Author owns idempotency.
     //   2. If body is null: produce
-    //        { "source": { "index": <src> }, "dest": { "index": <dst>, "op_type": "create" } }
-    //   3. If body has dest object missing op_type: merge `op_type: create`
-    //   4. If body has dest with `op_type: create` already: pass through
+    //        { "source": { "index": <src> }, "dest": { "index": <dst>, "op_type": "create" }, "conflicts": "proceed" }
+    //   3. If body has dest object missing op_type: merge `op_type: create` and `conflicts: proceed`
+    //      (unless body already sets `conflicts`)
+    //   4. If body has dest with `op_type: create` already: merge `conflicts: proceed`
     //      (idempotent inject)
     //   5. If body has dest with conflicting op_type (e.g., "index"): throw
     //      SafeDefaultConflictException — author must use REINDEX UNSAFE("...")
     //      to opt out
+    //
+    // `conflicts: proceed` is co-injected with `op_type: create` because the safe-default
+    // semantics are "skip pre-existing docs" — aborting on the first conflict (the
+    // OpenSearch default) would return HTTP 409 and defeat idempotency entirely.
     //
     // The middleware also ensures source.index and dest.index match the AST's
     // Source/Destination unless the body explicitly overrides them (advanced use).
@@ -107,12 +112,18 @@ public sealed class SafeDefaultMergeMiddleware
         if ( !dest.TryGetPropertyValue( "op_type", out var existing ) || existing is null )
         {
             dest["op_type"] = "create";
+            if ( !clone.ContainsKey( "conflicts" ) )
+                clone["conflicts"] = "proceed";
             return clone;
         }
 
         var existingValue = existing.GetValue<string>();
         if ( existingValue == "create" )
+        {
+            if ( !clone.ContainsKey( "conflicts" ) )
+                clone["conflicts"] = "proceed";
             return clone; // idempotent inject
+        }
 
         throw new SafeDefaultConflictException(
             $"REINDEX body specifies `op_type: \"{existingValue}\"` which conflicts with the safe-default `op_type: create`. " +

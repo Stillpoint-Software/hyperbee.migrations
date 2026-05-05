@@ -248,13 +248,34 @@ public class OpenSearchR24cGapFillIntegrationTests
                 index, "1", PostData.String( """{ "id": "u1" }""" ) );
             Assert.IsTrue( ok.Success, $"mapped-only doc should index; got: {ok.Body}" );
 
-            // Indexing with an UNMAPPED field must be rejected by
-            // strict_dynamic_mapping.
-            var rejected = await ll.IndexAsync<StringResponse>(
-                index, "2", PostData.String( """{ "id": "u2", "unmapped_field": "x" }""" ) );
-            Assert.IsFalse( rejected.Success,
-                $"unmapped field should be rejected by dynamic:strict; got HTTP {rejected.HttpStatusCode}: {rejected.Body}" );
-            StringAssert.Contains( rejected.Body!, "strict_dynamic_mapping" );
+            // Indexing with an UNMAPPED field must be rejected by strict_dynamic_mapping.
+            // With ThrowExceptions=false the response captures the rejection; with
+            // ThrowExceptions=true (test-container default) the client throws instead.
+            StringResponse? rejected = null;
+            OpenSearchClientException? strictEx = null;
+            try
+            {
+                rejected = await ll.IndexAsync<StringResponse>(
+                    index, "2", PostData.String( """{ "id": "u2", "unmapped_field": "x" }""" ) );
+            }
+            catch ( OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 400 )
+            {
+                strictEx = ex;
+            }
+
+            if ( rejected != null )
+            {
+                Assert.IsFalse( rejected.Success,
+                    $"unmapped field should be rejected by dynamic:strict; got HTTP {rejected.HttpStatusCode}: {rejected.Body}" );
+                StringAssert.Contains( rejected.Body!, "strict_dynamic_mapping" );
+            }
+            else
+            {
+                Assert.IsNotNull( strictEx,
+                    "expected strict_dynamic_mapping rejection; got neither a failed response nor an exception" );
+                StringAssert.Contains( strictEx!.Message, "strict_dynamic_mapping",
+                    $"expected strict_dynamic_mapping in exception; got: {strictEx.Message}" );
+            }
         }
         finally
         {
@@ -538,8 +559,10 @@ public class OpenSearchR24cMultiNodeIntegrationTests
         finally
         {
             var ll = MultiNodeOpenSearchTestContainer.LowLevelClient;
-            await ll.Indices.DeleteAsync<StringResponse>( options.LedgerIndex );
-            await ll.Indices.DeleteAsync<StringResponse>( options.LockIndex );
+            // Best-effort cleanup — connection may fail if containers are torn down by a
+            // parallel framework's ClassCleanup before this finally block completes.
+            try { await ll.Indices.DeleteAsync<StringResponse>( options.LedgerIndex ); } catch ( Exception ) { }
+            try { await ll.Indices.DeleteAsync<StringResponse>( options.LockIndex ); } catch ( Exception ) { }
         }
     }
 }

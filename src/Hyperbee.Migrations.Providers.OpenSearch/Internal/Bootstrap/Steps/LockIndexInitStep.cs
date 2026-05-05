@@ -67,14 +67,33 @@ public sealed class LockIndexInitStep : IBootstrapStep
 
             logger.LogInformation( "{step} creating lock index `{idx}` (replicas=0)", Name, indexName );
 
-            var createResponse = await context.Client.LowLevel.Indices.CreateAsync<StringResponse>(
-                indexName,
-                PostData.String( DefaultMappingJson ),
-                ctx: context.CancellationToken
-            ).ConfigureAwait( false );
+            StringResponse createResponse;
+            try
+            {
+                createResponse = await context.Client.LowLevel.Indices.CreateAsync<StringResponse>(
+                    indexName,
+                    PostData.String( DefaultMappingJson ),
+                    ctx: context.CancellationToken
+                ).ConfigureAwait( false );
+            }
+            catch ( OpenSearchClientException ex ) when ( IsResourceAlreadyExists( ex.Response ) )
+            {
+                // TOCTOU race: another runner created the lock index between our
+                // Exists() check and Create(). Treat as success.
+                logger.LogDebug( "{step} lock index `{idx}` created concurrently by another runner", Name, indexName );
+                var raceElapsed = context.TimeProvider.GetElapsedTime( start );
+                return StepOutcome.Succeeded( Name, raceElapsed, "exists (raced)" );
+            }
 
             if ( !createResponse.Success )
             {
+                if ( IsResourceAlreadyExists( createResponse ) )
+                {
+                    logger.LogDebug( "{step} lock index `{idx}` created concurrently by another runner", Name, indexName );
+                    var raceElapsed = context.TimeProvider.GetElapsedTime( start );
+                    return StepOutcome.Succeeded( Name, raceElapsed, "exists (raced)" );
+                }
+
                 var detail = createResponse.OriginalException?.Message ?? createResponse.Body ?? "Unknown create failure";
                 var ex = new OpenSearchProviderException(
                     $"{Name} could not create lock index `{indexName}`. {detail}",
@@ -96,5 +115,30 @@ public sealed class LockIndexInitStep : IBootstrapStep
             return StepOutcome.Failed( Name, elapsed, new OpenSearchProviderException(
                 $"{Name} threw an unexpected exception. {ex.Message}", ex ) );
         }
+    }
+
+    // Detects the OpenSearch-specific 400 body that signals a TOCTOU race
+    // between Exists() and Create() — another runner won. Inspect the body
+    // string rather than the status code alone because OS reuses 400 for
+    // genuine bad-request shapes (malformed mapping, invalid settings).
+    private static bool IsResourceAlreadyExists( IApiCallDetails? response )
+    {
+        if ( response is null || response.HttpStatusCode != 400 )
+            return false;
+
+        var body = response.ResponseBodyInBytes is { Length: > 0 } bytes
+            ? System.Text.Encoding.UTF8.GetString( bytes )
+            : null;
+
+        return body is not null && body.Contains( "resource_already_exists_exception", StringComparison.Ordinal );
+    }
+
+    private static bool IsResourceAlreadyExists( StringResponse response )
+    {
+        if ( response.HttpStatusCode != 400 )
+            return false;
+
+        return !string.IsNullOrEmpty( response.Body )
+            && response.Body.Contains( "resource_already_exists_exception", StringComparison.Ordinal );
     }
 }
