@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Providers.OpenSearch;
+﻿namespace Hyperbee.Migrations.Providers.OpenSearch;
 
 /// <summary>
 /// Cluster-health gate threshold the runner waits for before executing migrations.
