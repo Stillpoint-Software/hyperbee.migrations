@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations;
+﻿namespace Hyperbee.Migrations;
 
 /// <summary>
 /// Classifies how a migration is being applied for the purposes of squash

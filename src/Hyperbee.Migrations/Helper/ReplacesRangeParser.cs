@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Helper;
+﻿namespace Hyperbee.Migrations.Helper;
 
 /// <summary>
 /// Parses the <see cref="MigrationAttribute.ReplacesRange"/> shorthand syntax

@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations;
+﻿namespace Hyperbee.Migrations;
 
 /// <summary>
 /// Thrown by <see cref="MigrationRunner"/> at discovery time when migration

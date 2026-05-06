@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations;
+﻿namespace Hyperbee.Migrations;
 
 /// <summary>
 /// Ambient context surfaced to a migration's <c>UpAsync</c>/<c>DownAsync</c>
