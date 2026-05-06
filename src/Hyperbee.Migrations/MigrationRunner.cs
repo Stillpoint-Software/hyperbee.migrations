@@ -53,31 +53,40 @@ public class MigrationRunner
 
         _logger.LogInformation( "Discovering {direction} migrations ...", direction );
 
-        var migrations = DiscoverMigrations( _options );
+        var migrations = DiscoverMigrations( _options ).ToList();
 
-        // Phase 2: classify ledger state once at the start so each UpAsync sees the
-        // appropriate MigrationApplyMode (Fresh vs PartialCatchUp). Phase 3
-        // reconciliation will refine this per-migration for squash rows.
-        var ledgerEmptyAtStart = await IsLedgerEmptyAsync( migrations, cancellationToken ).ConfigureAwait( false );
+        // Pre-instantiate once: the recordId convention wants a Migration instance,
+        // and we need (version → recordId) for squash reconciliation. Computing it
+        // once avoids two instantiation passes (one for ledger probe, one for the
+        // run loop) and keeps lifecycle visible to the activator.
+        var instanceByVersion = new Dictionary<long, Migration>( migrations.Count );
+        var recordIdByVersion = new Dictionary<long, string>( migrations.Count );
+        foreach ( var d in migrations )
+        {
+            var instance = _options.MigrationActivator.CreateInstance( d.Type );
+            instanceByVersion[d.Attribute!.Version] = instance;
+            recordIdByVersion[d.Attribute.Version] = _options.Conventions.GetRecordId( instance );
+        }
+
+        // Classify ledger emptiness once at start (Phase 2 scaffolding); Phase 3
+        // reconciliation refines per-squash classification below.
+        var ledgerEmptyAtStart = await IsLedgerEmptyAsync( recordIdByVersion.Values, cancellationToken ).ConfigureAwait( false );
         var defaultApplyMode = ledgerEmptyAtStart ? MigrationApplyMode.Fresh : MigrationApplyMode.PartialCatchUp;
 
         var stopwatch = Stopwatch.StartNew();
 
         var runCount = 0;
-        foreach ( var (type, attribute, _) in migrations )
+        foreach ( var descriptor in migrations )
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // instantiate the migration
-
-            var migration = _options.MigrationActivator.CreateInstance( type );
-
-            // determine if the migration should be run
-
-            var recordId = _options.Conventions.GetRecordId( migration );
+            var (type, attribute, resolvedReplaces) = descriptor;
             var version = attribute!.Version;
+            var migration = instanceByVersion[version];
+            var recordId = recordIdByVersion[version];
             var name = migration.GetType().Name;
             var hasCron = !string.IsNullOrEmpty( attribute.Cron );
+            var isSquash = resolvedReplaces.Count > 0;
 
             // cron-based scheduling: check if due based on last run time
 
@@ -103,6 +112,42 @@ public class MigrationRunner
                     case Direction.Down when !exists:
                         continue;
                 }
+            }
+
+            // Phase 3: squash reconciliation (Up-direction only; squashes are up-only
+            // per ADR-0020). Inspect ledger state for replaced versions and branch:
+            // Mature → auto-mark; Fresh → run UpAsync with ApplyMode.Fresh; partial
+            // → MidRangeSquashException with recovery hints.
+            if ( direction == Direction.Up && isSquash )
+            {
+                var (squashApplyMode, autoMark) = await ClassifySquashAsync(
+                    descriptor, recordIdByVersion, cancellationToken ).ConfigureAwait( false );
+
+                if ( autoMark )
+                {
+                    _logger.LogInformation(
+                        "[{version}] {name}: squash auto-marked (mature env; {count} replaced versions all satisfied)",
+                        version, name, resolvedReplaces.Count );
+                    await WriteSquashJournalAsync( migration, attribute, recordId, resolvedReplaces, cancellationToken )
+                        .ConfigureAwait( false );
+                    runCount++;
+                    if ( version == _options.ToVersion ) break;
+                    continue;
+                }
+
+                _logger.LogInformation(
+                    "[{version}] {name}: squash applying as {mode} (no prior ledger coverage of replaced versions)",
+                    version, name, squashApplyMode );
+
+                using ( MigrationContext.Push( new MigrationContext { ApplyMode = squashApplyMode } ) )
+                    await migration.UpAsync( cancellationToken ).ConfigureAwait( false );
+
+                await WriteSquashJournalAsync( migration, attribute, recordId, resolvedReplaces, cancellationToken )
+                    .ConfigureAwait( false );
+
+                runCount++;
+                if ( version == _options.ToVersion ) break;
+                continue;
             }
 
             // run the migration
@@ -165,6 +210,96 @@ public class MigrationRunner
 
         stopwatch.Stop();
         _logger.LogInformation( "Executed {migrationCount} migrations in {elapsed}", runCount, stopwatch.Elapsed );
+    }
+
+    // Squash classification per ADR-0019. Returns (apply-mode, auto-mark) signal.
+    // Raises MidRangeSquashException when the ledger covers a strict subset of
+    // the squash's Replaces graph.
+    //
+    // Visible to the test assembly via InternalsVisibleTo so the three branches
+    // (mature/fresh/midrange) can be exercised without weaving through full
+    // RunAsync — Phase 2 discovery would reject some constructions otherwise.
+    internal static async Task<(MigrationApplyMode mode, bool autoMark)> ClassifySquashAsync(
+        IMigrationRecordStore store,
+        long squashVersion,
+        IReadOnlyList<long> resolvedReplaces,
+        IReadOnlyDictionary<long, string> recordIdByVersion,
+        CancellationToken cancellationToken )
+    {
+        // Direct satisfaction: Migration_<v> rows present in the ledger.
+        var replacedRecordIds = resolvedReplaces.Select( v => recordIdByVersion[v] ).ToArray();
+        var directlyApplied = await store
+            .LoadAppliedVersionsAsync( replacedRecordIds, cancellationToken )
+            .ConfigureAwait( false );
+
+        // Transitive satisfaction: prior Squash row's Replaces array covers the version.
+        var transitivelyCovered = await store
+            .LoadSatisfyingRowsAsync( resolvedReplaces, cancellationToken )
+            .ConfigureAwait( false );
+
+        var satisfied = new HashSet<long>();
+        foreach ( var v in resolvedReplaces )
+        {
+            if ( directlyApplied.Contains( recordIdByVersion[v] ) || transitivelyCovered.Contains( v ) )
+                satisfied.Add( v );
+        }
+
+        if ( satisfied.Count == resolvedReplaces.Count )
+            return (MigrationApplyMode.PartialCatchUp, autoMark: true);
+
+        if ( satisfied.Count == 0 )
+            return (MigrationApplyMode.Fresh, autoMark: false);
+
+        var missing = resolvedReplaces.Where( v => !satisfied.Contains( v ) ).ToArray();
+        throw new MidRangeSquashException(
+            squashVersion,
+            missing,
+            satisfied.OrderBy( v => v ) );
+    }
+
+    private Task<(MigrationApplyMode mode, bool autoMark)> ClassifySquashAsync(
+        MigrationDescriptor squash,
+        IReadOnlyDictionary<long, string> recordIdByVersion,
+        CancellationToken cancellationToken )
+        => ClassifySquashAsync(
+            _recordStore,
+            squash.Attribute!.Version,
+            squash.ResolvedReplaces,
+            recordIdByVersion,
+            cancellationToken );
+
+    // Writes a squash row through the v3 record-bearing overload with
+    // WritePrecondition.MustNotExist so concurrent runners reconciling the same
+    // squash converge benignly (per WriteOutcome.AlreadyExistsBenign semantics).
+    private async Task WriteSquashJournalAsync(
+        Migration migration,
+        MigrationAttribute attribute,
+        string recordId,
+        IReadOnlyList<long> replaces,
+        CancellationToken cancellationToken )
+    {
+        var checksum = await _options.ChecksumStrategy
+            .ComputeAsync( migration, attribute, cancellationToken )
+            .ConfigureAwait( false );
+
+        var record = new MigrationRecord
+        {
+            Id = recordId,
+            RunOn = DateTimeOffset.UtcNow,
+            Checksum = checksum,
+            Kind = MigrationRecordKind.Squash,
+            Replaces = replaces.ToArray()
+        };
+
+        var outcome = await _recordStore
+            .WriteAsync( record, WritePrecondition.MustNotExist, cancellationToken )
+            .ConfigureAwait( false );
+
+        if ( outcome == WriteOutcome.PreconditionFailed )
+            throw new MigrationException(
+                $"Squash ledger write for `{recordId}` failed: an existing row's checksum does not match. " +
+                "This indicates a definition drift — the squash type's checksum has changed since the row was first written. " +
+                "Investigate the migration source vs. the ledger row before proceeding." );
     }
 
     private static IEnumerable<MigrationDescriptor> DiscoverMigrations( MigrationOptions options )
@@ -244,25 +379,17 @@ public class MigrationRunner
     }
 
     private async Task<bool> IsLedgerEmptyAsync(
-        IEnumerable<MigrationDescriptor> migrations,
+        IEnumerable<string> candidateRecordIds,
         CancellationToken cancellationToken )
     {
-        // Probe each discovered migration's expected record id; the first hit
-        // means the ledger is non-empty for our scope. Phase 3 will refine this
-        // with bulk LoadAppliedVersionsAsync; the per-id probe here is fine for
-        // Phase 2 scaffolding because it uses the same primitives the existing
-        // run loop already calls.
-        foreach ( var descriptor in migrations )
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var recordId = _options.Conventions.GetRecordId(
-                _options.MigrationActivator.CreateInstance( descriptor.Type ) );
-
-            if ( await _recordStore.ExistsAsync( recordId ).ConfigureAwait( false ) )
-                return false;
-        }
-        return true;
+        // A single bulk realtime query (LoadAppliedVersionsAsync) is the right
+        // primitive here per ADR-0019; the per-id ExistsAsync loop in the DIM
+        // default is a degraded fallback for v2 stores. Either way: if any
+        // candidate id is in the ledger, we're not in a fresh-install state.
+        var applied = await _recordStore
+            .LoadAppliedVersionsAsync( candidateRecordIds, cancellationToken )
+            .ConfigureAwait( false );
+        return applied.Count == 0;
     }
 
     private static bool DescriptorInScope( MigrationAttribute attribute, MigrationOptions options )

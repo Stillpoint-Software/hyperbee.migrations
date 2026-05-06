@@ -456,6 +456,100 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
         }
     }
 
+    public async Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(
+        IEnumerable<string> candidateIds,
+        CancellationToken cancellationToken = default )
+    {
+        if ( candidateIds == null )
+            throw new ArgumentNullException( nameof( candidateIds ) );
+
+        var ids = candidateIds as string[] ?? candidateIds.ToArray();
+        var found = new HashSet<string>( StringComparer.Ordinal );
+        if ( ids.Length == 0 )
+            return found;
+
+        // _mget with realtime=true per ADR-0019 Phase 3. NOT _search — _search is
+        // refresh-bound (eventually-consistent across the index refresh interval),
+        // whereas _mget reads through the realtime translog. Reads ledger index
+        // only per ADR-0018 split.
+        var response = await _client.MultiGetAsync( m => m
+            .Index( _options.LedgerIndex )
+            .Realtime( true )
+            .GetMany<OpenSearchMigrationRecord>( ids ),
+            cancellationToken
+        ).ConfigureAwait( false );
+
+        if ( !response.IsValid )
+        {
+            var detail = response.OriginalException?.Message
+                ?? response.ServerError?.Error?.ToString()
+                ?? "Unknown _mget failure.";
+            throw new OpenSearchProviderException(
+                $"Ledger _mget failed: {detail}",
+                response.OriginalException ?? new InvalidOperationException( detail ) );
+        }
+
+        foreach ( var hit in response.Hits )
+        {
+            if ( hit.Found )
+                found.Add( hit.Id );
+        }
+        return found;
+    }
+
+    public async Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(
+        IEnumerable<long> versions,
+        CancellationToken cancellationToken = default )
+    {
+        if ( versions == null )
+            throw new ArgumentNullException( nameof( versions ) );
+
+        var inputs = versions as long[] ?? versions.ToArray();
+        var covered = new HashSet<long>();
+        if ( inputs.Length == 0 )
+            return covered;
+
+        // Transitive squash satisfaction (ADR-0019 A6). _search with a terms filter
+        // on the replaces[] field narrows to candidate squash rows; the kind=1 term
+        // ensures we only consider Kind=Squash. Refresh is fine for this query —
+        // we only auto-mark a squash AFTER its replaced rows are durably written
+        // (Phase 1 WriteAsync uses Refresh.WaitFor), so the data we need is
+        // searchable by the time we get here.
+        var response = await _client.SearchAsync<OpenSearchMigrationRecord>( s => s
+            .Index( _options.LedgerIndex )
+            .Size( 10_000 ) // squash rows are sparse; this caps fan-out per the
+                            // pragmatic bound from the design doc (C9 design note)
+            .Source( src => src.Includes( i => i.Field( f => f.Replaces ) ) )
+            .Query( q => q.Bool( b => b.Filter(
+                f => f.Term( t => t.Field( "kind" ).Value( (byte) MigrationRecordKind.Squash ) ),
+                f => f.Terms( t => t.Field( f2 => f2.Replaces ).Terms( inputs.Cast<object>() ) )
+            ) ) ),
+            cancellationToken
+        ).ConfigureAwait( false );
+
+        if ( !response.IsValid )
+        {
+            var detail = response.OriginalException?.Message
+                ?? response.ServerError?.Error?.ToString()
+                ?? "Unknown _search failure.";
+            throw new OpenSearchProviderException(
+                $"Ledger transitive-satisfaction _search failed: {detail}",
+                response.OriginalException ?? new InvalidOperationException( detail ) );
+        }
+
+        var inputSet = new HashSet<long>( inputs );
+        foreach ( var doc in response.Documents )
+        {
+            if ( doc.Replaces == null ) continue;
+            foreach ( var v in doc.Replaces )
+            {
+                if ( inputSet.Contains( v ) )
+                    covered.Add( v );
+            }
+        }
+        return covered;
+    }
+
     public async Task<WriteOutcome> WriteAsync(
         MigrationRecord record,
         WritePrecondition precondition = WritePrecondition.None,

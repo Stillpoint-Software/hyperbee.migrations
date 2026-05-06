@@ -259,6 +259,80 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             .ConfigureAwait( false );
     }
 
+    public async Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(
+        IEnumerable<string> candidateIds,
+        CancellationToken cancellationToken = default )
+    {
+        if ( candidateIds == null )
+            throw new ArgumentNullException( nameof( candidateIds ) );
+
+        var ids = candidateIds as string[] ?? candidateIds.ToArray();
+        var found = new HashSet<string>( StringComparer.Ordinal );
+        if ( ids.Length == 0 )
+            return found;
+
+        var collection = await GetCollectionAsync().ConfigureAwait( false );
+
+        // Realtime KV reads per ADR-0019 Phase 3. ExistsAsync is a single round-trip
+        // realtime probe (no view/index involvement); fanned out concurrently so
+        // candidate-set size scales with throughput, not latency. Squash auto-mark
+        // typically queries 10-100 ids; the parallel fan-out keeps tail-latency low.
+        var probes = ids.Select( id => ProbeAsync( collection, id, cancellationToken ) ).ToArray();
+        await Task.WhenAll( probes ).ConfigureAwait( false );
+
+        for ( var i = 0; i < probes.Length; i++ )
+        {
+            if ( probes[i].Result )
+                found.Add( ids[i] );
+        }
+        return found;
+
+        static async Task<bool> ProbeAsync( ICouchbaseCollection coll, string id, CancellationToken ct )
+        {
+            var check = await coll.ExistsAsync( id, options => options.CancellationToken( ct ) )
+                .ConfigureAwait( false );
+            return check.Exists;
+        }
+    }
+
+    public async Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(
+        IEnumerable<long> versions,
+        CancellationToken cancellationToken = default )
+    {
+        if ( versions == null )
+            throw new ArgumentNullException( nameof( versions ) );
+
+        var inputs = versions as long[] ?? versions.ToArray();
+        var covered = new HashSet<long>();
+        if ( inputs.Length == 0 )
+            return covered;
+
+        // Transitive squash satisfaction (ADR-0019 A6). N1QL UNNEST flattens the
+        // replaces arrays; the IN-list filter restricts to versions the caller asked
+        // about. RequestPlus consistency ensures we see writes from this runner's
+        // own prior journal mutations within the same lock window.
+        var clusterHelper = await _clusterProvider.GetClusterHelperAsync().ConfigureAwait( false );
+        var cluster = clusterHelper.Cluster;
+
+        var (bucket, scope, collection) = _options;
+        var keyspace = $"`{bucket}`.`{scope}`.`{collection}`";
+
+        var query =
+            $"SELECT DISTINCT v FROM {keyspace} AS m UNNEST m.replaces AS v " +
+            "WHERE m.kind = 1 AND v IN $versions";
+
+        var options = new global::Couchbase.Query.QueryOptions()
+            .Parameter( "versions", inputs )
+            .ScanConsistency( global::Couchbase.Query.QueryScanConsistency.RequestPlus )
+            .CancellationToken( cancellationToken );
+
+        var result = await cluster.QueryAsync<long>( query, options ).ConfigureAwait( false );
+        await foreach ( var v in result.ConfigureAwait( false ) )
+            covered.Add( v );
+
+        return covered;
+    }
+
     public async Task<WriteOutcome> WriteAsync(
         MigrationRecord record,
         WritePrecondition precondition = WritePrecondition.None,

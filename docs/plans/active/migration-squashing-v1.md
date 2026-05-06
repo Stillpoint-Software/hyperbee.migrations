@@ -951,8 +951,28 @@ Codebase audit verifying the design's assumptions against current HEAD (`migrati
 - Existing 356 core unit tests: still green on net8/9/10.
 - Build clean: 0 errors.
 
-Phase 3: ☐ pending
-Phase 3: ☐ pending
+**Phase 3: ☑ COMPLETE 2026-05-06**
+
+**Completion summary:**
+- `MidRangeSquashException` (new) carries `SquashVersion`, `MissingVersions[]`, `AppliedVersions[]`; default message lists missing versions plus three documented recovery paths (backup-restore, re-introduce-from-git, recover-from-mid-range CLI).
+- `MigrationRunner` reconciliation: for each squash in discovery order, `ClassifySquashAsync` projects the resolved Replaces set against the ledger via `LoadAppliedVersionsAsync` (direct) + `LoadSatisfyingRowsAsync` (transitive). Three branches: Mature → auto-mark via `WriteSquashJournalAsync` (using `WritePrecondition.MustNotExist` for concurrent-runner idempotency); Fresh → run `UpAsync` with `ApplyMode.Fresh`; partial subset → `MidRangeSquashException`.
+- `WriteSquashJournalAsync` emits `Kind=Squash` rows with the resolved `Replaces` array and computed checksum; `WriteOutcome.PreconditionFailed` surfaces a `MigrationException` calling out checksum drift.
+- `IsLedgerEmptyAsync` rewired to use `LoadAppliedVersionsAsync` (single bulk realtime call) instead of the per-id `ExistsAsync` loop.
+- Per-provider `LoadAppliedVersionsAsync` realtime overrides (replacing the DIM default):
+  - **Postgres:** `WHERE record_id = ANY(@ids)` — single round-trip parameterized array.
+  - **MongoDB:** `find({_id: {$in: ids}})` with `ReadConcern.Majority + ReadPreference.Primary` (RS-safe; falls back to local on standalone).
+  - **Couchbase:** parallel `ExistsAsync` fan-out (KV realtime probes; one round-trip per id, concurrent).
+  - **Aerospike:** `BatchGet` with `BatchPolicy` strong consistency; null-entry detection.
+  - **OpenSearch:** `_mget` with `realtime=true` (NOT `_search` — `_search` is refresh-bound and would miss recent writes).
+- Per-provider `LoadSatisfyingRowsAsync` transitive overrides:
+  - **Postgres:** `unnest(replaces) WHERE kind = 1 AND replaces && @versions` — GIN-indexable.
+  - **MongoDB:** `find({kind: 1, replaces: {$in: versions}})` + client-side intersect.
+  - **Couchbase:** N1QL `UNNEST replaces v WHERE kind = 1 AND v IN $versions` with `RequestPlus`.
+  - **OpenSearch:** `_search` with terms filter on `replaces[]` + `kind` term; capped at 10 000 squash rows.
+  - **Aerospike:** deferred — DIM default returns empty, so re-squash transitivity is unsupported on Aerospike in v1. Direct `Migration_<v>` auto-mark still works via `LoadAppliedVersionsAsync`. Tracking for follow-up: listener-bridged Query against `Kind=Squash` with TaskCompletionSource adapter.
+- `MigrationRunner.ClassifySquashAsync` exposed as `internal static` so the test suite can exercise the Fresh branch directly (full RunAsync can't reach it in v1 because Phase 2 discovery rejects squashes whose Replaces names a missing-from-assembly version; this is by design until post-mature originals can be safely deleted in a future cycle).
+- 7 new Phase 3 reconciliation tests in `ReconciliationTests`: mature auto-mark, fresh classification, partial classification, mid-range via Journal=false, re-squash transitivity, idempotency under concurrent reconcile. **23/23 squash tests pass; 356/356 core tests still green on net8/9/10.**
+
 Phase 4: ☐ pending
 Phase 5: ☐ pending
 Phase 6: ☐ pending

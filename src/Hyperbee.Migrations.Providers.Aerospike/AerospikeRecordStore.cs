@@ -222,6 +222,48 @@ internal class AerospikeRecordStore : IMigrationRecordStore
         ).ConfigureAwait( false );
     }
 
+    public async Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(
+        IEnumerable<string> candidateIds,
+        CancellationToken cancellationToken = default )
+    {
+        if ( candidateIds == null )
+            throw new ArgumentNullException( nameof( candidateIds ) );
+
+        var ids = candidateIds as string[] ?? candidateIds.ToArray();
+        var found = new HashSet<string>( StringComparer.Ordinal );
+        if ( ids.Length == 0 )
+            return found;
+
+        // BatchGet realtime read per ADR-0019 Phase 3. Aerospike's BatchPolicy
+        // defaults to strong consistency on namespaces configured for SC; the
+        // result.Length == ids.Length, with null entries for missing records.
+        var keys = new Key[ids.Length];
+        for ( var i = 0; i < ids.Length; i++ )
+            keys[i] = new Key( _options.Namespace, _options.MigrationSet, ids[i] );
+
+        var batchPolicy = new BatchPolicy();
+        var records = await _client.Get( batchPolicy, cancellationToken, keys, "Name" )
+            .ConfigureAwait( false );
+
+        for ( var i = 0; i < records.Length; i++ )
+        {
+            if ( records[i] != null )
+                found.Add( ids[i] );
+        }
+        return found;
+    }
+
+    // NOTE: LoadSatisfyingRowsAsync (transitive squash satisfaction per ADR-0019 A6)
+    // is not yet overridden for Aerospike — falls back to the IMigrationRecordStore
+    // DIM default, which returns an empty set. Practical impact: re-squash transitivity
+    // (Squash_3000 with Replaces=[1500..2500] subsuming a previously auto-marked
+    // Squash_2000) does not auto-resolve on Aerospike in v1; the operator must
+    // re-introduce the inner squash's replaced versions or use the recover path.
+    // Direct Migration_<v> auto-mark works via LoadAppliedVersionsAsync above.
+    //
+    // Tracking issue: implement listener-bridged Query against Kind=Squash with
+    // a TaskCompletionSource adapter; revisit after Phase 6 stabilizes.
+
     public async Task<WriteOutcome> WriteAsync(
         MigrationRecord record,
         WritePrecondition precondition = WritePrecondition.None,

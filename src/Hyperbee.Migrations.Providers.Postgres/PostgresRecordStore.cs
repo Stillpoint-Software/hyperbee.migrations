@@ -138,6 +138,63 @@ internal class PostgresRecordStore : IMigrationRecordStore
         await command.ExecuteNonQueryAsync();
     }
 
+    public async Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(
+        IEnumerable<string> candidateIds,
+        CancellationToken cancellationToken = default )
+    {
+        if ( candidateIds == null )
+            throw new ArgumentNullException( nameof( candidateIds ) );
+
+        var ids = candidateIds as string[] ?? candidateIds.ToArray();
+        var found = new HashSet<string>( StringComparer.Ordinal );
+        if ( ids.Length == 0 )
+            return found;
+
+        // Single round-trip realtime read per ADR-0019 Phase 3. Postgres treats
+        // = ANY(@ids) as a parameterized array predicate that the planner can
+        // satisfy with a primary-key index scan (or Bitmap Heap on large sets).
+        var sql = $"SELECT record_id FROM {MigrationTableName} WHERE record_id = ANY(@ids)";
+        await using var cmd = _dataSource.CreateCommand( sql );
+        cmd.Parameters.AddWithValue( "ids", NpgsqlDbType.Array | NpgsqlDbType.Text, ids );
+
+        await using var reader = await cmd.ExecuteReaderAsync( cancellationToken ).ConfigureAwait( false );
+        while ( await reader.ReadAsync( cancellationToken ).ConfigureAwait( false ) )
+            found.Add( reader.GetString( 0 ) );
+
+        return found;
+    }
+
+    public async Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(
+        IEnumerable<long> versions,
+        CancellationToken cancellationToken = default )
+    {
+        if ( versions == null )
+            throw new ArgumentNullException( nameof( versions ) );
+
+        var inputs = versions as long[] ?? versions.ToArray();
+        var covered = new HashSet<long>();
+        if ( inputs.Length == 0 )
+            return covered;
+
+        // Transitive squash satisfaction (ADR-0019 A6): a Squash row whose
+        // replaces array contains v means v is satisfied even though no direct
+        // Migration_<v> row exists. Postgres GIN-indexed `&&` (array overlap)
+        // narrows to candidate rows; we then unnest and intersect against input.
+        var sql =
+            $"SELECT DISTINCT v FROM (" +
+            $"  SELECT unnest(replaces) AS v FROM {MigrationTableName} WHERE kind = 1 AND replaces && @versions" +
+            $") s WHERE v = ANY(@versions)";
+
+        await using var cmd = _dataSource.CreateCommand( sql );
+        cmd.Parameters.AddWithValue( "versions", NpgsqlDbType.Array | NpgsqlDbType.Bigint, inputs );
+
+        await using var reader = await cmd.ExecuteReaderAsync( cancellationToken ).ConfigureAwait( false );
+        while ( await reader.ReadAsync( cancellationToken ).ConfigureAwait( false ) )
+            covered.Add( reader.GetInt64( 0 ) );
+
+        return covered;
+    }
+
     public async Task<WriteOutcome> WriteAsync(
         MigrationRecord record,
         WritePrecondition precondition = WritePrecondition.None,

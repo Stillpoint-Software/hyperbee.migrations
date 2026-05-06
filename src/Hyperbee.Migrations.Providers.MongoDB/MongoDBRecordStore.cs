@@ -128,6 +128,92 @@ internal class MongoDBRecordStore : IMigrationRecordStore
         } );
     }
 
+    public async Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(
+        IEnumerable<string> candidateIds,
+        CancellationToken cancellationToken = default )
+    {
+        if ( candidateIds == null )
+            throw new ArgumentNullException( nameof( candidateIds ) );
+
+        var ids = candidateIds as string[] ?? candidateIds.ToArray();
+        var found = new HashSet<string>( StringComparer.Ordinal );
+        if ( ids.Length == 0 )
+            return found;
+
+        var db = _client.GetDatabase( _options.DatabaseName );
+        var collection = db.GetCollection<MigrationRecord>( _options.CollectionName );
+
+        // Realtime read per ADR-0019 Phase 3. ReadConcern.Majority + ReadPreference.Primary
+        // is the safe default for replica sets; MongoDB falls back to local semantics on
+        // standalone deployments automatically. The find projection narrows to _id only
+        // to minimize round-trip bytes.
+        var filter = Builders<MigrationRecord>.Filter.In( x => x.Id, ids );
+        var projection = Builders<MigrationRecord>.Projection.Include( x => x.Id );
+
+        var settings = collection
+            .WithReadConcern( ReadConcern.Majority )
+            .WithReadPreference( ReadPreference.Primary );
+
+        using var cursor = await settings
+            .Find( filter )
+            .Project<MigrationRecord>( projection )
+            .ToCursorAsync( cancellationToken )
+            .ConfigureAwait( false );
+
+        while ( await cursor.MoveNextAsync( cancellationToken ).ConfigureAwait( false ) )
+        {
+            foreach ( var doc in cursor.Current )
+                found.Add( doc.Id );
+        }
+        return found;
+    }
+
+    public async Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(
+        IEnumerable<long> versions,
+        CancellationToken cancellationToken = default )
+    {
+        if ( versions == null )
+            throw new ArgumentNullException( nameof( versions ) );
+
+        var inputs = versions as long[] ?? versions.ToArray();
+        var covered = new HashSet<long>();
+        if ( inputs.Length == 0 )
+            return covered;
+
+        var db = _client.GetDatabase( _options.DatabaseName );
+        var collection = db.GetCollection<MigrationRecord>( _options.CollectionName )
+            .WithReadConcern( ReadConcern.Majority )
+            .WithReadPreference( ReadPreference.Primary );
+
+        // Transitive squash satisfaction (ADR-0019 A6). MongoDB has no array-array
+        // intersection operator; we project replaces arrays from squash rows whose
+        // replaces is `$in` the input set, then intersect client-side. The candidate
+        // pool is already narrow because Kind=Squash rows are sparse.
+        var filter = Builders<MigrationRecord>.Filter.And(
+            Builders<MigrationRecord>.Filter.Eq( x => x.Kind, MigrationRecordKind.Squash ),
+            Builders<MigrationRecord>.Filter.In( "replaces", inputs.Cast<object>() ) );
+        var projection = Builders<MigrationRecord>.Projection.Include( x => x.Replaces );
+
+        using var cursor = await collection
+            .Find( filter )
+            .Project<MigrationRecord>( projection )
+            .ToCursorAsync( cancellationToken )
+            .ConfigureAwait( false );
+
+        var inputSet = new HashSet<long>( inputs );
+        while ( await cursor.MoveNextAsync( cancellationToken ).ConfigureAwait( false ) )
+        {
+            foreach ( var doc in cursor.Current )
+            {
+                if ( doc.Replaces == null ) continue;
+                foreach ( var v in doc.Replaces )
+                    if ( inputSet.Contains( v ) )
+                        covered.Add( v );
+            }
+        }
+        return covered;
+    }
+
     public async Task<WriteOutcome> WriteAsync(
         MigrationRecord record,
         WritePrecondition precondition = WritePrecondition.None,
