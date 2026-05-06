@@ -38,6 +38,7 @@
   </Folder>
   <Folder Name="/Solution Tests/">
     <Project Path="tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj" />
+    <Project Path="tests/Hyperbee.Migrations.Squash.Tests/Hyperbee.Migrations.Squash.Tests.csproj" />
     <Project Path="tests/Hyperbee.Migrations.Tests/Hyperbee.Migrations.Tests.csproj" />
   </Folder>
   <Project Path="src/Hyperbee.Migrations.Providers.Aerospike/Hyperbee.Migrations.Providers.Aerospike.csproj" />
