@@ -938,7 +938,20 @@ Codebase audit verifying the design's assumptions against current HEAD (`migrati
 - Existing core unit tests: **356/356 pass on net8/9/10** (RunnerTests fake updated to mirror DIM behavior; cron-write assertion updated to v3 record-bearing overload).
 - Build clean across all 5 providers + tests; 0 errors, 36 pre-existing warnings.
 
-Phase 2: ☐ pending
+**Phase 2: ☑ COMPLETE 2026-05-06**
+
+**Completion summary:**
+- `MigrationAttribute` extended with `long[] Replaces` and `string ReplacesRange` (both default empty/null; existing `[Migration(version)]` declarations unaffected).
+- `ReplacesRangeParser` (internal) parses `"1000-1500, 1700, 1800-1850"` syntax to `SortedSet<long>` with whitespace tolerance, format-error messaging, and reversed-range detection.
+- `MigrationLoadException` (new) raised at discovery time for: non-existent versions in Replaces/ReplacesRange (subset rule per ADR-0019), self-reference, and unresolved range endpoints.
+- `MigrationRunner.DiscoverMigrations()` reorganized into a two-pass shape: raw discovery + duplicate check first, then per-descriptor `ResolveReplaces` against the in-scope assembly version set. The `MigrationDescriptor` carries the resolved sorted version set for Phase 3 reconciliation to consume.
+- `MigrationApplyMode` enum (`Fresh`/`PartialCatchUp`) plus `MigrationContext` with AsyncLocal `Current`, scoped `Push` activation, and `IsFreshInstall` back-compat sugar.
+- Runner classifies ledger state once at start (`IsLedgerEmptyAsync` probe) and pushes a `MigrationContext` scope around each `UpAsync` call. Phase 3 reconciliation will refine per-migration classification for squash rows.
+- 11 new Phase 2 tests in `MigrationAttributeReplacesTests`: parser, discovery validation (non-existent / self-reference / range resolution), and `MigrationContext` push/pop semantics. All 17 squash tests pass (6 Phase 3 placeholders skipped).
+- Existing 356 core unit tests: still green on net8/9/10.
+- Build clean: 0 errors.
+
+Phase 3: ☐ pending
 Phase 3: ☐ pending
 Phase 4: ☐ pending
 Phase 5: ☐ pending

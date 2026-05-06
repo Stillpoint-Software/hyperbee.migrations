@@ -11,7 +11,7 @@ public class MigrationRunner
     private readonly MigrationOptions _options;
     private readonly ILogger<MigrationRunner> _logger;
 
-    private record MigrationDescriptor( Type Type, MigrationAttribute Attribute );
+    private record MigrationDescriptor( Type Type, MigrationAttribute Attribute, IReadOnlyList<long> ResolvedReplaces );
 
     public MigrationRunner( IMigrationRecordStore recordStore, MigrationOptions options, ILogger<MigrationRunner> logger )
     {
@@ -55,10 +55,16 @@ public class MigrationRunner
 
         var migrations = DiscoverMigrations( _options );
 
+        // Phase 2: classify ledger state once at the start so each UpAsync sees the
+        // appropriate MigrationApplyMode (Fresh vs PartialCatchUp). Phase 3
+        // reconciliation will refine this per-migration for squash rows.
+        var ledgerEmptyAtStart = await IsLedgerEmptyAsync( migrations, cancellationToken ).ConfigureAwait( false );
+        var defaultApplyMode = ledgerEmptyAtStart ? MigrationApplyMode.Fresh : MigrationApplyMode.PartialCatchUp;
+
         var stopwatch = Stopwatch.StartNew();
 
         var runCount = 0;
-        foreach ( var (type, attribute) in migrations )
+        foreach ( var (type, attribute, _) in migrations )
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -116,7 +122,8 @@ public class MigrationRunner
 
                 _logger.LogInformation( "[{version}] {name}: {direction} migration started (cron)", version, name, direction );
 
-                await migrationItem.Migration.UpAsync( cancellationToken ).ConfigureAwait( false );
+                using ( MigrationContext.Push( new MigrationContext { ApplyMode = defaultApplyMode } ) )
+                    await migrationItem.Migration.UpAsync( cancellationToken ).ConfigureAwait( false );
 
                 // delete existing record before writing new one (upsert)
                 if ( await _recordStore.ExistsAsync( recordId ).ConfigureAwait( false ) )
@@ -130,17 +137,20 @@ public class MigrationRunner
 
                 var stopProcess = false;
 
-                while ( stopProcess == false )
+                using ( MigrationContext.Push( new MigrationContext { ApplyMode = defaultApplyMode } ) )
                 {
-                    if ( await StartMigration( migrationItem, cancellationToken ) )
+                    while ( stopProcess == false )
                     {
-                        _logger.LogInformation( "[{version}] {name}: {direction} migration started", version, name, direction );
-                        stopProcess = await ProcessJobAsync( migrationItem, _recordStore, cancellationToken ).ConfigureAwait( false );
-                    }
+                        if ( await StartMigration( migrationItem, cancellationToken ) )
+                        {
+                            _logger.LogInformation( "[{version}] {name}: {direction} migration started", version, name, direction );
+                            stopProcess = await ProcessJobAsync( migrationItem, _recordStore, cancellationToken ).ConfigureAwait( false );
+                        }
 
-                    if ( stopProcess == false )
-                    {
-                        _logger.LogInformation( "[{version}] {name}: {direction} migration continuing", version, name, direction );
+                        if ( stopProcess == false )
+                        {
+                            _logger.LogInformation( "[{version}] {name}: {direction} migration continuing", version, name, direction );
+                        }
                     }
                 }
             }
@@ -159,39 +169,104 @@ public class MigrationRunner
 
     private static IEnumerable<MigrationDescriptor> DiscoverMigrations( MigrationOptions options )
     {
-        // discover descriptors
-        var descriptors = options.Assemblies
+        // raw discovery — collect all migration types with their attributes (no Replaces
+        // resolution yet; we need the full version set first so ReplacesRange can resolve
+        // and Replaces can be validated against it).
+        var raw = options.Assemblies
             .SelectMany( assembly => assembly.GetTypes() )
             .Where( type => typeof( Migration ).IsAssignableFrom( type ) && !type.IsAbstract )
-            .Select( type =>
-            {
-                var attribute = type.GetCustomAttribute( typeof( MigrationAttribute ) ) as MigrationAttribute;
-                return new MigrationDescriptor( type, attribute );
-            } )
-            .Where( descriptor => DescriptorInScope( descriptor, options ) )
-            .OrderBy( x => x.Attribute!.Version, options.Direction )
+            .Select( type => (
+                Type: type,
+                Attribute: type.GetCustomAttribute( typeof( MigrationAttribute ) ) as MigrationAttribute
+            ) )
+            .Where( x => x.Attribute != null && DescriptorInScope( x.Attribute, options ) )
             .ToList();
 
-        // throw if any duplicates
-        var set = new HashSet<long>();
+        // throw if any duplicate versions (existing v2 contract)
+        var seen = new HashSet<long>();
+        foreach ( var (_, attr) in raw )
+        {
+            if ( !seen.Add( attr!.Version ) )
+                throw new DuplicateMigrationException(
+                    $"Migration number conflict detected for version number `{attr.Version}`.", attr.Version );
+        }
 
-        var duplicate = descriptors
-            .Select( x => x.Attribute!.Version )
-            .Where( x => !set.Add( x ) )
-            .Select( x => new long?( x ) )
-            .FirstOrDefault();
+        // resolve Replaces for each migration: union of explicit Replaces[] and
+        // ReplacesRange-expanded set, intersected with the assembly's discovered
+        // version set (per ADR-0019 Phase 2 semantics).
+        var assemblyVersions = seen; // alias — `seen` now holds every version
 
-        if ( duplicate.HasValue )
-            throw new DuplicateMigrationException( $"Migration number conflict detected for version number `{duplicate.Value}`.", duplicate.Value );
+        var descriptors = new List<MigrationDescriptor>( raw.Count );
+        foreach ( var (type, attribute) in raw )
+        {
+            var resolved = ResolveReplaces( type, attribute!, assemblyVersions );
+            descriptors.Add( new MigrationDescriptor( type, attribute, resolved ) );
+        }
 
-        // success
-        return descriptors;
+        return descriptors
+            .OrderBy( x => x.Attribute!.Version, options.Direction )
+            .ToList();
     }
 
-    private static bool DescriptorInScope( MigrationDescriptor descriptor, MigrationOptions options )
+    private static IReadOnlyList<long> ResolveReplaces(
+        Type migrationType,
+        MigrationAttribute attribute,
+        HashSet<long> assemblyVersions )
     {
-        var (_, attribute) = descriptor;
+        var explicitSet = attribute.Replaces ?? Array.Empty<long>();
+        var rangeSet = Helper.ReplacesRangeParser.Parse( attribute.ReplacesRange );
 
+        if ( explicitSet.Length == 0 && rangeSet.Count == 0 )
+            return Array.Empty<long>();
+
+        // self-reference check
+        var selfVersion = attribute.Version;
+        if ( explicitSet.Contains( selfVersion ) || rangeSet.Contains( selfVersion ) )
+            throw new MigrationLoadException(
+                $"Migration `{migrationType.Name}` (version {selfVersion}) self-references its own version " +
+                $"in Replaces / ReplacesRange. A squash cannot replace itself (ADR-0019)." );
+
+        // union + dedupe
+        var merged = new SortedSet<long>( explicitSet );
+        foreach ( var v in rangeSet )
+            merged.Add( v );
+
+        // every named version must correspond to a discovered migration
+        var missing = merged.Where( v => !assemblyVersions.Contains( v ) ).ToArray();
+        if ( missing.Length > 0 )
+            throw new MigrationLoadException(
+                $"Migration `{migrationType.Name}` (version {selfVersion}) names version(s) " +
+                $"[{string.Join( ", ", missing )}] in Replaces / ReplacesRange that do not correspond " +
+                $"to any discovered [Migration] type. A squash's Replaces set must be a subset of " +
+                $"the assembly's actual migration versions (ADR-0019)." );
+
+        return merged.ToArray();
+    }
+
+    private async Task<bool> IsLedgerEmptyAsync(
+        IEnumerable<MigrationDescriptor> migrations,
+        CancellationToken cancellationToken )
+    {
+        // Probe each discovered migration's expected record id; the first hit
+        // means the ledger is non-empty for our scope. Phase 3 will refine this
+        // with bulk LoadAppliedVersionsAsync; the per-id probe here is fine for
+        // Phase 2 scaffolding because it uses the same primitives the existing
+        // run loop already calls.
+        foreach ( var descriptor in migrations )
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var recordId = _options.Conventions.GetRecordId(
+                _options.MigrationActivator.CreateInstance( descriptor.Type ) );
+
+            if ( await _recordStore.ExistsAsync( recordId ).ConfigureAwait( false ) )
+                return false;
+        }
+        return true;
+    }
+
+    private static bool DescriptorInScope( MigrationAttribute attribute, MigrationOptions options )
+    {
         if ( attribute == null ) // require the MigrationAttribute
             return false;
 
