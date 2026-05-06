@@ -166,11 +166,37 @@ internal class AerospikeRecordStore : IMigrationRecordStore
             return null;
 
         var executedAt = record.GetLong( "ExecutedAt" );
-        return new MigrationRecord
+
+        // Pre-checksum-era records have no Checksum/Kind/Replaces bins; the Aerospike
+        // client returns null/0/null for missing bins, which becomes Kind=Migration and
+        // Checksum=null after coercion. Per ADR-0021 amendment A1.
+        var checksum = record.GetString( "Checksum" );
+        var kind = (MigrationRecordKind) (byte) record.GetLong( "Kind" );
+
+        var replacesList = record.GetList( "Replaces" );
+        long[] replaces;
+        if ( replacesList == null || replacesList.Count == 0 )
+        {
+            replaces = Array.Empty<long>();
+        }
+        else
+        {
+            replaces = new long[replacesList.Count];
+            for ( var i = 0; i < replacesList.Count; i++ )
+                replaces[i] = Convert.ToInt64( replacesList[i] );
+        }
+
+        var migrationRecord = new MigrationRecord
         {
             Id = recordId,
-            RunOn = DateTimeOffset.FromUnixTimeSeconds( executedAt )
+            RunOn = DateTimeOffset.FromUnixTimeSeconds( executedAt ),
+            Checksum = checksum,
+            Kind = kind,
+            Replaces = replaces
         };
+
+        migrationRecord.EnsureLedgerIntegrity();
+        return migrationRecord;
     }
 
     public async Task DeleteAsync( string recordId )
@@ -194,6 +220,59 @@ internal class AerospikeRecordStore : IMigrationRecordStore
             new Bin( "Name", recordId ),
             new Bin( "ExecutedAt", _timeProvider.GetUtcNow().ToUnixTimeSeconds() )
         ).ConfigureAwait( false );
+    }
+
+    public async Task<WriteOutcome> WriteAsync(
+        MigrationRecord record,
+        WritePrecondition precondition = WritePrecondition.None,
+        CancellationToken cancellationToken = default )
+    {
+        if ( record == null )
+            throw new ArgumentNullException( nameof( record ) );
+
+        record.EnsureLedgerIntegrity();
+
+        _logger.LogDebug( "Running {action} (record-bearing) with `{recordId}` precondition={precondition}",
+            nameof( WriteAsync ), record.Id, precondition );
+
+        var key = new Key( _options.Namespace, _options.MigrationSet, record.Id );
+
+        // Aerospike treats a null bin value as a delete on update — fine for pre-existing
+        // rows; for create-only, just omit the bin so the bin is absent on disk.
+        var binList = new List<Bin>( 5 )
+        {
+            new( "Name", record.Id ),
+            new( "ExecutedAt", record.RunOn.ToUnixTimeSeconds() ),
+            new( "Kind", (long) (byte) record.Kind ),
+            new( "Replaces", record.Replaces?.ToList() ?? new List<long>() )
+        };
+        if ( record.Checksum != null )
+            binList.Add( new Bin( "Checksum", record.Checksum ) );
+
+        var bins = binList.ToArray();
+
+        var policy = new WritePolicy
+        {
+            recordExistsAction = precondition == WritePrecondition.MustNotExist
+                ? RecordExistsAction.CREATE_ONLY
+                : RecordExistsAction.UPDATE
+        };
+
+        try
+        {
+            await _client.Put( policy, cancellationToken, key, bins ).ConfigureAwait( false );
+            return WriteOutcome.Created;
+        }
+        catch ( AerospikeException ex ) when (
+            ex.Result == ResultCode.KEY_EXISTS_ERROR &&
+            precondition == WritePrecondition.MustNotExist )
+        {
+            // Existing row — checksum-equality re-check decides benign vs conflict.
+            var existing = await ReadAsync( record.Id ).ConfigureAwait( false );
+            if ( existing != null && string.Equals( existing.Checksum, record.Checksum, StringComparison.Ordinal ) )
+                return WriteOutcome.AlreadyExistsBenign;
+            return WriteOutcome.PreconditionFailed;
+        }
     }
 
     private sealed class LockHandle : IDisposable

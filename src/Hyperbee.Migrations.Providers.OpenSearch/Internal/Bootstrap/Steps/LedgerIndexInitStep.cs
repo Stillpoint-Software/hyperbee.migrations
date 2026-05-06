@@ -44,8 +44,23 @@ public sealed class LedgerIndexInitStep : IBootstrapStep
               "appliedBy":            { "type": "keyword" },
               "checksum":             { "type": "keyword" },
               "error":                { "type": "text" },
-              "failedStatementIndex": { "type": "integer" }
+              "failedStatementIndex": { "type": "integer" },
+              "kind":                 { "type": "byte" },
+              "replaces":             { "type": "long" }
             }
+          }
+        }
+        """;
+
+    // Additive mapping update applied to existing v2-era ledger indices so
+    // they accept the new kind/replaces fields under strict dynamic. Adding
+    // properties to a strict mapping via PUT _mapping is supported and
+    // idempotent (no-op if the fields already exist with the same shape).
+    private const string MappingPatchJson = """
+        {
+          "properties": {
+            "kind":     { "type": "byte" },
+            "replaces": { "type": "long" }
           }
         }
         """;
@@ -67,6 +82,12 @@ public sealed class LedgerIndexInitStep : IBootstrapStep
                 logger.LogDebug( "{step} ledger index `{idx}` already exists; verifying mapping", Name, indexName );
 
                 var verifyDetail = await VerifyMappingAsync( context, indexName, logger ).ConfigureAwait( false );
+
+                // v3 additive: ensure kind/replaces fields exist on pre-existing v2 indices.
+                // Idempotent under repeated runs; failure is non-fatal in the AssumeIndicesExist
+                // path (operator may lack indices:admin/mapping under tight IAM, e.g. AWS Managed).
+                await PatchMappingAsync( context, indexName, logger ).ConfigureAwait( false );
+
                 var elapsed = context.TimeProvider.GetElapsedTime( start );
                 return StepOutcome.Succeeded( Name, elapsed, verifyDetail );
             }
@@ -175,6 +196,47 @@ public sealed class LedgerIndexInitStep : IBootstrapStep
 
         logger.LogDebug( "{step} ledger schema verified ({count} required fields present)", "ledger-init", RequiredFields.Length );
         return "verified existing schema";
+    }
+
+    // Idempotent additive mapping update for v2-era indices that predate the
+    // kind/replaces fields. PUT _mapping with a property block is a no-op
+    // when the field already exists with the same type. The verification
+    // (RequiredFields) intentionally does NOT include kind/replaces — pre-v3
+    // indices that haven't been patched yet still satisfy the strict R-06
+    // forensic schema check; the patch happens after verify in the same step.
+    private static async Task PatchMappingAsync( BootstrapContext context, string indexName, ILogger logger )
+    {
+        try
+        {
+            var patchResponse = await context.Client.LowLevel.Indices.PutMappingAsync<StringResponse>(
+                indexName,
+                PostData.String( MappingPatchJson ),
+                ctx: context.CancellationToken
+            ).ConfigureAwait( false );
+
+            if ( !patchResponse.Success )
+            {
+                // Tight IAM (AWS Managed under restricted role) may forbid mapping updates;
+                // log at warning, do not fail the step. v3 writes will surface the error
+                // at write time on indices that haven't been patched.
+                var detail = patchResponse.OriginalException?.Message ?? patchResponse.Body ?? "unknown patch failure";
+                logger.LogWarning(
+                    "{step} could not apply v3 ledger mapping patch (kind/replaces) to `{idx}`: {detail}",
+                    "ledger-init", indexName, detail );
+            }
+            else
+            {
+                logger.LogDebug( "{step} v3 ledger mapping patch applied (kind/replaces) to `{idx}`", "ledger-init", indexName );
+            }
+        }
+        catch ( OperationCanceledException )
+        {
+            throw;
+        }
+        catch ( Exception ex )
+        {
+            logger.LogWarning( ex, "{step} v3 ledger mapping patch threw; continuing", "ledger-init" );
+        }
     }
 
     // Detects the OpenSearch-specific 400 body that signals a TOCTOU race

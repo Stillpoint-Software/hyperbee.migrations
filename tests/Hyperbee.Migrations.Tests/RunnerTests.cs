@@ -305,8 +305,12 @@ public class RunnerTests
         await migrationRunner.RunAsync();
 
         // assert: cron migration should have run (delete+write = store count stays same but record updated)
-        // the runner deletes the old record then writes a new one, so verify WriteAsync was called
-        await recordStore.Received().WriteAsync( "record.10.cron-migration" );
+        // the runner deletes the old record then writes a new one, so verify WriteAsync was called.
+        // v3 (per ADR-0021) routes journal writes through the record-bearing overload.
+        await recordStore.Received().WriteAsync(
+            Arg.Is<MigrationRecord>( r => r.Id == "record.10.cron-migration" ),
+            Arg.Any<WritePrecondition>(),
+            Arg.Any<CancellationToken>() );
     }
 
     [TestMethod]
@@ -380,6 +384,22 @@ public class RunnerTests
             var id = args.Arg<string>();
             store.Add( (args.Arg<string>(), new MigrationRecord { Id = id }) );
             return Task.CompletedTask;
+        } );
+
+        // The new record-bearing WriteAsync (introduced in v3 per ADR-0021) has a default
+        // interface method that delegates to the legacy WriteAsync(string). NSubstitute
+        // auto-overrides every interface method and bypasses the DIM default, so we
+        // wire the fake to mirror the DIM behavior explicitly.
+        recordStore.WriteAsync(
+            Arg.Any<MigrationRecord>(),
+            Arg.Any<WritePrecondition>(),
+            Arg.Any<CancellationToken>()
+        ).Returns( args =>
+        {
+            var record = args.Arg<MigrationRecord>();
+            record.EnsureLedgerIntegrity();
+            store.Add( (record.Id, record) );
+            return Task.FromResult( WriteOutcome.Created );
         } );
 
         return recordStore;

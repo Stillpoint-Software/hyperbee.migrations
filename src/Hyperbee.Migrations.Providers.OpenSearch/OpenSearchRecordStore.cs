@@ -381,7 +381,12 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
             .Realtime( true )
         ).ConfigureAwait( false );
 
-        return response.Found ? response.Source : null!;
+        if ( !response.Found )
+            return null!;
+
+        var record = response.Source;
+        record?.EnsureLedgerIntegrity();
+        return record!;
     }
 
     public Task WriteAsync( string recordId )
@@ -402,7 +407,6 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
             Direction = direction,
             Status = OpenSearchMigrationRecord.StatusSucceeded,
             AppliedBy = $"{Environment.MachineName}/{Environment.ProcessId}",
-            Checksum = null,
             Error = null,
             FailedStatementIndex = null
         };
@@ -424,7 +428,6 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
             Direction = "Down",
             Status = OpenSearchMigrationRecord.StatusPartiallyRolledBack,
             AppliedBy = $"{Environment.MachineName}/{Environment.ProcessId}",
-            Checksum = null,
             Error = error,
             FailedStatementIndex = failedStatementIndex
         };
@@ -451,6 +454,62 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
                 $"Ledger write for `{record.Id}` failed: {detail}",
                 response.OriginalException ?? new InvalidOperationException( detail ) );
         }
+    }
+
+    public async Task<WriteOutcome> WriteAsync(
+        MigrationRecord record,
+        WritePrecondition precondition = WritePrecondition.None,
+        CancellationToken cancellationToken = default )
+    {
+        if ( record == null )
+            throw new ArgumentNullException( nameof( record ) );
+
+        record.EnsureLedgerIntegrity();
+
+        _logger.LogDebug( "Running {action} (record-bearing) with `{recordId}` precondition={precondition}",
+            nameof( WriteAsync ), record.Id, precondition );
+
+        // Lift the universal MigrationRecord to OpenSearchMigrationRecord so the
+        // forensic R-06 fields are present even when callers go through the
+        // base-class API (covers reconciliation auto-marks of squash rows).
+        var lifted = record as OpenSearchMigrationRecord ?? new OpenSearchMigrationRecord
+        {
+            Id = record.Id,
+            RunOn = record.RunOn,
+            Checksum = record.Checksum,
+            Kind = record.Kind,
+            Replaces = record.Replaces,
+            Direction = "Up",
+            Status = OpenSearchMigrationRecord.StatusSucceeded,
+            AppliedBy = $"{Environment.MachineName}/{Environment.ProcessId}"
+        };
+
+        var response = await _client.IndexAsync( lifted, idx => idx
+            .Index( _options.LedgerIndex )
+            .Id( lifted.Id )
+            .OpType( precondition == WritePrecondition.MustNotExist ? OpType.Create : OpType.Index )
+            .Refresh( global::OpenSearch.Net.Refresh.WaitFor )
+        ).ConfigureAwait( false );
+
+        if ( response.IsValid )
+            return WriteOutcome.Created;
+
+        // OpType.Create against an existing _id surfaces version_conflict_engine_exception (409).
+        if ( precondition == WritePrecondition.MustNotExist
+             && response.ApiCall?.HttpStatusCode == 409 )
+        {
+            var existing = await ReadAsync( record.Id ).ConfigureAwait( false );
+            if ( existing != null && string.Equals( existing.Checksum, record.Checksum, StringComparison.Ordinal ) )
+                return WriteOutcome.AlreadyExistsBenign;
+            return WriteOutcome.PreconditionFailed;
+        }
+
+        var detail = response.OriginalException?.Message
+            ?? response.ServerError?.Error?.ToString()
+            ?? "Unknown ledger write failure.";
+        throw new OpenSearchProviderException(
+            $"Ledger write for `{record.Id}` failed: {detail}",
+            response.OriginalException ?? new InvalidOperationException( detail ) );
     }
 
     public async Task DeleteAsync( string recordId )

@@ -101,7 +101,9 @@ internal class MongoDBRecordStore : IMigrationRecordStore
         var db = _client.GetDatabase( _options.DatabaseName );
         var collection = db.GetCollection<MigrationRecord>( _options.CollectionName );
         using var cursor = await collection.FindAsync( x => x.Id == recordId );
-        return await cursor.FirstOrDefaultAsync();
+        var record = await cursor.FirstOrDefaultAsync();
+        record?.EnsureLedgerIntegrity();
+        return record;
     }
 
     public async Task DeleteAsync( string recordId )
@@ -124,6 +126,45 @@ internal class MongoDBRecordStore : IMigrationRecordStore
             Id = recordId,
             RunOn = DateTimeOffset.UtcNow
         } );
+    }
+
+    public async Task<WriteOutcome> WriteAsync(
+        MigrationRecord record,
+        WritePrecondition precondition = WritePrecondition.None,
+        CancellationToken cancellationToken = default )
+    {
+        if ( record == null )
+            throw new ArgumentNullException( nameof( record ) );
+
+        record.EnsureLedgerIntegrity();
+
+        _logger.LogDebug( "Running {action} (record-bearing) with `{recordId}` precondition={precondition}",
+            nameof( WriteAsync ), record.Id, precondition );
+
+        var db = _client.GetDatabase( _options.DatabaseName );
+        var collection = db.GetCollection<MigrationRecord>( _options.CollectionName );
+
+        if ( precondition == WritePrecondition.MustNotExist )
+        {
+            try
+            {
+                await collection.InsertOneAsync( record, cancellationToken: cancellationToken ).ConfigureAwait( false );
+                return WriteOutcome.Created;
+            }
+            catch ( MongoWriteException ex ) when ( ex.WriteError?.Category == ServerErrorCategory.DuplicateKey )
+            {
+                var existing = await ReadAsync( record.Id ).ConfigureAwait( false );
+                if ( existing != null && string.Equals( existing.Checksum, record.Checksum, StringComparison.Ordinal ) )
+                    return WriteOutcome.AlreadyExistsBenign;
+                return WriteOutcome.PreconditionFailed;
+            }
+        }
+
+        // Upsert by id
+        var filter = Builders<MigrationRecord>.Filter.Eq( x => x.Id, record.Id );
+        await collection.ReplaceOneAsync( filter, record,
+            new ReplaceOptions { IsUpsert = true }, cancellationToken ).ConfigureAwait( false );
+        return WriteOutcome.Created;
     }
 
     private record MigrationLock( int Id, DateTimeOffset LockedOn, DateTimeOffset ReleaseOn );

@@ -11,9 +11,11 @@ namespace Hyperbee.Migrations.Providers.OpenSearch;
 //   direction            - keyword  ("Up" | "Down")
 //   status               - keyword  ("succeeded" | "failed" | "partially_rolled_back")
 //   appliedBy            - keyword  ({machineName}/{processId}[/{RunnerId}])
-//   checksum             - keyword  (content hash; deferred — Slice 2.5 leaves null)
+//   checksum             - keyword  (content hash; supplied by base MigrationRecord per ADR-0021)
 //   error                - text
 //   failedStatementIndex - integer  (nullable; populated only for partial rollback)
+//   kind                 - byte     (added in v3 per ADR-0021; supplied by base)
+//   replaces             - long[]   (added in v3 per ADR-0019; supplied by base)
 
 public class OpenSearchMigrationRecord : MigrationRecord
 {
@@ -46,12 +48,6 @@ public class OpenSearchMigrationRecord : MigrationRecord
     /// Runner identity for forensic attribution: "{machineName}/{processId}".
     /// </summary>
     public string? AppliedBy { get; init; }
-
-    /// <summary>
-    /// Content checksum (statement-set hash). Deferred to a follow-up slice;
-    /// always null in the current implementation.
-    /// </summary>
-    public string? Checksum { get; init; }
 
     /// <summary>
     /// Error detail when Status is "failed" or "partially_rolled_back".

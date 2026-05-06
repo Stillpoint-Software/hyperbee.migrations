@@ -122,7 +122,7 @@ public class MigrationRunner
                 if ( await _recordStore.ExistsAsync( recordId ).ConfigureAwait( false ) )
                     await _recordStore.DeleteAsync( recordId ).ConfigureAwait( false );
 
-                await _recordStore.WriteAsync( recordId ).ConfigureAwait( false );
+                await WriteJournalAsync( migration, attribute, recordId, cancellationToken ).ConfigureAwait( false );
             }
             else
             {
@@ -207,6 +207,32 @@ public class MigrationRunner
             .Any();
     }
 
+    // Writes a journal row through the v3 record-bearing overload, computing the
+    // checksum from the configured strategy. The legacy WriteAsync(string) DIM
+    // default delegates back to the v2 store API for custom implementations,
+    // preserving v2 semantics — see IMigrationRecordStore default impl notes.
+    private async Task WriteJournalAsync(
+        Migration migration,
+        MigrationAttribute attribute,
+        string recordId,
+        CancellationToken cancellationToken )
+    {
+        var checksum = await _options.ChecksumStrategy
+            .ComputeAsync( migration, attribute, cancellationToken )
+            .ConfigureAwait( false );
+
+        var record = new MigrationRecord
+        {
+            Id = recordId,
+            RunOn = DateTimeOffset.UtcNow,
+            Checksum = checksum,
+            Kind = MigrationRecordKind.Migration
+        };
+
+        await _recordStore.WriteAsync( record, WritePrecondition.None, cancellationToken )
+            .ConfigureAwait( false );
+    }
+
     private async Task<bool> ProcessJobAsync( MigrationItem migrationItem, IMigrationRecordStore recordStore, CancellationToken cancellationToken )
     {
         switch ( migrationItem.Direction )
@@ -218,7 +244,7 @@ public class MigrationRunner
                     if ( stopMigration )
                     {
                         if ( migrationItem.Attribute.Journal )
-                            await recordStore.WriteAsync( migrationItem.RecordId ).ConfigureAwait( false );
+                            await WriteJournalAsync( migrationItem.Migration, migrationItem.Attribute, migrationItem.RecordId, cancellationToken ).ConfigureAwait( false );
                     }
 
                     return stopMigration;

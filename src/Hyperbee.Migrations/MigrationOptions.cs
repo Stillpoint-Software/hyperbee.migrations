@@ -19,6 +19,7 @@ public class MigrationOptions
         LockingEnabled = false;
         MigrationActivator = migrationActivator;
         Conventions = new DefaultMigrationConventions();
+        ChecksumStrategy = new DefaultChecksumStrategy();
     }
 
     public Direction Direction { get; set; }
@@ -29,4 +30,12 @@ public class MigrationOptions
     public bool LockingEnabled { get; set; }
     public IMigrationActivator MigrationActivator { get; set; }
     public IMigrationConventions Conventions { get; set; }
+
+    /// <summary>
+    /// Strategy used to compute the <see cref="MigrationRecord.Checksum"/>
+    /// stamped on each ledger row at write time (per ADR-0021).
+    /// Defaults to <see cref="DefaultChecksumStrategy"/>; provider integrations
+    /// may swap in resource-bytes-aware implementations.
+    /// </summary>
+    public IChecksumStrategy ChecksumStrategy { get; set; }
 }

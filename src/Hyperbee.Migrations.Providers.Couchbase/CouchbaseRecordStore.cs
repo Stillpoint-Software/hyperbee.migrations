@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Couchbase.Core.Exceptions.KeyValue;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
@@ -230,7 +231,9 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         var result = await collection.GetAsync( recordId )
             .ConfigureAwait( false );
 
-        return result.ContentAs<MigrationRecord>();
+        var record = result.ContentAs<MigrationRecord>();
+        record?.EnsureLedgerIntegrity();
+        return record;
     }
 
     public async Task DeleteAsync( string recordId )
@@ -254,5 +257,42 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
         await collection.InsertAsync( recordId, record )
             .ConfigureAwait( false );
+    }
+
+    public async Task<WriteOutcome> WriteAsync(
+        MigrationRecord record,
+        WritePrecondition precondition = WritePrecondition.None,
+        CancellationToken cancellationToken = default )
+    {
+        if ( record == null )
+            throw new ArgumentNullException( nameof( record ) );
+
+        record.EnsureLedgerIntegrity();
+
+        _logger.LogDebug( "Running {action} (record-bearing) with `{recordId}` precondition={precondition}",
+            nameof( WriteAsync ), record.Id, precondition );
+
+        var collection = await GetCollectionAsync().ConfigureAwait( false );
+
+        if ( precondition == WritePrecondition.MustNotExist )
+        {
+            try
+            {
+                await collection.InsertAsync( record.Id, record,
+                    options => options.CancellationToken( cancellationToken ) ).ConfigureAwait( false );
+                return WriteOutcome.Created;
+            }
+            catch ( DocumentExistsException )
+            {
+                var existing = await ReadAsync( record.Id ).ConfigureAwait( false );
+                if ( existing != null && string.Equals( existing.Checksum, record.Checksum, StringComparison.Ordinal ) )
+                    return WriteOutcome.AlreadyExistsBenign;
+                return WriteOutcome.PreconditionFailed;
+            }
+        }
+
+        await collection.UpsertAsync( record.Id, record,
+            options => options.CancellationToken( cancellationToken ) ).ConfigureAwait( false );
+        return WriteOutcome.Created;
     }
 }

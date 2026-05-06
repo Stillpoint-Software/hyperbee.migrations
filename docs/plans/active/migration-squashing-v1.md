@@ -920,7 +920,24 @@ Codebase audit verifying the design's assumptions against current HEAD (`migrati
 - Phase 6 estimate revised: 600-1000 LOC → 1200-1750 LOC; 4-5 days → 5-7 days. v1 total: 4-6 weeks → 5-7 weeks.
 - Phase 6 Task 6.3 risk classification: High → Moderate.
 
-**Phase 1: ☐ pending**
+**Phase 1: ☑ COMPLETE 2026-05-06**
+
+**Completion summary:**
+- New core types: `MigrationRecordKind`, `WritePrecondition`, `WriteOutcome`, `MigrationLedgerIntegrityException`, `IChecksumStrategy`, `DefaultChecksumStrategy`.
+- `MigrationRecord` extended with `Checksum`, `Kind`, `Replaces` (concrete `long[]` for clean cross-provider serialization; `IMigrationRecord.Replaces` exposes `IReadOnlyList<long>`).
+- `IMigrationRecordStore` extended with three DIM-defaulted methods: `WriteAsync(MigrationRecord, WritePrecondition, CT) → WriteOutcome`, `LoadAppliedVersionsAsync`, `LoadSatisfyingRowsAsync`. v2 record stores compile and run unchanged via the DIM defaults.
+- All 5 provider record stores override `WriteAsync(MigrationRecord, ...)` with realtime semantics:
+  - Postgres: idempotent `ALTER TABLE ADD COLUMN IF NOT EXISTS` + `INSERT ... ON CONFLICT DO NOTHING/UPDATE` + `bigint[]` array literal.
+  - Aerospike: `RecordExistsAction.CREATE_ONLY` for MustNotExist; checksum-equality re-check on `KEY_EXISTS_ERROR`.
+  - Couchbase: `InsertAsync` with `DocumentExistsException` recovery; `UpsertAsync` for None.
+  - MongoDB: `InsertOneAsync` with `MongoWriteException`/`DuplicateKey` recovery; `ReplaceOneAsync(IsUpsert)` for None.
+  - OpenSearch: `OpType.Create` for MustNotExist with `409` recovery; ledger index strict mapping extended with `kind`/`replaces` fields + idempotent `PUT _mapping` patch for v2-era indices.
+- `MigrationRunner` routes journal writes through the record-bearing overload (v3) with computed checksum.
+- `OpenSearchMigrationRecord.Checksum` removed (now inherited from base per ADR-0021); `LedgerIndexInitStep` mapping updated.
+- Cross-provider integrity tests in `Hyperbee.Migrations.Squash.Tests.LedgerIntegrityTests`: 6/6 pass.
+- Existing core unit tests: **356/356 pass on net8/9/10** (RunnerTests fake updated to mirror DIM behavior; cron-write assertion updated to v3 record-bearing overload).
+- Build clean across all 5 providers + tests; 0 errors, 36 pre-existing warnings.
+
 Phase 2: ☐ pending
 Phase 3: ☐ pending
 Phase 4: ☐ pending
