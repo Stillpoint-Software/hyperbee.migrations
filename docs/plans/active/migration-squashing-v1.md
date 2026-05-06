@@ -527,7 +527,12 @@ For Aerospike, Couchbase, MongoDB, OpenSearch:
 
 **ADR compliance:** ADR-0019 (especially A1 no-skip-verify, A4 cache+parallel, A5 mandatory `[DataMigration]`, A8 non-determinism scan, A10 server-version-matched container), ADR-0021 (checksum scope), ADR-0022 (script-form output).
 
-**🔴 RISKIEST TASK in this plan: Task 6.3 — Postgres statement classifier (~600 LOC C# parsing pg_dump text into typed statements).** Recommend a 2-day spike at the start of Phase 6 to prototype the classifier against 5-10 real-world pg_dump outputs (varying server versions, extension usage, RLS, partitioning) and validate the parsing strategy before committing to full implementation.
+**🟡 Task 6.3 was originally flagged as the riskiest task in this plan. Spike was completed 2026-05-06 (`spikes/postgres-classifier/SPIKE_REPORT.md`).** Risk classification revised from High to **Moderate** after the spike. Calibration findings:
+
+- Spike prototype: ~570 LOC achieved 88.4% classification (61/69 statements) on real pg_dump 16.13 output on first attempt; spike target was ≥80%.
+- Two trivially fixable failure modes identified (~60 LOC total): pg_dump 16+ `\restrict`/`\unrestrict` psql directives and `ALTER INDEX ... ATTACH PARTITION`.
+- Three substantive findings the plan didn't anticipate (F3 pg_dump rewrites function-body dollar tags to `$_$`; F4 inline PRIMARY KEY emitted as separate `ALTER TABLE ADD CONSTRAINT`; F6 dollar-quote authoring rules — F6 lifted into ADR-0022 amendment A1).
+- **Estimate revised:** original 600-1000 LOC for the whole task underweighted `IDataOpClassifier` (separate scan over user code, ~200-400 LOC) and verification-harness production hardening (~200-300 LOC). New estimate: **1200-1750 LOC / 5-7 days** for full Task 6.3 + 6.4 + 6.5 + 6.6 production work. v1 total revised to **5-7 weeks**.
 
 ### Task 6.1 — `PostgresTopologySignature`
 
@@ -547,10 +552,11 @@ For Aerospike, Couchbase, MongoDB, OpenSearch:
 
 **Test corpus:** synthetic Postgres migrations with mixed DDL/DML/DO blocks/function definitions/non-deterministic patterns; assert classifier verdicts.
 
-### Task 6.3 — Postgres statement classifier (🔴 HIGHEST RISK)
+### Task 6.3 — Postgres statement classifier (🟡 MODERATE RISK; spike completed 2026-05-06)
 
-- [ ] Spike: parse 5-10 real pg_dump outputs into typed statement list; identify edge cases
-- [ ] Implementation: ~600 LOC C# parser handling:
+- [x] **Spike completed:** prototype splitter + classifier + Testcontainers harness vs real pg_dump 16.13 output. 88.4% classification rate; risk reclassified High → Moderate. See `spikes/postgres-classifier/SPIKE_REPORT.md`.
+- [ ] Productionize splitter (~200 LOC): port spike `PostgresStatementSplitter` and add `\<directive>` strip pre-pass for pg_dump 16+ `\restrict`/`\unrestrict`.
+- [ ] Productionize classifier (~500-700 LOC): port spike `PostgresStatementClassifier` and extend to:
   - `CREATE TABLE` (with all column types, generated, identity, defaults, constraints)
   - `CREATE INDEX` (B-tree, hash, GiST, GIN, partial, expression, covering, unique)
   - `CREATE TRIGGER`, `CREATE VIEW`, `CREATE MATERIALIZED VIEW`
@@ -560,16 +566,21 @@ For Aerospike, Couchbase, MongoDB, OpenSearch:
   - `CREATE SEQUENCE`, identity-owned sequences
   - Partitioning declarations (RANGE/LIST/HASH)
   - `ALTER TABLE ... ATTACH PARTITION`
+  - **`ALTER INDEX ... ATTACH PARTITION`** (added per spike finding)
+  - `DROP X` family (spike didn't exercise; squash diff emits DROP for disappearing objects)
+  - `ALTER TABLE ... ADD CONSTRAINT` recognized as distinct from generic ALTER (per spike finding F4)
 - [ ] Per-(kind, name) set diff producing typed delta primitives
 - [ ] Statement classifier output is the input to canonical formatter
 
 ### Task 6.4 — `PostgresSnapshotCanonicalizer`
 
 - [ ] Post-processing pipeline per ADR-0019 amendment in design (Postgres examples):
-  - Strip `SET` preamble
+  - Strip `SET` preamble (per spike finding F5: ~10 SET statements at dump head, version-dependent)
+  - Strip `\restrict` / `\unrestrict` psql directives (per spike finding F1: emitted by pg_dump 16+)
   - Strip `SELECT pg_catalog.set_config('search_path', '', false);`
   - Normalize line endings to LF, encoding UTF-8 no BOM
   - Collapse blank lines; trim trailing whitespace
+  - Normalize function-body dollar tags to a canonical form before hashing (per spike finding F3: pg_dump rewrites all input tags to `$_$`; canonicalizer must hash tag-stripped body to be deterministic across re-dumps)
   - Extract `CREATE EXTENSION` to separate `prerequisites.sql`
   - Detect / refuse `CREATE INDEX CONCURRENTLY` (per A2 — pg_dump --schema-only doesn't emit it; defense-in-depth)
 - [ ] `EmitScript()` for canonical script form output (per ADR-0022)
@@ -840,7 +851,7 @@ Every task has its constraint set. `/nop:implement`'s Reflect step checks compli
 
 | Risk | Phase | Mitigation |
 |---|---|---|
-| **🔴 Postgres statement classifier complexity (Task 6.3)** | 6 | 2-day spike against real pg_dump outputs at start of Phase 6 |
+| ~~🔴~~ 🟡 Postgres statement classifier complexity (Task 6.3) | 6 | **Spike completed 2026-05-06** (`spikes/postgres-classifier/SPIKE_REPORT.md`). 88.4% classification on first attempt; risk reclassified High → Moderate. |
 | OpenSearch grammar lift edge cases (Task 4.4) | 4 | Prototype first; pattern transfers to other 3 NoSQL providers |
 | ADR-0018 split-ledger-and-lock cross-index hazards in OpenSearch ledger update (Task 1.6) | 1 | Confirm new fields go to ledger only; lock unchanged |
 | Snapshot A cache key incomplete (cache miss → wrong A) | 7 | Key includes `topology-signature` + `image-version` per IR refinement; CI determinism test catches |
@@ -853,9 +864,7 @@ Every task has its constraint set. `/nop:implement`'s Reflect step checks compli
 
 ## Recommended Next Step
 
-`/nop:implement` against Phase 0. Phase 0 is small (3 tasks; mostly audit + branch + test fixtures); landing it confirms the plan is grounded before larger phases.
-
-For the riskiest task (6.3 — Postgres statement classifier), recommend a separate `/nop:implement spike` against just that task before committing to full Phase 6. The spike's output (~5-10 real pg_dump samples + parsing notes) feeds back into the plan as Phase 6 task refinement.
+**Phase 0 ☑ complete (2026-05-06). Phase 6 Task 6.3 spike ☑ complete (2026-05-06).** Next: Phase 1 — Universal Ledger Scaffolding (~4-5 days, ~650 LOC across 5 providers). The spike confirmed Phase 6 is tractable; Phase 1 is the next blocking milestone.
 
 Plan stays a living document throughout execution. `/nop:implement` updates checkboxes, status, and learnings; the plan file is the source of truth.
 
@@ -899,6 +908,17 @@ Codebase audit verifying the design's assumptions against current HEAD (`migrati
 - Codebase audit complete (Task 0.1) — see Audit Appendix above. **One real divergence (A2.1):** `WriteAsync` API takes `string recordId` not `MigrationRecord`; Phase 1 must extend the contract.
 - Test project skeleton `Hyperbee.Migrations.Squash.Tests` created (Task 0.3).
 - Existing integration test suite NOT re-run at baseline (requires Docker; existing 75/75 OpenSearch suite was green at session prior; out-of-scope re-validation).
+
+**Phase 6 Task 6.3 Spike: ☑ COMPLETE 2026-05-06**
+
+- Spike artifacts at `spikes/postgres-classifier/` (commit `9e5f45e`).
+- Real `pg_dump 16.13 --schema-only` round-trip via Testcontainers Postgres 16-alpine.
+- 88.4% classification rate on first attempt (61/69 statements; threshold was 80%).
+- 8 unknowns identified in 2 well-bounded categories (~60 LOC fix scope total).
+- Three substantive findings (F3 dollar-tag rewrites, F4 PRIMARY KEY extraction, F6 dollar-quote authoring rules).
+- F6 lifted into ADR-0022 amendment A1 (Postgres dollar-quote authoring rules subsection).
+- Phase 6 estimate revised: 600-1000 LOC → 1200-1750 LOC; 4-5 days → 5-7 days. v1 total: 4-6 weeks → 5-7 weeks.
+- Phase 6 Task 6.3 risk classification: High → Moderate.
 
 **Phase 1: ☐ pending**
 Phase 2: ☐ pending

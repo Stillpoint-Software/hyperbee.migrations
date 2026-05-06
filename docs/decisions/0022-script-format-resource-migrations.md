@@ -2,6 +2,7 @@
 
 **Status:** Proposed
 **Date:** 2026-05-05
+**Amendments:** A1 (2026-05-06) — Postgres dollar-quote authoring rules added per spike finding F6 (`spikes/postgres-classifier/SPIKE_REPORT.md`).
 **Related design:** [docs/design/migration-squashing.md](../design/migration-squashing.md), [docs/design/migration-squashing-consensus-destructive.md](../design/migration-squashing-consensus-destructive.md)
 **Related ADRs:** ADR-0001 (Parlot), ADR-0002 (Resource Migration Pattern), ADR-0009 (Convention-Based Record IDs), ADR-0017 (Body-Source Grammar), ADR-0019 (Squash via Replaces Graph), ADR-0021 (Migration Record Checksum)
 
@@ -162,11 +163,60 @@ Each provider's canonical-formatter is part of `ISnapshotCanonicalizer` (per con
 
 ### Per-provider notes
 
-- **Postgres** (v1): already uses `.sql` files. The script-format adoption is a *terminology unification* — Postgres has been doing this all along. Any Postgres-specific lexer additions (e.g., `--` is Postgres-native) carry no friction.
+- **Postgres** (v1): already uses `.sql` files. The script-format adoption is a *terminology unification* — Postgres has been doing this all along. Any Postgres-specific lexer additions (e.g., `--` is Postgres-native) carry no friction. **Dollar-quote authoring rules apply** — see "Authoring rules: Postgres dollar-quoted bodies" below.
 - **Aerospike** (v1.1): `.statements` script form replaces `.statements.json`. AQL subset already statement-by-statement; tiny grammar lift.
 - **Couchbase** (v1.2): N1QL is SQL-shaped; `--` line comments already conventional. `.statements` files; `BODIES` header for shared inline bodies.
 - **MongoDB** (v1.1): Mongo-shell-like statements (`db.col.createIndex(...)`) terminate with `;` natively in the shell. `//` line comments are Mongo-shell convention. Both `--` and `//` supported.
 - **OpenSearch** (v1.2): the existing 21-statement AST already parses individual statements; lift to script-level adds top-level comment + terminator rules. The `BODIES` header is most useful here (richest body-source usage).
+
+### Authoring rules: Postgres dollar-quoted bodies
+
+Postgres function/procedure bodies are wrapped in dollar-quoted string literals (`$tag$ ... $tag$`). The Postgres lexer treats the body as **opaque bytes** — it does not recognize comment syntax, string-literal escaping, or any other token boundary inside the body. Only the matching close-tag terminates the literal.
+
+This makes function bodies more fragile than they look. Surfaced by the Postgres classifier spike (`spikes/postgres-classifier/SPIKE_REPORT.md` finding F6) after three failed fixture iterations.
+
+**Three rules authors must follow when writing Postgres functions in `.statements` or `.sql` script-form resources:**
+
+1. **The outer dollar-tag must NOT appear anywhere in the body — including inside what looks like a comment.** Postgres' lexer doesn't see comments inside the body; the bytes `$body$` (or whatever tag is in use) close the literal regardless of surrounding context.
+
+   ```sql
+   -- WRONG: outer tag $body$ appears inside a body comment, terminating the literal
+   CREATE FUNCTION x() RETURNS void LANGUAGE plpgsql AS $body$
+   BEGIN
+       -- this body uses $body$ as the outer tag      <-- closes the literal HERE
+       RAISE NOTICE 'never reached';
+   END;
+   $body$;
+   ```
+
+2. **Plain `$$` outer tag is unsafe if the body contains the substring `$$` anywhere — even inside a string literal or a `--` comment within the body.** Use a tagged outer quote (`$body$`, `$fn_x$`) when the body contains `$$`, and ensure rule 1 still holds.
+
+   ```sql
+   -- WRONG: '$$' inside a body comment terminates the outer $$ literal
+   CREATE FUNCTION y() RETURNS void LANGUAGE plpgsql AS $$
+   BEGIN
+       -- handles '$$' substrings                     <-- closes the outer $$ HERE
+       RAISE NOTICE 'broken';
+   END;
+   $$;
+   ```
+
+3. **Best practice: choose a unique, function-specific outer tag that doesn't collide with body content.** Conventions like `$fn_<function_name>$` (e.g., `$fn_audit_trg$`) make collision essentially impossible and make the body's intent obvious to reviewers.
+
+   ```sql
+   -- CORRECT
+   CREATE FUNCTION app.dynamic_query(tbl text) RETURNS SETOF record
+   LANGUAGE plpgsql AS $fn_dynamic_query$
+   BEGIN
+       -- body can freely contain $$, --, etc. with no risk
+       RETURN QUERY EXECUTE format($$SELECT * FROM %I$$, tbl);
+   END;
+   $fn_dynamic_query$;
+   ```
+
+**Codegen behavior:** the squash codegen's canonical formatter normalizes function-body outer tags to a deterministic form (pg_dump itself emits `$_$`). This affects byte-stable codegen but does not relax the authoring rules — author-written bodies must follow rules 1-3 to be parseable by Postgres in the first place.
+
+These rules apply only to Postgres. The four NoSQL providers don't have dollar-quoted bodies in their grammars; their script-form authoring is governed by the per-provider Parlot grammars (per ADR-0001).
 
 ## Consequences
 
