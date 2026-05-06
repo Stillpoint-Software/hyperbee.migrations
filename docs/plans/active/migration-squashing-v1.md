@@ -24,6 +24,48 @@ Squash v1 is bigger than any single provider — universal core scaffolding + Po
 
 The plan uses **vertical slices**: each phase is independently demoable + testable. Phases 0-3 ship on their own as ledger-scaffolding-only infrastructure (no squash CLI, no codegen) — useful even before Postgres codegen lands.
 
+## Backward Compatibility — v3.0 release with DIM defaults
+
+This feature ships as **Hyperbee.Migrations v3.0** (current is v2.x). The squash work introduces one breaking surface (`IMigrationRecordStore` gains methods) and several additive surfaces (additional `MigrationRecord` properties, `MigrationAttribute` parameters, new types). Strategy:
+
+### Major version bump (v3.0)
+
+- `version.json` bumps from 2.x to 3.0 at v1 release. Semver does the work: consumers see "v2 → v3" and read the migration guide.
+- Per-package release notes flag the breaking surface explicitly.
+- v2.x branch remains in maintenance mode for security patches; new feature work lives on v3.
+
+### Default Interface Methods on `IMigrationRecordStore`
+
+The three new methods (`WriteAsync(MigrationRecord, WritePrecondition, ct)`, `LoadAppliedVersionsAsync(candidateIds, ct)`, `LoadSatisfyingRowsAsync(versions, ct)`) ship with **safe DIM implementations** that delegate to the existing v2 methods. Custom record-store implementations work unchanged but get degraded behavior:
+
+- No write-time `Kind`/`Replaces` integrity check (per ADR-0021 A1)
+- No realtime-bulk-read optimization (falls back to per-id `ExistsAsync` loop)
+- No re-squash transitivity (mature envs that auto-marked an inner squash will fail with `MidRangeSquashException` against an outer squash)
+
+The 5 shipped providers (Postgres, Aerospike, Couchbase, MongoDB, OpenSearch) all override the DIM defaults with proper implementations during Phase 1 + Phase 3. Custom record stores opt into squash support by overriding; opt out by doing nothing.
+
+### Schema migrations are non-breaking
+
+Provider record-store schema changes are additive and idempotent:
+
+- **Postgres:** `ALTER TABLE hyperbee.migrations ADD COLUMN ... IF NOT EXISTS` for `checksum text NULL` and `kind smallint NOT NULL DEFAULT 0` plus `CHECK (kind IN (0,1,2))`. Pre-existing rows read clean (`Checksum=null, Kind=Migration`).
+- **Aerospike, Couchbase, MongoDB:** sparse-bin / JSON document; absent fields read as null.
+- **OpenSearch:** ledger index mapping additive `PUT _mapping`. ADR-0018 lock+ledger split unchanged.
+
+### Squash is operationally one-way
+
+Once a squash is committed, the original migration source files are removed (per ADR-0019 destructive model). **Rolling back hyperbee.migrations to v2 against a squashed ledger is not supported.** The migration guide documents this clearly. Operators who need to rollback after squashing must restore the database from a backup taken before the squash ran.
+
+### Mixed-version fleet hazard during rollout
+
+Running a v2 app and a v3 app against the same ledger simultaneously is hazardous in one specific scenario: if v3 has emitted a squash row but the v2 app's source tree predates the squash (still has originals), v2 will see "missing migrations" against a partially-applied ledger. Mitigated by ADR-0019 A2 (two-phase fleet readiness gate — v3 records `expected-fleet-versions` in the squash artifact; runner refuses on stale envs at deploy time). Operators must roll out v3 to all envs before squashing.
+
+### Migration guide ships in Phase 8
+
+`docs/guides/upgrading-from-v2.md` covers schema migration, custom record-store override recipes, the one-way squash property, and the mixed-fleet hazard. See Phase 8 Task 8.7.
+
+---
+
 ## Objective
 
 Ship the v1 destructive-model migration-squash feature satisfying:
@@ -133,14 +175,21 @@ Read each provider's record store + runner and confirm the existing surface meet
 
 **ADR compliance:** ADR-0003 (additive contract), ADR-0021 (with A1 + A2 amendments).
 
-### Task 1.1 — Core types
+### Task 1.1 — Core types + DIM defaults on `IMigrationRecordStore`
 
-- [ ] `MigrationRecord` gains `string? Checksum` + `MigrationRecordKind Kind` properties
+- [ ] `MigrationRecord` gains `string? Checksum` + `MigrationRecordKind Kind` properties (init-only; existing constructors unchanged)
 - [ ] `MigrationRecordKind` enum: `Migration = 0`, `Squash = 1`, `Baseline = 2`
-- [ ] `MigrationLedgerIntegrityException` (new) — derives from existing `OpenSearchProviderException`-equivalent base; thrown by record stores on Kind/Replaces inconsistency per ADR-0021 A1
-- [ ] `IMigrationRecordStore.WriteAsync` contract documented to enforce `Kind == Squash ⟺ Replaces non-empty` — read+write enforcement
+- [ ] `MigrationLedgerIntegrityException` (new) — derives from a core-level base provider exception type; thrown by record stores on Kind/Replaces inconsistency per ADR-0021 A1
+- [ ] **`IMigrationRecordStore` gains three new methods, each with DIM (default interface method) implementations** that preserve v2 behavior for custom implementations:
+  - `Task<WriteOutcome> WriteAsync(MigrationRecord record, WritePrecondition precondition, CancellationToken ct = default)` — DIM default: ignore precondition + checksum/kind; delegate to existing `WriteAsync(record.Id)`; return `WriteOutcome.Created`
+  - `Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(IEnumerable<string> candidateIds, CancellationToken ct = default)` — DIM default: per-id `ExistsAsync` loop (degraded; no realtime-bulk-read optimization)
+  - `Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(IEnumerable<long> versions, CancellationToken ct = default)` — DIM default: only direct id matches (no transitive squash satisfaction; mature envs that auto-marked an inner squash will fail `MidRangeSquashException` against an outer squash if their custom store hasn't overridden this)
+- [ ] `IMigrationRecordStore.WriteAsync` contract (new overload) documented to enforce `Kind == Squash ⟺ Replaces non-empty` at write time — read+write enforcement
+- [ ] XML doc on each new DIM method explicitly notes "shipped providers override; custom implementations should override for full squash support; default behavior preserves v2 semantics"
 
-**Cross-provider participation check:** No provider-specific code; pure core types. ✓
+**Cross-provider participation check:** No provider-specific code; pure core types. The 5 shipped providers override the DIM defaults in Tasks 1.2-1.6 + Phase 3 Task 3.1/3.3. ✓
+
+**Backward compatibility:** Custom `IMigrationRecordStore` implementations compile and run unchanged on v3.0; they receive safe-but-degraded behavior until they opt in by overriding the DIM defaults. See top-of-plan Backward Compatibility section.
 
 ### Task 1.2 — Postgres record store update
 
@@ -674,17 +723,31 @@ Per ADR-0019 A3:
 - [ ] How to bridge `__EFMigrationsHistory` to `MigrationRecord`
 - [ ] Recommended workflow: synchronize fleet to known EF version → introduce hyperbee `[Migration(N, Replaces=[…all-prior-EF-versions…])]` baseline → `--accept-unverified-version` allowlist for EF-era nulls
 
-### Task 8.6 — CHANGELOG + version bump
+### Task 8.6 — CHANGELOG + version bump to v3.0
 
-- [ ] CHANGELOG.md entry for v1 squash feature
-- [ ] `version.json` bump (per existing nbgv pattern)
-- [ ] Release notes draft
+- [ ] CHANGELOG.md entry for v3.0 squash feature
+- [ ] `version.json` bumps from 2.x to **3.0** (semver-appropriate per Backward Compatibility section at top of plan)
+- [ ] Release notes draft framing the two breaking changes:
+  1. `IMigrationRecordStore` gains three methods (with safe DIM defaults so custom implementations work unchanged but get degraded behavior)
+  2. Provider record-store schemas gain `Checksum` + `Kind` fields (additive; idempotent migration)
+- [ ] Release notes also frame: squash is operationally one-way; rolling back hyperbee.migrations to v2 against a squashed ledger is unsupported
+
+### Task 8.7 — v2 → v3 Upgrade Migration Guide
+
+- [ ] New doc `docs/guides/upgrading-from-v2.md`:
+  - **Schema migration** — automatic and idempotent on first v3 apply; pre-existing rows read clean (`Checksum=null, Kind=Migration`)
+  - **Custom `IMigrationRecordStore` implementations** — DIM defaults preserve v2 behavior; recipe for opting into squash support by overriding `WriteAsync(MigrationRecord, WritePrecondition, ct)`, `LoadAppliedVersionsAsync`, `LoadSatisfyingRowsAsync`
+  - **Mixed-version fleet hazard** — don't run v2 and v3 against the same ledger simultaneously; deploy v3 to all envs before squashing; ADR-0019 A2 two-phase fleet readiness gate is the safety net
+  - **Squash is operationally one-way** — once committed, original migration source files are removed; rollback to v2 unsupported; backup-restore is the recovery path if needed
+  - **What stays the same** — existing migrations (no `Replaces`) work unchanged; existing `*.statements.json` resources work unchanged (legacy loader); existing `dotnet build` / `dotnet test` flows work unchanged
+- [ ] Cross-link from CHANGELOG.md and from each provider's README.md
 
 **Phase 8 Completion Criteria:**
 - [ ] All 9 P0 + 10 P1 amendments verified by automated tests
 - [ ] Operator can read the guide and run a squash end-to-end without external help
 - [ ] Determinism CI gates green on Postgres
-- [ ] CHANGELOG complete
+- [ ] CHANGELOG complete with v3.0 framing
+- [ ] Upgrade guide ships covering DIM defaults, schema migration, mixed-fleet hazard, one-way squash
 
 **Demo:** Release-readiness review: walk through guides end-to-end with a fresh developer; they author a squash without help.
 
