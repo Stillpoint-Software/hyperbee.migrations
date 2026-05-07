@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Squash;
+﻿namespace Hyperbee.Migrations.Squash;
 
 /// <summary>
 /// Stand-in <see cref="ISquashStrategy"/> for providers whose codegen is not

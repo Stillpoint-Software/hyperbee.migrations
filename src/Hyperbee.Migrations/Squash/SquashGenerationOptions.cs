@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Squash;
+﻿namespace Hyperbee.Migrations.Squash;
 
 /// <summary>
 /// Caller-supplied options for an <see cref="ISquashStrategy.GenerateAsync"/>
