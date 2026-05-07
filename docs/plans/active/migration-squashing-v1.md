@@ -1044,4 +1044,23 @@ Codebase audit verifying the design's assumptions against current HEAD (`migrati
 3. **Task 7.5 — Verification round wiring.** Requires Testcontainers + `docker exec pg_dump` integration; same shape as Phase 6 spike's `ClassifierSpikeTests.DumpSchemaAsync`. Per A4: snapshot A cache + parallel A/B + container lifecycle on failure (per A18).
 4. **Task 7.6 + 7.7** — Stranding / source-removal flags. CLI-bound.
 
-Phase 8: ☐ pending
+**Phase 8: ◐ PARTIAL 2026-05-06** (recovery token + determinism gate + CHANGELOG + upgrade guide shipped; CLI / Testcontainers / full-operator-guide deferred to a final follow-up session)
+
+**Completion summary (Phase 8 v1 closers):**
+- **Task 8.1 — Recovery acknowledgement token.** `Hyperbee.Migrations.Squash.RecoveryAcknowledgement` ships the deterministic token logic per A3: SHA-256 over `(env-name '|' squash-version '|' sorted-missing-versions)` truncated to 12 hex chars. `ComputeToken` + `Verify` (case-insensitive, trimming-tolerant) cover the runtime contract. CLI verb that calls this is the deferred piece.
+- **Task 8.2 — Generation determinism gate.** `GenerationDeterminismTests` runs the Postgres squash codegen pipeline twice against identical synthetic captures and asserts byte-equality of the generated content. Also verifies sorted-by-name `setval(...)` block emission regardless of dictionary iteration order. CI-friendly: no Docker dependency. The Testcontainers-backed integration variant is a follow-up.
+- **Task 8.6 — CHANGELOG + version bump.** `version.json` 2.2.0 → **3.0.0**. New `CHANGELOG.md` documents v3.0 framing: added/changed/breaking-with-back-compat-paths, operational notes (squash one-way, mixed-fleet hazard, Aerospike re-squash transitivity gap).
+- **Task 8.7 — v2→v3 upgrade guide.** New `docs/guides/upgrading-from-v2.md` covers: what stays the same, the two breaking changes with mitigation recipes, custom-`IMigrationRecordStore` opt-in pattern, mixed-version fleet hazard, squash one-way + recovery paths, full compatibility matrix.
+
+**Test counts:** 90/90 squash tests pass; 356/356 core unit tests still green on net8/9/10.
+
+**Deferred to a final follow-up session** (or v1.0.x point releases — non-blocking for v3.0 ship):
+1. **Task 7.1 — CLI verb skeleton** (`Hyperbee.Migrations.Cli` project + System.CommandLine). The runtime types behind the CLI verbs (`squash`, `recover from-mid-range`) are all shipped; only the operator-facing dispatch surface remains.
+2. **Task 7.2 — YAML manifest parser** (YamlDotNet dep). The runtime gate accepts `Dictionary<string, long>` directly; the parser is a CLI-side translator.
+3. **Task 7.5 — Testcontainers-backed verification round wiring** (snapshot A cache + parallel A/B + container lifecycle on failure). The verifier shape ships; only concrete capture is needed.
+4. **Task 7.6 + 7.7** — Stranding flags + source removal (CLI-bound).
+5. **Task 8.3 — Round-trip determinism gate** for ADR-0022 script-form resources (parse + re-emit + re-parse → AST-equivalent).
+6. **Task 8.4 — Operator guide** (`docs/guides/squashing-migrations.md`). The upgrade guide handles the migration story; the operator guide is a forward-looking authoring resource.
+7. **Task 8.5 — EF Core migration bridge guide.**
+
+These deferrals are documented in detail at the top of this Status section.
