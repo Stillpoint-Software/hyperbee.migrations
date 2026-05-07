@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Squash;
+﻿namespace Hyperbee.Migrations.Squash;
 
 /// <summary>
 /// Thrown by the runner at deploy time when the live environment isn't

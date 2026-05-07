@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Squash;
+﻿namespace Hyperbee.Migrations.Squash;
 
 /// <summary>
 /// Sidecar metadata emitted alongside a generated squash migration (per

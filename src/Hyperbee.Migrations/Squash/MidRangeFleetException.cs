@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Squash;
+﻿namespace Hyperbee.Migrations.Squash;
 
 /// <summary>
 /// Thrown by the squash CLI's fleet readiness check (per ADR-0019 + Phase 7

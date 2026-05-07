@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Squash;
+﻿namespace Hyperbee.Migrations.Squash;
 
 /// <summary>
 /// Two-phase fleet readiness gate per ADR-0019 + Phase 7 Task 7.4. Static
