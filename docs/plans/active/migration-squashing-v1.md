@@ -1027,6 +1027,21 @@ Codebase audit verifying the design's assumptions against current HEAD (`migrati
 1. **Roslyn-based migration source scanner** for the `[DataMigration]` enforcement path (per ADR-0019 A5). The v1 SQL-text classifier serves the snapshot-diff path which has SQL text in hand; the Roslyn scanner walks user code and surfaces "this migration looks like a data op but isn't annotated" diagnostics. ~200-400 LOC, separable from the strategy. Tracked as Phase 6 follow-up; not in the squash codegen critical path.
 2. **Concrete Testcontainers-backed snapshot capture** for production CLI use. The strategy + verifier wire delegate-injected capture; tests provide synthetic captures. Phase 7/8 (CLI + integration tests) ships the concrete `Testcontainers.PostgreSql` + `docker exec pg_dump --schema-only` capture. Pattern from the spike's `ClassifierSpikeTests.DumpSchemaAsync` transfers verbatim.
 
-Phase 7: ☐ pending
-Phase 7: ☐ pending
+**Phase 7: ◐ PARTIAL 2026-05-06** (runtime gate types shipped; CLI / YAML / Testcontainers wiring rolled into Phase 8)
+
+**Completion summary (Phase 7 runtime types):**
+- `SquashMetadata` (record) — sidecar JSON shape per Task 7.4. Fields: `ReplacesFromVersion`/`ToVersion`, `ProviderId`, `Topology`, `CanonicalizerVersion`, `ExpectedFleetVersions` (per-env minimums), `MaxStalenessWindow` (default 30 days per A15), `SquashOverrides[]`, `CodegenToolVersion`, `GeneratedAt`.
+- `SquashOverrideEntry` (record) — structured override fields per A9: `EnvironmentName`, `TicketId`, `Owner`, `Reason`, `Expires` + `IsExpired(now)` helper.
+- `StaleFleetMemberException` — deploy-time failure when env is below recorded minimum AND the staleness window has elapsed.
+- `UnregisteredEnvironmentException` — deploy-time failure when env isn't listed in `ExpectedFleetVersions`.
+- `MidRangeFleetException` + `MidRangeFleetMember` — generation-time failure when one or more registered fleet members are mid-range with respect to the proposed squash range.
+- `SquashFleetGate` static helpers — `EnsureDeployable(metadata, envName, lastApplied, now)` and `EnsureGenerable(fromVersion, toVersion, fleetMembers)` share the rule set across the runner deploy path and the CLI generation path. Stateless / pure functions; testable without Testcontainers.
+- 12 new Phase 7 fleet-gate tests in `FleetGateTests`. **83/83 squash tests pass; 356/356 core unit tests still green on net8/9/10.**
+
+**Rolled into Phase 8** (require new project / package decisions or Testcontainers wiring):
+1. **Task 7.1 — CLI verb skeleton.** Requires a new `Hyperbee.Migrations.Cli` project and System.CommandLine setup.
+2. **Task 7.2 — YAML manifest schema parser.** Requires adding YamlDotNet to `Directory.Packages.props`. The runtime gate types above accept `Dictionary<string, long>` directly; the parser is a CLI-side translator.
+3. **Task 7.5 — Verification round wiring.** Requires Testcontainers + `docker exec pg_dump` integration; same shape as Phase 6 spike's `ClassifierSpikeTests.DumpSchemaAsync`. Per A4: snapshot A cache + parallel A/B + container lifecycle on failure (per A18).
+4. **Task 7.6 + 7.7** — Stranding / source-removal flags. CLI-bound.
+
 Phase 8: ☐ pending
