@@ -5,6 +5,7 @@
     <Project Path="runners/Hyperbee.MigrationRunner.MongoDB/Hyperbee.MigrationRunner.MongoDB.csproj" />
     <Project Path="runners/Hyperbee.MigrationRunner.Postgres/Hyperbee.MigrationRunner.Postgres.csproj" />
     <Project Path="runners/Hyperbee.MigrationRunner.OpenSearch/Hyperbee.MigrationRunner.OpenSearch.csproj" />
+    <Project Path="runners/Hyperbee.Migrations.Cli/Hyperbee.Migrations.Cli.csproj" />
   </Folder>
   <Folder Name="/Samples/">
     <Project Path="runners/samples/Hyperbee.Migrations.Aerospike.Samples/Hyperbee.Migrations.Aerospike.Samples.csproj" />
