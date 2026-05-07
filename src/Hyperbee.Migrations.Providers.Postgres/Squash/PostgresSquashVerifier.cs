@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Hyperbee.Migrations.Squash;
 
 namespace Hyperbee.Migrations.Providers.Postgres.Squash;

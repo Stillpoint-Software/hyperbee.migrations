@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Squash;
+﻿using Hyperbee.Migrations.Squash;
 
 namespace Hyperbee.Migrations.Providers.Postgres.Squash;
 

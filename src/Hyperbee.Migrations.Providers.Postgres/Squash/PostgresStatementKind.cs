@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Providers.Postgres.Squash;
+﻿namespace Hyperbee.Migrations.Providers.Postgres.Squash;
 
 /// <summary>
 /// Classification of a single Postgres SQL statement for squash codegen.
