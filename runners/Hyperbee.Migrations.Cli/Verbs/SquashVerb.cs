@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Text.Json;
 using Hyperbee.Migrations.Cli.Postgres;
 using Hyperbee.Migrations.Providers.Postgres.Squash;

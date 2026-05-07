@@ -1,4 +1,4 @@
-using DotNet.Testcontainers.Builders;
+﻿using DotNet.Testcontainers.Builders;
 using Hyperbee.Migrations.Providers.Postgres.Squash;
 using Npgsql;
 using Testcontainers.PostgreSql;

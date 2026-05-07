@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Cli;
+﻿namespace Hyperbee.Migrations.Cli;
 
 /// <summary>
 /// Minimal long-option arg parser. Recognizes <c>--name value</c> and

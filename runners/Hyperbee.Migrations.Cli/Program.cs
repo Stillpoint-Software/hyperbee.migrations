@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Cli.Verbs;
+﻿using Hyperbee.Migrations.Cli.Verbs;
 
 namespace Hyperbee.Migrations.Cli;
 
