@@ -1008,6 +1008,25 @@ Codebase audit verifying the design's assumptions against current HEAD (`migrati
 1. Per-provider DI registration of `NullSquashStrategy` — each NoSQL provider's `Add*Migrations(opts => opts.UseSquash(...))` extension wires a real `SquashStrategyDescriptor` at startup. Mechanical, ~1h per provider; pattern emerges from the Postgres v1 codegen work (Phase 6).
 2. CHANGELOG + per-provider doc updates (Task 5.6). Tail end of v1.
 
-Phase 6: ☐ pending
+**Phase 6: ☑ COMPLETE 2026-05-06** (with two follow-ups deferred)
+
+**Completion summary:**
+- All Postgres squash codegen components ship in `src/Hyperbee.Migrations.Providers.Postgres/Squash/`:
+  - **`PostgresTopologySignature`** (Task 6.1): `record` implementing `ITopologySignature` with `ServerMajor`/`Minor`, `Extensions[]`, `CollationProvider`, `LocaleProvider`, `ServerEncoding`. `IsCompatibleWith` enforces server_major equality, extension set equality, locale/encoding equality. `CaptureAsync(NpgsqlConnection, CT)` probes live server via `pg_extension`, `pg_database`, `SHOW server_version_num` with PG 15+ feature detection (datlocprovider) and graceful fallback to `libc` on older versions.
+  - **`PostgresStatementSplitter`** (Task 6.3): productionized from `spikes/postgres-classifier/`. Adds psql `\<directive>` strip pre-pass (per spike F1 — pg_dump 16+) plus the spike's full lexical surface (dollar-quoted bodies, comments, quoted strings).
+  - **`PostgresStatementClassifier`** + `PostgresStatementKind` (Task 6.3): productionized from spike with extensions per spike findings: `AlterIndex`/`AlterIndexAttachPartition` (F2), `AlterTableAddConstraint` (F4), full DROP family (Drop[Table/Index/View/MaterializedView/Function/Procedure/Trigger/Type/Domain/Sequence/Policy/Schema/Extension]). 30 distinct kinds total.
+  - **`PostgresSnapshotCanonicalizer`** (Task 6.4): implements `ISnapshotCanonicalizer`. Pipeline: strip pg_dump preamble + psql directives + banner comments + SET block + search_path config; collapse blank-line runs; refuse `CREATE INDEX CONCURRENTLY` per ADR-0019 A2.
+  - **`PostgresDataOpClassifier`** (Task 6.2): implements `IDataOpClassifier`. SQL-text-based classification (DML/DDL/DO-block/Unknown) with default-deny posture per A8. Non-determinism scan flags `now()`, `gen_random_uuid()`, `random()`, `clock_timestamp()`, etc., populating `EmissionHint` for CLI surfacing.
+  - **`PostgresSquashGenerationContext`** (Task 6.5): provider-specific `ISquashGenerationContext` carrying `NpgsqlDataSource` + a `CaptureSnapshotAsync` delegate. Snapshot capture is delegate-injected so the runtime library has no Testcontainers dependency; CLI/tests provide concrete capture.
+  - **`PgDumpSnapshotStrategy`** (Task 6.5): implements `ISquashStrategy`. V1 happy path = capture topology + capture snapshot B + canonicalize + classify + emit canonical SQL with sequence `setval(...)` post-block. Returns `SquashGenerationResult.Generated` with topology, replaces, and per-statement diagnostics. CONCURRENTLY refusal surfaces as `Failed`.
+  - **`PostgresSquashVerifier`** (Task 6.6): implements `ISquashVerifier`. Captures historical-replay snapshot via context, captures generated-squash-applied snapshot via injected `CaptureFromGeneratedAsync`, canonicalizes both, byte-compares. Mismatch returns `VerificationResult.Failed` with line-by-line diff summary (capped at 20 lines per side).
+- 16 new Phase 6 tests across `PostgresClassifierProductionTests` (splitter `\restrict`/`\unrestrict` strip, dollar-quote nesting, AlterIndexAttachPartition, AlterTableAddConstraint, DROP family, full kind matrix) and `PostgresSquashEndToEndTests` (data-op classifier non-determinism + DO-block + default-deny; topology compatibility/incompatibility; canonicalizer preamble strip + CONCURRENTLY refusal; strategy happy path with synthetic capture; verifier round-trip success + mismatch diff).
+- **71/71 squash tests pass; 356/356 core unit tests still green on net8/9/10.** Build clean across all 5 providers + samples + tests.
+
+**Deferred (do not block v1 ship):**
+1. **Roslyn-based migration source scanner** for the `[DataMigration]` enforcement path (per ADR-0019 A5). The v1 SQL-text classifier serves the snapshot-diff path which has SQL text in hand; the Roslyn scanner walks user code and surfaces "this migration looks like a data op but isn't annotated" diagnostics. ~200-400 LOC, separable from the strategy. Tracked as Phase 6 follow-up; not in the squash codegen critical path.
+2. **Concrete Testcontainers-backed snapshot capture** for production CLI use. The strategy + verifier wire delegate-injected capture; tests provide synthetic captures. Phase 7/8 (CLI + integration tests) ships the concrete `Testcontainers.PostgreSql` + `docker exec pg_dump --schema-only` capture. Pattern from the spike's `ClassifierSpikeTests.DumpSchemaAsync` transfers verbatim.
+
+Phase 7: ☐ pending
 Phase 7: ☐ pending
 Phase 8: ☐ pending

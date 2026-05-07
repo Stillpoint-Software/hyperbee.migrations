@@ -135,7 +135,7 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
     // Script-form body resolver: only Form 1 (`@path`) is supported. Named
     // bodies are not available in v1 script form because the script doesn't
     // carry a JSON sibling-property bag — those use JsonArray form for now.
-    private JsonNode ResolveBodyForScript( Internal.Ast.StatementAst ast, int statementIndex )
+    private JsonNode? ResolveBodyForScript( Internal.Ast.StatementAst ast, int statementIndex )
     {
         var source = ExtractBodySource( ast );
         if ( source is null )
