@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Cli.FleetManifest;
+﻿namespace Hyperbee.Migrations.Cli.FleetManifest;
 
 /// <summary>
 /// Parsed fleet manifest schema (per ADR-0019 A2 + A9 + Phase 7 Task 7.2).

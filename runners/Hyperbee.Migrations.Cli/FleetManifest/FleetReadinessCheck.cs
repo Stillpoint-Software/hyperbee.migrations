@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Squash;
+﻿using Hyperbee.Migrations.Squash;
 using Npgsql;
 
 namespace Hyperbee.Migrations.Cli.FleetManifest;

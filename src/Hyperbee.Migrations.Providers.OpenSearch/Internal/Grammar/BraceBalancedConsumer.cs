@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
+﻿namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
 
 /// <summary>
 /// Consumes a brace-balanced JSON literal starting at a given index, respecting

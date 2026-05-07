@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Hyperbee.Migrations.Cli.FleetManifest;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

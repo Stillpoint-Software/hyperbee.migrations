@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
 
@@ -109,7 +109,7 @@ internal static class BodiesHeaderExtractor
 
             // name: identifier
             var nameStart = i;
-            while ( i < inner.Length && (char.IsLetterOrDigit( inner[i] ) || inner[i] == '_' || inner[i] == '-' ) )
+            while ( i < inner.Length && (char.IsLetterOrDigit( inner[i] ) || inner[i] == '_' || inner[i] == '-') )
                 i++;
             if ( i == nameStart )
                 throw new OpenSearchParseException(

@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations;
+﻿namespace Hyperbee.Migrations;
 
 /// <summary>
 /// Marks a migration class as carrying user data operations

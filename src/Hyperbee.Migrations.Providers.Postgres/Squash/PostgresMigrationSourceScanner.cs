@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;

@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

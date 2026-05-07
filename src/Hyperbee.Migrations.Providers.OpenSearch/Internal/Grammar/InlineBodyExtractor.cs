@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
