@@ -11,8 +11,6 @@ public class MigrationRunner
     private readonly MigrationOptions _options;
     private readonly ILogger<MigrationRunner> _logger;
 
-    private record MigrationDescriptor( Type Type, MigrationAttribute Attribute, IReadOnlyList<long> ResolvedReplaces );
-
     public MigrationRunner( IMigrationRecordStore recordStore, MigrationOptions options, ILogger<MigrationRunner> logger )
     {
         _recordStore = recordStore ?? throw new ArgumentNullException( nameof( recordStore ) );

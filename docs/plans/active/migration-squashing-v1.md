@@ -989,8 +989,25 @@ Codebase audit verifying the design's assumptions against current HEAD (`migrati
 1. **OpenSearch BODIES header + inline brace-balanced `WITH BODY {...}` body** (per ADR-0022 design). Requires a brace-aware splitter extension that consumes JSON literals as opaque. Tracked under ADR-0022 follow-up.
 2. **Sample migration conversions** (Task 4.7 full): converting one existing `.statements.json` per provider to `.statements` form to demonstrate ergonomics. Mechanical, can be operator-paced. The framework supports both forms; conversions are a documentation/UX exercise.
 
-Phase 5: ☐ pending
-Phase 5: ☐ pending
+**Phase 5: ☑ COMPLETE 2026-05-06** (with per-provider DI registration deferred)
+
+**Completion summary:**
+- Core squash contract surface lives in `src/Hyperbee.Migrations/Squash/`:
+  - `ISquashStrategy.GenerateAsync(context, descriptors, options, ct) → SquashGenerationResult`
+  - `SquashGenerationResult` discriminated union: `Generated(Content, ContentKind, Encoding, Replaces[], Diagnostics, Topology)` and `Failed(Detail, Cause?)`. The `Unsupported` "hand-author" variant from earlier drafts was deleted per ADR-0019 A11.
+  - `ContentKind` (SqlText / CSharpSource / CanonicalJson / OpaqueBinary) and `ContentEncoding` (Utf8 / Utf8Bom / Raw)
+  - `ITopologySignature` with `SchemaVersion` + `ProviderId` + `Properties` + `IsCompatibleWith(other, out reason)` per A14
+  - `IDataOpClassifier.Classify(string) → DataOpClassification` with default-deny `IsUnclassified` posture per A8
+  - `ISnapshotCanonicalizer` (Canonicalize + EmitScript) and `ISquashVerifier.VerifyAsync` per consensus C2/C12 + A4/A18
+  - `SquashStrategyDescriptor` composite (per A11) bundles all 5 components and validates ProviderId agreement at construction via `EnsureValid()`
+  - `NullSquashStrategy(providerId, roadmapPhase)` returns `Failed("Squash codegen for `<provider>` ships in <phase>; see release roadmap...")` for the 4 NoSQL providers
+- `MigrationDescriptor` promoted from a private record on `MigrationRunner` to a public core type (`Hyperbee.Migrations.MigrationDescriptor`) shared by the runner and the strategy contract.
+- 8 new Phase 5 tests in `SquashStrategyContractTests`. **53/53 squash tests pass; 356/356 core tests still green on net8/9/10.**
+
+**Deferred (do not block v1 ship):**
+1. Per-provider DI registration of `NullSquashStrategy` — each NoSQL provider's `Add*Migrations(opts => opts.UseSquash(...))` extension wires a real `SquashStrategyDescriptor` at startup. Mechanical, ~1h per provider; pattern emerges from the Postgres v1 codegen work (Phase 6).
+2. CHANGELOG + per-provider doc updates (Task 5.6). Tail end of v1.
+
 Phase 6: ☐ pending
 Phase 7: ☐ pending
 Phase 8: ☐ pending
