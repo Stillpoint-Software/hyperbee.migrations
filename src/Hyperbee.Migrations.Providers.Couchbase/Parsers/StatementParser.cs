@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using Couchbase.Management.Buckets;
+using Hyperbee.Migrations.Resources;
 using Parlot;
 using Parlot.Fluent;
 using static Parlot.Fluent.Parsers;
@@ -311,5 +312,19 @@ public class StatementParser
         }
 
         return result with { Statement = statement };
+    }
+
+    /// <summary>
+    /// Parses a script-form N1QL resource (per ADR-0022) into a sequence of
+    /// <see cref="StatementItem"/>. Statements are separated by <c>;</c>;
+    /// <c>--</c>, <c>//</c>, and <c>/* */</c> comments are recognized
+    /// and discarded.
+    /// </summary>
+    public IEnumerable<StatementItem> ParseScript( string script )
+    {
+        ArgumentNullException.ThrowIfNull( script );
+
+        foreach ( var statement in ScriptStatementSplitter.Split( script ) )
+            yield return ParseStatement( statement );
     }
 }

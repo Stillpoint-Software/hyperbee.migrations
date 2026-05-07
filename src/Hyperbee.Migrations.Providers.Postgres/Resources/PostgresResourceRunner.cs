@@ -107,7 +107,14 @@ public class PostgresResourceRunner<TMigration>
 
         IEnumerable<string> ReadResources()
         {
-            var resourceNames = ResourceHelper.GetResourceNames<TMigration>( migrationName );
+            // Per ADR-0022, Postgres accepts both `.sql` (native) and `.statements`
+            // (universal script form) as equivalent script-format resources. Filter
+            // by extension so this method doesn't pick up adjacent JSON or other
+            // non-executable files that may live in a migration's resource folder.
+            var resourceNames = ResourceHelper.GetResourceNames<TMigration>( migrationName )
+                .Where( static r =>
+                    ResourceFormatDetector.EndsWith( r, ".sql" ) ||
+                    ResourceFormatDetector.EndsWith( r, ".statements" ) );
 
             foreach ( var resourceName in resourceNames )
             {

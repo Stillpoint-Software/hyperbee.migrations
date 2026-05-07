@@ -79,10 +79,79 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
         {
             operationCancelToken.ThrowIfCancellationRequested();
 
-            var json = ResourceHelper.GetResource<TMigration>( $"{migrationName}.{resourceName}" );
+            var content = ResourceHelper.GetResource<TMigration>( $"{migrationName}.{resourceName}" );
+            var format = ResourceFormatDetector.Classify( resourceName );
 
-            await RunStatementsFromJsonAsync( json, operationCancelToken ).ConfigureAwait( false );
+            if ( format == ResourceFormat.JsonArray )
+                await RunStatementsFromJsonAsync( content, operationCancelToken ).ConfigureAwait( false );
+            else
+                await RunStatementsFromScriptAsync( content, operationCancelToken ).ConfigureAwait( false );
         }
+    }
+
+    /// <summary>
+    /// Runs statements parsed from a script-form resource (per ADR-0022).
+    /// v1 script-form supports only Form 1 body sources (<c>WITH BODY @path</c>);
+    /// named bodies (<c>bodies.&lt;name&gt;</c>, sibling properties) are
+    /// JSON-array-form-only until the BODIES header lift ships.
+    /// </summary>
+    public async Task RunStatementsFromScriptAsync( string script, CancellationToken cancellationToken = default )
+    {
+        var statements = _parser.ParseScript( script ).ToList();
+
+        for ( var i = 0; i < statements.Count; i++ )
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var ast = statements[i];
+            var resolvedBody = ResolveBodyForScript( ast, statementIndex: i );
+
+            var context = new StatementContext
+            {
+                Client = _client,
+                Options = _options,
+                TimeProvider = _timeProvider,
+                Logger = _logger,
+                ResolvedBody = resolvedBody,
+                CancellationToken = cancellationToken
+            };
+
+            _logger.LogInformation( "Dispatching statement {idx}: {verb}", i, ast.Verb );
+
+            var result = await _dispatcher.DispatchAsync( ast, context ).ConfigureAwait( false );
+
+            if ( !result.IsSuccess )
+            {
+                throw new MigrationException(
+                    $"OpenSearch script statement {i} (`{ast.Verb}`) failed: {result.Detail ?? "unknown failure"}",
+                    result.Exception ?? new InvalidOperationException( result.Detail ?? "unknown failure" ) );
+            }
+
+            _logger.LogInformation( "Statement {idx} {outcome}: {detail}",
+                i, result.Outcome, result.Detail ?? "(no detail)" );
+        }
+    }
+
+    // Script-form body resolver: only Form 1 (`@path`) is supported. Named
+    // bodies are not available in v1 script form because the script doesn't
+    // carry a JSON sibling-property bag — those use JsonArray form for now.
+    private JsonNode ResolveBodyForScript( Internal.Ast.StatementAst ast, int statementIndex )
+    {
+        var source = ExtractBodySource( ast );
+        if ( source is null )
+            return null;
+
+        var label = $"statements[{statementIndex}]";
+        return source switch
+        {
+            BodyFileRef fileRef => LoadBodyFromResource( fileRef.Path, label ),
+            BodyRef nameRef => throw new InvalidOperationException(
+                $"{label}: `WITH BODY ${nameRef.Name}` requires a `bodies.{nameRef.Name}` entry which " +
+                "is only available in JSON-array form. Use `WITH BODY @path/to/{nameRef.Name}.json` in script form, " +
+                "or keep this migration in `.statements.json` form. Tracked in ADR-0022 follow-up (BODIES header)." ),
+            _ => throw new InvalidOperationException(
+                $"{label}: unsupported BodySource type `{source.GetType().Name}`." )
+        };
     }
 
     /// <summary>

@@ -1,5 +1,6 @@
 ﻿#nullable enable
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
+using Hyperbee.Migrations.Resources;
 using Parlot.Fluent;
 using static Parlot.Fluent.Parsers;
 
@@ -657,6 +658,29 @@ public sealed class OpenSearchStatementParser
             throw new OpenSearchParseException(
                 $"Unable to parse statement: `{statement}`. {ex.Message}", ex );
         }
+    }
+
+    /// <summary>
+    /// Parses a script-form OpenSearch resource (per ADR-0022) into a sequence
+    /// of <see cref="StatementAst"/>. Statements are separated by <c>;</c>;
+    /// <c>--</c>, <c>//</c>, and <c>/* */</c> comments are recognized and
+    /// discarded.
+    /// </summary>
+    /// <remarks>
+    /// v1 limitation: inline brace-balanced <c>WITH BODY {...}</c> bodies and
+    /// the <c>BODIES { name: ... }</c> header block are not yet supported in
+    /// script form (they would require a brace-aware splitter that consumes
+    /// JSON literals as opaque). Until that lifts, scripts must use either
+    /// <c>WITH BODY @path</c> (Form 1) or, for migrations that use named
+    /// bodies, the JSON-array form. Resource-format authoring guidance for
+    /// these paths is tracked under ADR-0022 follow-up.
+    /// </remarks>
+    public IEnumerable<StatementAst> ParseScript( string script )
+    {
+        ArgumentNullException.ThrowIfNull( script );
+
+        foreach ( var statement in ScriptStatementSplitter.Split( script ) )
+            yield return Parse( statement );
     }
 
     // R-15a version literal parsing.

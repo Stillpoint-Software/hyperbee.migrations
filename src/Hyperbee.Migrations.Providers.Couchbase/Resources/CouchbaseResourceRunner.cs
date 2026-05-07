@@ -57,20 +57,29 @@ public class CouchbaseResourceRunner<TMigration>
 
         static IEnumerable<StatementItem> ReadResources( string migrationName, params string[] resourceNames )
         {
+            var parser = new StatementParser();
+
             foreach ( var resourceName in resourceNames )
             {
-                var json = ResourceHelper.GetResource<TMigration>( $"{migrationName}.{resourceName}" );
-                var node = JsonNode.Parse( json );
+                var content = ResourceHelper.GetResource<TMigration>( $"{migrationName}.{resourceName}" );
+                var format = ResourceFormatDetector.Classify( resourceName );
 
-                var statements = node!["statements"]!
-                    .AsArray()
-                    .Select( x => x["statement"]?.ToString() )
-                    .Where( x => x != null );
+                if ( format == ResourceFormat.JsonArray )
+                {
+                    var node = JsonNode.Parse( content );
+                    var statements = node!["statements"]!
+                        .AsArray()
+                        .Select( x => x["statement"]?.ToString() )
+                        .Where( x => x != null );
 
-                var parser = new StatementParser();
-
-                foreach ( var statement in statements )
-                    yield return parser.ParseStatement( statement );
+                    foreach ( var statement in statements )
+                        yield return parser.ParseStatement( statement );
+                }
+                else
+                {
+                    foreach ( var item in parser.ParseScript( content ) )
+                        yield return item;
+                }
             }
         }
 

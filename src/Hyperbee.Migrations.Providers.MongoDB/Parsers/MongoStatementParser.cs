@@ -1,4 +1,5 @@
 ﻿using Parlot;
+using Hyperbee.Migrations.Resources;
 using Parlot.Fluent;
 using static Parlot.Fluent.Parsers;
 
@@ -164,5 +165,19 @@ public class MongoStatementParser
 
         // Attach the original statement text
         return result with { Statement = statement };
+    }
+
+    /// <summary>
+    /// Parses a script-form Mongo-shell-like resource (per ADR-0022) into a
+    /// sequence of <see cref="MongoStatementItem"/>. Statements are separated
+    /// by <c>;</c>; <c>--</c>, <c>//</c>, and <c>/* */</c> comments are
+    /// recognized and discarded.
+    /// </summary>
+    public IEnumerable<MongoStatementItem> ParseScript( string script )
+    {
+        ArgumentNullException.ThrowIfNull( script );
+
+        foreach ( var statement in ScriptStatementSplitter.Split( script ) )
+            yield return ParseStatement( statement );
     }
 }

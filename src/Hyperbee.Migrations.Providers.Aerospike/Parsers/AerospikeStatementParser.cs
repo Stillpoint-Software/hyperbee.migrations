@@ -1,4 +1,5 @@
-﻿using Parlot;
+﻿using Hyperbee.Migrations.Resources;
+using Parlot;
 using Parlot.Fluent;
 using static Parlot.Fluent.Parsers;
 
@@ -182,5 +183,20 @@ public class AerospikeStatementParser
 
         // Attach the original statement text
         return result with { Statement = statement };
+    }
+
+    /// <summary>
+    /// Parses a script-format AQL resource (per ADR-0022) into a sequence of
+    /// <see cref="AerospikeStatementItem"/>. Statements are separated by
+    /// <c>;</c>; <c>--</c>, <c>//</c>, and <c>/* */</c> comments are recognized
+    /// and discarded. Equivalent in output to the JSON-array form when both
+    /// shapes encode the same statement set.
+    /// </summary>
+    public IEnumerable<AerospikeStatementItem> ParseScript( string script )
+    {
+        ArgumentNullException.ThrowIfNull( script );
+
+        foreach ( var statement in ScriptStatementSplitter.Split( script ) )
+            yield return ParseStatement( statement );
     }
 }

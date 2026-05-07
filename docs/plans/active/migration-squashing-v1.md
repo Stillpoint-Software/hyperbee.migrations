@@ -973,7 +973,23 @@ Codebase audit verifying the design's assumptions against current HEAD (`migrati
 - `MigrationRunner.ClassifySquashAsync` exposed as `internal static` so the test suite can exercise the Fresh branch directly (full RunAsync can't reach it in v1 because Phase 2 discovery rejects squashes whose Replaces names a missing-from-assembly version; this is by design until post-mature originals can be safely deleted in a future cycle).
 - 7 new Phase 3 reconciliation tests in `ReconciliationTests`: mature auto-mark, fresh classification, partial classification, mid-range via Journal=false, re-squash transitivity, idempotency under concurrent reconcile. **23/23 squash tests pass; 356/356 core tests still green on net8/9/10.**
 
-Phase 4: ☐ pending
+**Phase 4: ☑ COMPLETE 2026-05-06** (with two follow-ups deferred — see below)
+
+**Completion summary:**
+- Core scaffolding (Task 4.1): `ResourceFormat` enum (`JsonArray`/`Script`); `ResourceFormatDetector.Classify` uses `Path.GetExtension` so both bare names (`statements.json`) and prefixed names (`Migration_1000.statements.json`) classify correctly; `ScriptStatementSplitter` splits at top-level `;` while respecting single/double-quoted strings, backtick identifiers, `--`/`//` line comments, `/* */` nested block comments. Comments are stripped (replaced with whitespace) so per-provider parsers see clean statement text.
+- Aerospike (Task 4.2): `AerospikeStatementParser.ParseScript`; `AerospikeResourceRunner.StatementsFromAsync` branches on format. Path-finder for the per-provider lift pattern.
+- Couchbase (Task 4.3): `StatementParser.ParseScript`; `CouchbaseResourceRunner` branches.
+- MongoDB (Task 4.5): `MongoStatementParser.ParseScript`; `MongoDBResourceRunner` branches.
+- OpenSearch (Task 4.4): `OpenSearchStatementParser.ParseScript`; `OpenSearchResourceRunner.RunStatementsFromScriptAsync` (new public method) parses + dispatches script-form resources. **v1 limitation:** only Form 1 body sources (`WITH BODY @path`) are supported in script form; named bodies (`bodies.<name>`, sibling properties) and inline brace-balanced `WITH BODY {...}` bodies remain JSON-array-form-only. Users get a clear diagnostic when they try to use a named body in a script.
+- Postgres (Task 4.6): `.statements` and `.sql` are equivalent at the executor level (both treated as raw script-form resources by Npgsql Simple Query). `AllSqlFromAsync` filters to `.sql`/`.statements` extensions for defense-in-depth.
+- Tests (Task 4.7 partial): 19 new Phase 4 tests in `ScriptFormatTests` + `PerProviderScriptParseTests` exercise the detector, the splitter (12 lexical scenarios), and per-provider `ParseScript ≡ ParseStatement` equivalence across all 5 providers. **45/45 squash tests pass; 356/356 core tests still green on net8/9/10.**
+- Build clean across all 5 providers + samples + tests.
+
+**Deferred to follow-up (do not block v1 ship):**
+1. **OpenSearch BODIES header + inline brace-balanced `WITH BODY {...}` body** (per ADR-0022 design). Requires a brace-aware splitter extension that consumes JSON literals as opaque. Tracked under ADR-0022 follow-up.
+2. **Sample migration conversions** (Task 4.7 full): converting one existing `.statements.json` per provider to `.statements` form to demonstrate ergonomics. Mechanical, can be operator-paced. The framework supports both forms; conversions are a documentation/UX exercise.
+
+Phase 5: ☐ pending
 Phase 5: ☐ pending
 Phase 6: ☐ pending
 Phase 7: ☐ pending
