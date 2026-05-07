@@ -125,6 +125,38 @@ internal static class SquashVerb
             overrideEntries = FleetManifestLoader.BuildOverrideEntries( manifest, DateTimeOffset.UtcNow );
         }
 
+        // CLI flags can ALSO supply stranding entries for ad-hoc squashes
+        // without a manifest (or to extend the manifest's set). Per A11:
+        // each name supplied via --accept-stranding requires a paired
+        // --reason-stranding name="..." (>= 20 chars) entry. ticket-id +
+        // owner are taken from --strand-ticket-id and --strand-owner
+        // (defaults to git config user.email when omitted).
+        IReadOnlyList<SquashOverrideEntry> flagOverrides;
+        try
+        {
+            flagOverrides = BuildStrandingFromFlags( parsed );
+        }
+        catch ( ArgumentException ex )
+        {
+            return Fail( ex.Message );
+        }
+
+        if ( flagOverrides.Count > 0 )
+        {
+            var existing = overrideEntries.ToList();
+            foreach ( var entry in flagOverrides )
+            {
+                if ( existing.Any( e => string.Equals( e.EnvironmentName, entry.EnvironmentName, StringComparison.OrdinalIgnoreCase ) ) )
+                {
+                    Console.WriteLine( $"[squash] WARNING: --accept-stranding `{entry.EnvironmentName}` already in fleet manifest; CLI flag overrides." );
+                    existing.RemoveAll( e => string.Equals( e.EnvironmentName, entry.EnvironmentName, StringComparison.OrdinalIgnoreCase ) );
+                }
+                existing.Add( entry );
+            }
+            overrideEntries = existing;
+            Console.WriteLine( $"[squash] {flagOverrides.Count} stranding entry(ies) supplied via CLI flags." );
+        }
+
         await using var dataSource = NpgsqlDataSource.Create( connection );
 
         // Concrete snapshot capture: ephemeral postgres:N-alpine container
@@ -186,6 +218,27 @@ internal static class SquashVerb
                 await EmitArtifactsAsync(
                     output, name, generated, fromVersion, toVersion, ctx, stopwatch.Elapsed,
                     expectedFleetVersions, overrideEntries );
+
+                // Per Phase 7 Task 7.7 — optional source-file removal after
+                // successful generation. Idempotent: refuses if originals
+                // already gone unless --regenerate is also supplied.
+                if ( parsed.HasFlag( "remove-originals" ) )
+                {
+                    var migrationsRoot = parsed.Optional( "migrations-root" );
+                    if ( string.IsNullOrWhiteSpace( migrationsRoot ) )
+                    {
+                        Console.Error.WriteLine(
+                            "[squash] --remove-originals requires --migrations-root <path-to-migration-source-files>." );
+                        return 7;
+                    }
+
+                    var rc = RemoveOriginalSources(
+                        migrationsRoot,
+                        descriptors.Select( d => d.Attribute.Version ).ToArray(),
+                        regenerate: parsed.HasFlag( "regenerate" ) );
+                    if ( rc != 0 )
+                        return rc;
+                }
                 return 0;
 
             default:
@@ -260,6 +313,134 @@ internal static class SquashVerb
         return 2;
     }
 
+    /// <summary>
+    /// Phase 7 Task 7.7 — remove the original migration source files for
+    /// versions subsumed by the squash. Idempotent: refuses (returns code 7)
+    /// when the files are already gone unless <paramref name="regenerate"/>
+    /// is true. Searches by filename pattern <c>*&lt;version&gt;*</c> in
+    /// <paramref name="migrationsRoot"/> recursively.
+    /// </summary>
+    private static int RemoveOriginalSources( string migrationsRoot, long[] versions, bool regenerate )
+    {
+        if ( !Directory.Exists( migrationsRoot ) )
+        {
+            Console.Error.WriteLine( $"[squash] --migrations-root `{migrationsRoot}` does not exist." );
+            return 7;
+        }
+
+        var foundByVersion = new Dictionary<long, List<string>>();
+        foreach ( var version in versions )
+        {
+            // Match common naming conventions: <version>-<name>.cs,
+            // <version>_<name>.cs, Migration_<version>.cs, etc. We anchor on
+            // the version's digits being delimited so 1000 doesn't match 10000.
+            var versionStr = version.ToString( System.Globalization.CultureInfo.InvariantCulture );
+            var matches = Directory.GetFiles( migrationsRoot, "*.cs", SearchOption.AllDirectories )
+                .Where( f =>
+                {
+                    var fileName = Path.GetFileNameWithoutExtension( f );
+                    return System.Text.RegularExpressions.Regex.IsMatch(
+                        fileName,
+                        @"(^|[^0-9])" + System.Text.RegularExpressions.Regex.Escape( versionStr ) + @"([^0-9]|$)" );
+                } )
+                .ToList();
+            if ( matches.Count > 0 )
+                foundByVersion[version] = matches;
+        }
+
+        if ( foundByVersion.Count == 0 )
+        {
+            if ( regenerate )
+            {
+                Console.WriteLine(
+                    "[squash] --remove-originals: no source files found for any subsumed version. " +
+                    "--regenerate set; treating as success (artifacts re-emitted)." );
+                return 0;
+            }
+            Console.Error.WriteLine(
+                "[squash] --remove-originals: no source files found for any subsumed version. " +
+                "Either the originals are already removed (pass --regenerate to confirm) or " +
+                "--migrations-root points at the wrong directory." );
+            return 7;
+        }
+
+        Console.WriteLine();
+        Console.WriteLine( "[squash] --remove-originals removing:" );
+        foreach ( var (version, files) in foundByVersion.OrderBy( kv => kv.Key ) )
+        {
+            foreach ( var file in files )
+            {
+                Console.WriteLine( $"  v{version}: {Path.GetRelativePath( migrationsRoot, file )}" );
+                File.Delete( file );
+            }
+        }
+
+        var notFound = versions.Except( foundByVersion.Keys ).ToArray();
+        if ( notFound.Length > 0 )
+        {
+            Console.WriteLine();
+            Console.WriteLine(
+                $"[squash] --remove-originals: {notFound.Length} version(s) had no source file " +
+                $"to remove (already gone or never had one): [{string.Join( ", ", notFound )}]." );
+        }
+
+        return 0;
+    }
+
+    private static IReadOnlyList<SquashOverrideEntry> BuildStrandingFromFlags( ArgParser parsed )
+    {
+        var names = parsed.Many( "accept-stranding" )
+            .SelectMany( v => v.Split( ',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries ) )
+            .Where( n => !string.IsNullOrWhiteSpace( n ) )
+            .Distinct( StringComparer.OrdinalIgnoreCase )
+            .ToArray();
+
+        if ( names.Length == 0 )
+            return Array.Empty<SquashOverrideEntry>();
+
+        // Per-name reasons: --reason-stranding "name=text" (>= 20 chars).
+        // Each name listed in --accept-stranding must have a reason.
+        var reasons = parsed.Many( "reason-stranding" )
+            .Select( raw =>
+            {
+                var eq = raw.IndexOf( '=' );
+                if ( eq <= 0 )
+                    throw new ArgumentException( $"--reason-stranding `{raw}`: expected format name=reason." );
+                var n = raw.Substring( 0, eq ).Trim();
+                var r = raw.Substring( eq + 1 ).Trim();
+                if ( r.Length < 20 )
+                    throw new ArgumentException(
+                        $"--reason-stranding for `{n}`: reason must be >= 20 characters." );
+                return (Name: n, Reason: r);
+            } )
+            .ToDictionary( x => x.Name, x => x.Reason, StringComparer.OrdinalIgnoreCase );
+
+        var missing = names.Where( n => !reasons.ContainsKey( n ) ).ToArray();
+        if ( missing.Length > 0 )
+            throw new ArgumentException(
+                $"--accept-stranding requires a paired --reason-stranding for each environment. " +
+                $"Missing reasons for: [{string.Join( ", ", missing )}]." );
+
+        var ticketId = parsed.Optional( "strand-ticket-id", "AD-HOC-CLI" )!;
+        var owner = parsed.Optional( "strand-owner" )
+            ?? Environment.GetEnvironmentVariable( "USER" )
+            ?? Environment.GetEnvironmentVariable( "USERNAME" )
+            ?? "cli-operator";
+
+        var expires = DateTimeOffset.UtcNow.AddDays( 30 );
+
+        return names
+            .Select( n => new SquashOverrideEntry
+            {
+                EnvironmentName = n,
+                TicketId = ticketId,
+                Owner = owner,
+                Reason = reasons[n],
+                Expires = expires
+            } )
+            .ToArray();
+    }
+
     private static void PrintHelp()
     {
         Console.WriteLine(
@@ -269,7 +450,11 @@ internal static class SquashVerb
             "         --range <fromVersion>-<toVersion> \\\n" +
             "         --output <directory> \\\n" +
             "         --assembly <path-to-MyApp.Migrations.dll> \\\n" +
-            "         [--name Squash_<toVersion>]" );
+            "         [--name Squash_<toVersion>] \\\n" +
+            "         [--fleet-manifest <fleet.yml>] \\\n" +
+            "         [--accept-stranding name1,name2 --reason-stranding name1=\"...\" --reason-stranding name2=\"...\"] \\\n" +
+            "         [--strand-ticket-id FLEET-1234 --strand-owner ops@example.com] \\\n" +
+            "         [--remove-originals [--regenerate]]" );
     }
 }
 

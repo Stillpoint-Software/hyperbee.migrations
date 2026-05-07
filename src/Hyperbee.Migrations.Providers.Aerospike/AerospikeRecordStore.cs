@@ -253,16 +253,107 @@ internal class AerospikeRecordStore : IMigrationRecordStore
         return found;
     }
 
-    // NOTE: LoadSatisfyingRowsAsync (transitive squash satisfaction per ADR-0019 A6)
-    // is not yet overridden for Aerospike — falls back to the IMigrationRecordStore
-    // DIM default, which returns an empty set. Practical impact: re-squash transitivity
-    // (Squash_3000 with Replaces=[1500..2500] subsuming a previously auto-marked
-    // Squash_2000) does not auto-resolve on Aerospike in v1; the operator must
-    // re-introduce the inner squash's replaced versions or use the recover path.
-    // Direct Migration_<v> auto-mark works via LoadAppliedVersionsAsync above.
-    //
-    // Tracking issue: implement listener-bridged Query against Kind=Squash with
-    // a TaskCompletionSource adapter; revisit after Phase 6 stabilizes.
+    public async Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(
+        IEnumerable<long> versions,
+        CancellationToken cancellationToken = default )
+    {
+        if ( versions == null )
+            throw new ArgumentNullException( nameof( versions ) );
+
+        var inputs = versions as long[] ?? versions.ToArray();
+        var covered = new HashSet<long>();
+        if ( inputs.Length == 0 )
+            return covered;
+
+        // Transitive squash satisfaction (ADR-0019 A6) on Aerospike. The async
+        // client's Query API is listener-shaped (no native CT); we bridge via
+        // a TaskCompletionSource and a custom RecordSequenceListener. Filter
+        // expression narrows to Kind=Squash; we then intersect each record's
+        // Replaces bin with the input set client-side.
+        var inputSet = new HashSet<long>( inputs );
+
+        var statement = new Statement
+        {
+            Namespace = _options.Namespace,
+            SetName = _options.MigrationSet,
+            BinNames = new[] { "Kind", "Replaces" }
+        };
+
+        var queryPolicy = new QueryPolicy
+        {
+            filterExp = Exp.Build(
+                Exp.EQ( Exp.IntBin( "Kind" ),
+                        Exp.Val( (long) (byte) MigrationRecordKind.Squash ) ) )
+        };
+
+        var tcs = new TaskCompletionSource<bool>( TaskCreationOptions.RunContinuationsAsynchronously );
+        var coveredLock = new object();
+        var listener = new TransitiveScanListener( inputSet, covered, coveredLock, tcs );
+
+        await using ( cancellationToken.Register( () => tcs.TrySetCanceled( cancellationToken ) ) )
+        {
+            try
+            {
+                _client.Query( queryPolicy, listener, statement );
+            }
+            catch ( AerospikeException ex )
+            {
+                tcs.TrySetException( ex );
+            }
+
+            await tcs.Task.ConfigureAwait( false );
+        }
+
+        return covered;
+    }
+
+    // Bridges the Aerospike async client's listener-shaped Query API to a
+    // Task. OnRecord/OnSuccess/OnFailure are invoked from the client's
+    // completion-port pool; we publish to a thread-safe HashSet via lock.
+    private sealed class TransitiveScanListener : RecordSequenceListener
+    {
+        private readonly HashSet<long> _inputSet;
+        private readonly HashSet<long> _covered;
+        private readonly object _coveredLock;
+        private readonly TaskCompletionSource<bool> _tcs;
+
+        public TransitiveScanListener(
+            HashSet<long> inputSet,
+            HashSet<long> covered,
+            object coveredLock,
+            TaskCompletionSource<bool> tcs )
+        {
+            _inputSet = inputSet;
+            _covered = covered;
+            _coveredLock = coveredLock;
+            _tcs = tcs;
+        }
+
+        public void OnRecord( Key key, Record record )
+        {
+            if ( record == null )
+                return;
+            var replacesObj = record.GetValue( "Replaces" );
+            if ( replacesObj is not System.Collections.IList list )
+                return;
+
+            foreach ( var item in list )
+            {
+                if ( item is null ) continue;
+                var v = Convert.ToInt64( item );
+                if ( !_inputSet.Contains( v ) ) continue;
+
+                lock ( _coveredLock )
+                {
+                    _covered.Add( v );
+                }
+            }
+        }
+
+        public void OnSuccess() => _tcs.TrySetResult( true );
+
+        public void OnFailure( AerospikeException ex ) => _tcs.TrySetException( ex );
+    }
 
     public async Task<WriteOutcome> WriteAsync(
         MigrationRecord record,

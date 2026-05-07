@@ -33,6 +33,14 @@ public sealed record BodyRef( string Name ) : BodySource;
 
 public sealed record BodyFileRef( string Path ) : BodySource;
 
+// `WITH BODY { ... }` — inline brace-balanced JSON literal lifted by the
+// script-form parser (per ADR-0022 + Phase 4 follow-up). The literal is
+// captured verbatim during parsing; the resource runner parses it as JSON
+// at dispatch time. The brace-balanced consumption respects JSON string
+// escaping (no statement boundary inside `{ ... "}; ..." ... }`).
+
+public sealed record BodyInline( string Json ) : BodySource;
+
 // Reference to an OpenSearch index template whose `template` block becomes the
 // body for a CREATE INDEX. Carried unresolved through parsing (ADR-0015 — parser
 // is offline-pure); resolved at dispatch time via runtime middleware that

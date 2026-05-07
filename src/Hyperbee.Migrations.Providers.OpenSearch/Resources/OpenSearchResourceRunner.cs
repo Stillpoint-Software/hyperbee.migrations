@@ -91,20 +91,37 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
 
     /// <summary>
     /// Runs statements parsed from a script-form resource (per ADR-0022).
-    /// v1 script-form supports only Form 1 body sources (<c>WITH BODY @path</c>);
-    /// named bodies (<c>bodies.&lt;name&gt;</c>, sibling properties) are
-    /// JSON-array-form-only until the BODIES header lift ships.
+    /// Per ADR-0022 + Phase 4 follow-up: an optional <c>BODIES { ... }</c>
+    /// header at the top of the script lifts named body references into a
+    /// script-form-compatible map. Inline brace-balanced
+    /// <c>WITH BODY { ... }</c> bodies are also supported (handled in the
+    /// parser — captured as <see cref="Internal.Ast.BodyInline"/>).
     /// </summary>
     public async Task RunStatementsFromScriptAsync( string script, CancellationToken cancellationToken = default )
     {
-        var statements = _parser.ParseScript( script ).ToList();
+        // Pre-pass: extract BODIES header (named entries — paths or inline JSON).
+        var headerResult = Internal.Grammar.BodiesHeaderExtractor.Extract( script );
+
+        // Second pre-pass: lift inline `WITH BODY { ... }` literals into
+        // synthetic BODIES entries, replacing them with `WITH BODY $synthetic_N`
+        // refs so the existing Parlot grammar parses unchanged.
+        var inlineResult = Internal.Grammar.InlineBodyExtractor.Extract( headerResult.RemainingScript );
+
+        // Merge: header bodies + synthetic inline bodies. Synthetic names are
+        // prefixed `synthetic_inline_` so they can't collide with author names.
+        var mergedBodies = new Dictionary<string, Internal.Grammar.BodiesHeaderExtractor.BodiesEntry>(
+            headerResult.Bodies, StringComparer.OrdinalIgnoreCase );
+        foreach ( var (name, entry) in inlineResult.SyntheticBodies )
+            mergedBodies[name] = entry;
+
+        var statements = _parser.ParseScript( inlineResult.RewrittenScript ).ToList();
 
         for ( var i = 0; i < statements.Count; i++ )
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             var ast = statements[i];
-            var resolvedBody = ResolveBodyForScript( ast, statementIndex: i );
+            var resolvedBody = ResolveBodyForScript( ast, statementIndex: i, mergedBodies );
 
             var context = new StatementContext
             {
@@ -132,10 +149,16 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
         }
     }
 
-    // Script-form body resolver: only Form 1 (`@path`) is supported. Named
-    // bodies are not available in v1 script form because the script doesn't
-    // carry a JSON sibling-property bag — those use JsonArray form for now.
-    private JsonNode? ResolveBodyForScript( Internal.Ast.StatementAst ast, int statementIndex )
+    // Script-form body resolver. Three body-source shapes are supported:
+    //   Form 1: `WITH BODY @path` -> embedded resource file
+    //   Form 2/3: `WITH BODY $name` -> looked up in BODIES header dictionary
+    //             (entries are either @path file refs or inline JSON objects)
+    //   Form 4 (new): `WITH BODY { ... }` -> inline JSON literal captured at
+    //                  parse time; used directly without any file load.
+    private JsonNode? ResolveBodyForScript(
+        Internal.Ast.StatementAst ast,
+        int statementIndex,
+        IReadOnlyDictionary<string, Internal.Grammar.BodiesHeaderExtractor.BodiesEntry> bodies )
     {
         var source = ExtractBodySource( ast );
         if ( source is null )
@@ -145,12 +168,47 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
         return source switch
         {
             BodyFileRef fileRef => LoadBodyFromResource( fileRef.Path, label ),
-            BodyRef nameRef => throw new InvalidOperationException(
-                $"{label}: `WITH BODY ${nameRef.Name}` requires a `bodies.{nameRef.Name}` entry which " +
-                "is only available in JSON-array form. Use `WITH BODY @path/to/{nameRef.Name}.json` in script form, " +
-                "or keep this migration in `.statements.json` form. Tracked in ADR-0022 follow-up (BODIES header)." ),
+            BodyInline inline => ParseInline( inline.Json, label ),
+            BodyRef nameRef => ResolveFromBodiesHeader( bodies, nameRef.Name, label ),
             _ => throw new InvalidOperationException(
                 $"{label}: unsupported BodySource type `{source.GetType().Name}`." )
+        };
+    }
+
+    private static JsonNode? ParseInline( string json, string label )
+    {
+        try
+        {
+            return JsonNode.Parse( json )
+                ?? throw new InvalidOperationException(
+                    $"{label}: inline `WITH BODY {{ ... }}` is empty JSON." );
+        }
+        catch ( System.Text.Json.JsonException ex )
+        {
+            throw new InvalidOperationException(
+                $"{label}: inline `WITH BODY {{ ... }}` is not valid JSON: {ex.Message}", ex );
+        }
+    }
+
+    private JsonNode? ResolveFromBodiesHeader(
+        IReadOnlyDictionary<string, Internal.Grammar.BodiesHeaderExtractor.BodiesEntry> bodies,
+        string name,
+        string label )
+    {
+        if ( !bodies.TryGetValue( name, out var entry ) )
+        {
+            throw new InvalidOperationException(
+                $"{label}: `WITH BODY ${name}` not found in the script's `BODIES {{ ... }}` header. " +
+                $"Either add `{name}: @path/to/file.json` (or an inline `{name}: {{ ... }}`) to the BODIES " +
+                $"header, switch to `WITH BODY @path` directly, or keep this migration in `.statements.json` form." );
+        }
+
+        return entry switch
+        {
+            Internal.Grammar.BodiesHeaderExtractor.BodiesPathEntry p => LoadBodyFromResource( p.Path, $"{label} bodies.{name}" ),
+            Internal.Grammar.BodiesHeaderExtractor.BodiesInlineEntry i => ParseInline( i.Json, $"{label} bodies.{name}" ),
+            _ => throw new InvalidOperationException(
+                $"{label}: unsupported BODIES entry type `{entry.GetType().Name}`." )
         };
     }
 
