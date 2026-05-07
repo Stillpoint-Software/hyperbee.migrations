@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Resources;
+﻿namespace Hyperbee.Migrations.Resources;
 
 /// <summary>
 /// Resource-file content format. Per ADR-0022 the framework supports both the

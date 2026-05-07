@@ -1,5 +1,5 @@
-﻿using Parlot;
-using Hyperbee.Migrations.Resources;
+﻿using Hyperbee.Migrations.Resources;
+using Parlot;
 using Parlot.Fluent;
 using static Parlot.Fluent.Parsers;
 
