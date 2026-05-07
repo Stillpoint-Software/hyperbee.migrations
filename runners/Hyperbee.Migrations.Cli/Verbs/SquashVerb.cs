@@ -1,5 +1,6 @@
 ﻿using System.Reflection;
 using System.Text.Json;
+using Hyperbee.Migrations.Cli.FleetManifest;
 using Hyperbee.Migrations.Cli.Postgres;
 using Hyperbee.Migrations.Providers.Postgres.Squash;
 using Hyperbee.Migrations.Squash;
@@ -27,6 +28,7 @@ internal static class SquashVerb
         }
 
         string provider, connection, output, name, assemblyPath;
+        string? fleetManifestPath;
         long fromVersion, toVersion;
 
         try
@@ -37,6 +39,7 @@ internal static class SquashVerb
             output = parsed.Required( "output" );
             name = parsed.Optional( "name", $"Squash_{toVersion}" )!;
             assemblyPath = parsed.Required( "assembly" );
+            fleetManifestPath = parsed.Optional( "fleet-manifest" );
         }
         catch ( ArgumentException ex )
         {
@@ -81,6 +84,46 @@ internal static class SquashVerb
             return Fail( $"no [Migration] types found in {migrationAssembly.GetName().Name} for range {fromVersion}-{toVersion}." );
 
         Console.WriteLine( $"[squash] subsumed migrations ({descriptors.Count}): {string.Join( ", ", descriptors.Select( d => d.Attribute.Version ) )}" );
+
+        // Optional fleet manifest. When supplied, drive the pre-generation
+        // readiness check: refuses if any registered fleet member is mid-range
+        // (per ADR-0019 A2). The probed last-applied versions feed into
+        // SquashMetadata.ExpectedFleetVersions for the deploy-time gate.
+        FleetManifestModel? manifest = null;
+        IReadOnlyDictionary<string, long> expectedFleetVersions = new Dictionary<string, long>();
+        IReadOnlyList<SquashOverrideEntry> overrideEntries = Array.Empty<SquashOverrideEntry>();
+        if ( !string.IsNullOrWhiteSpace( fleetManifestPath ) )
+        {
+            try
+            {
+                manifest = FleetManifestLoader.LoadFromFile( fleetManifestPath );
+                Console.WriteLine( $"[squash] fleet manifest loaded ({manifest.Fleet.Count} envs, {manifest.SquashOverrides?.AcceptStranding.Count ?? 0} stranding overrides)" );
+            }
+            catch ( Exception ex )
+            {
+                return Fail( $"fleet manifest load failed: {ex.Message}" );
+            }
+
+            try
+            {
+                Console.WriteLine( "[squash] running fleet readiness check ..." );
+                expectedFleetVersions = await FleetReadinessCheck.EnsureGenerableAsync(
+                    manifest, fromVersion, toVersion, CancellationToken.None ).ConfigureAwait( false );
+                foreach ( var (env, ver) in expectedFleetVersions.OrderBy( kv => kv.Key ) )
+                    Console.WriteLine( $"  {env}: last-applied={ver}" );
+            }
+            catch ( MidRangeFleetException ex )
+            {
+                Console.Error.WriteLine( $"[squash] FAILED (fleet-readiness): {ex.Message}" );
+                return 6;
+            }
+            catch ( Exception ex )
+            {
+                return Fail( $"fleet readiness probe failed: {ex.Message}" );
+            }
+
+            overrideEntries = FleetManifestLoader.BuildOverrideEntries( manifest, DateTimeOffset.UtcNow );
+        }
 
         await using var dataSource = NpgsqlDataSource.Create( connection );
 
@@ -140,7 +183,9 @@ internal static class SquashVerb
                 return 5;
 
             case SquashGenerationResult.Generated generated:
-                await EmitArtifactsAsync( output, name, generated, fromVersion, toVersion, ctx, stopwatch.Elapsed );
+                await EmitArtifactsAsync(
+                    output, name, generated, fromVersion, toVersion, ctx, stopwatch.Elapsed,
+                    expectedFleetVersions, overrideEntries );
                 return 0;
 
             default:
@@ -155,7 +200,9 @@ internal static class SquashVerb
         long fromVersion,
         long toVersion,
         PostgresSquashGenerationContext ctx,
-        TimeSpan elapsed )
+        TimeSpan elapsed,
+        IReadOnlyDictionary<string, long> expectedFleetVersions,
+        IReadOnlyList<SquashOverrideEntry> overrideEntries )
     {
         var sqlPath = Path.Combine( output, $"{name}.sql" );
         var metadataPath = Path.Combine( output, $"{name}.metadata.json" );
@@ -173,7 +220,8 @@ internal static class SquashVerb
             ProviderId = "postgres",
             Topology = topology.Properties,
             CanonicalizerVersion = "postgres/1.0.0",
-            ExpectedFleetVersions = new Dictionary<string, long>(),
+            ExpectedFleetVersions = expectedFleetVersions.ToDictionary( kv => kv.Key, kv => kv.Value ),
+            SquashOverrides = overrideEntries.ToArray(),
             CodegenToolVersion = $"hyperbee-migrations/{toolVersion}",
             GeneratedAt = DateTimeOffset.UtcNow
         };

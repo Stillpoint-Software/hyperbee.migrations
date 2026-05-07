@@ -18,6 +18,7 @@
   <ItemGroup>
     <PackageReference Include="Npgsql" />
     <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 
 </Project>
