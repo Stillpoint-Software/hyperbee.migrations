@@ -1,0 +1,27 @@
+-- Phase 4 sample: initial sample_users index with a tight strict mapping.
+-- Demonstrates ADR-0022 script form with a BODIES { ... } header carrying
+-- the index body. The .statements.json companion file (now superseded by
+-- this script form) is preserved for backward compatibility.
+
+BODIES {
+  usersIndex: {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    },
+    "mappings": {
+      "properties": {
+        "id":     { "type": "keyword" },
+        "email":  { "type": "keyword" },
+        "name":   { "type": "text"    },
+        "active": { "type": "boolean" }
+      }
+    }
+  }
+}
+
+CREATE INDEX sample_users IF NOT EXISTS WITH BODY $usersIndex;
+
+-- Wait until the index reaches yellow before dispatching the next statement —
+-- avoids spurious "no shard available" errors on tight CI runners.
+WAIT FOR YELLOW ON sample_users TIMEOUT 30s;

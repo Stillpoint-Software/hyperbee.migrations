@@ -1,0 +1,14 @@
+-- Phase 4 sample: secondary GSI indexes for the application's queries.
+-- Demonstrates the .statements script form per ADR-0022.
+
+-- Deferred build: each CREATE INDEX adds the index but doesn't build it
+-- yet. The trailing BUILD INDEX kicks all deferred indexes off in one batch
+-- so we get parallelism on the cluster instead of one-at-a-time.
+
+CREATE INDEX `idx_users_email`        ON `sample`(`email`)    WHERE `userId`    IS NOT MISSING USING GSI WITH {'defer_build':true};
+CREATE INDEX `idx_users_active`       ON `sample`(`active`)   WHERE `userId`    IS NOT MISSING USING GSI WITH {'defer_build':true};
+CREATE INDEX `idx_users_role`         ON `sample`(`role`)     WHERE `userId`    IS NOT MISSING USING GSI WITH {'defer_build':true};
+CREATE INDEX `idx_products_category`  ON `sample`(`category`) WHERE `productId` IS NOT MISSING USING GSI WITH {'defer_build':true};
+CREATE INDEX `idx_products_price`     ON `sample`(`price`)    WHERE `productId` IS NOT MISSING USING GSI WITH {'defer_build':true};
+
+BUILD INDEX ON `sample` ( ( SELECT RAW name FROM system:indexes WHERE keyspace_id = 'sample' AND state = 'deferred' ));

@@ -85,6 +85,54 @@ internal static class SquashVerb
 
         Console.WriteLine( $"[squash] subsumed migrations ({descriptors.Count}): {string.Join( ", ", descriptors.Select( d => d.Attribute.Version ) )}" );
 
+        // Optional: Roslyn-based migration source scanner enforces the
+        // [DataMigration] / [StructuralOnly] annotation requirement per
+        // ADR-0019 amendment A5. Operator supplies --scan-source <dir>
+        // pointing at the migrations source folder; the scanner refuses
+        // generation if any subsumed class looks like a data op AND lacks
+        // both annotations.
+        var scanSource = parsed.Optional( "scan-source" );
+        if ( !string.IsNullOrWhiteSpace( scanSource ) )
+        {
+            Console.WriteLine( $"[squash] scanning migration source for [DataMigration] enforcement: {scanSource}" );
+            var verdicts = PostgresMigrationSourceScanner.Scan( scanSource );
+
+            // Restrict to the version range we're squashing (best-effort —
+            // the scanner doesn't know versions, so we cross-reference by
+            // class name against the descriptors).
+            var classNamesInRange = descriptors
+                .Select( d => d.Type.Name )
+                .ToHashSet( StringComparer.Ordinal );
+
+            var offenders = verdicts
+                .Where( v => v.RequiresAnnotation && classNamesInRange.Contains( v.ClassName ) )
+                .ToArray();
+
+            if ( offenders.Length > 0 )
+            {
+                Console.Error.WriteLine();
+                Console.Error.WriteLine(
+                    "[squash] FAILED ([DataMigration] enforcement per ADR-0019 A5): " +
+                    $"{offenders.Length} class(es) carry data ops or non-determinism but lack " +
+                    "[DataMigration] / [StructuralOnly] annotation:" );
+                foreach ( var o in offenders )
+                {
+                    Console.Error.WriteLine( $"  - {o.ClassName} ({Path.GetFileName( o.FilePath )})" );
+                    if ( o.DataOpHits.Count > 0 )
+                        Console.Error.WriteLine( $"      data-op verbs: {string.Join( ", ", o.DataOpHits )}" );
+                    if ( o.NonDeterminismHits.Count > 0 )
+                        Console.Error.WriteLine( $"      non-determinism: {string.Join( ", ", o.NonDeterminismHits )}" );
+                }
+                Console.Error.WriteLine();
+                Console.Error.WriteLine(
+                    "Annotate each offender with [DataMigration] (carried forward verbatim) or " +
+                    "[StructuralOnly] (elided into the squash) and re-run." );
+                return 8;
+            }
+
+            Console.WriteLine( $"[squash] source scan ok ({verdicts.Count} class(es) scanned)" );
+        }
+
         // Optional fleet manifest. When supplied, drive the pre-generation
         // readiness check: refuses if any registered fleet member is mid-range
         // (per ADR-0019 A2). The probed last-applied versions feed into
