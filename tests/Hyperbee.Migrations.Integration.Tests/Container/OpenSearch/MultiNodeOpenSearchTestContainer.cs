@@ -180,7 +180,13 @@ public class MultiNodeOpenSearchTestContainer
         // Returning only on GREEN is load-bearing for tests that REINDEX or
         // hit `_aliases` immediately after fixture setup — they get
         // connection resets if shards are still being assigned.
-        const int DeadlineSeconds = 180;
+        //
+        // 2026-05-08: bumped 180 -> 300s after multiple consecutive nightly
+        // failures on `ubuntu-latest` (run 25475844713 and predecessors). Local
+        // happy-path stays under 30s; shared CI runners under contention
+        // routinely need 2-3 minutes per cluster bring-up, especially when an
+        // earlier test class's tear-down overlaps with a later class's spin-up.
+        const int DeadlineSeconds = 300;
         var deadline = DateTimeOffset.UtcNow.AddSeconds( DeadlineSeconds );
         var nodesJoined = false;
         string? lastStatus = null;

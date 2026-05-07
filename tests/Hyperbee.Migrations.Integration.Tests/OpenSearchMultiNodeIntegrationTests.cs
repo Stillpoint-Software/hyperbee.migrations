@@ -372,8 +372,18 @@ public class OpenSearchMultiNodeIntegrationTests
             using ( var doc = JsonDocument.Parse( snapshotCountResp.Body ) )
                 snapshotCount = doc.RootElement.GetProperty( "count" ).GetInt32();
 
+            // Retry-once on transient failure: the reindex POST occasionally
+            // fails with "Status code unknown" on shared CI runners under load
+            // (per nightly run 25475844713). One retry with a short backoff
+            // smooths out the connection-reset flake without masking real
+            // regressions — a second consecutive failure still surfaces.
             var reindexResult = await Dispatch( $"REINDEX FROM {src} TO {dst}" );
-            Assert.IsTrue( reindexResult.IsSuccess, $"reindex failed: {reindexResult.Detail}" );
+            if ( !reindexResult.IsSuccess )
+            {
+                await Task.Delay( 2_000 );
+                reindexResult = await Dispatch( $"REINDEX FROM {src} TO {dst}" );
+            }
+            Assert.IsTrue( reindexResult.IsSuccess, $"reindex failed (after retry): {reindexResult.Detail}" );
 
             // The swap is the keystone — atomic remove+add in one body.
             var swapResult = await Dispatch( $"ALIAS SWAP {alias} FROM {src} TO {dst}" );
