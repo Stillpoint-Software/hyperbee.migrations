@@ -11,8 +11,8 @@
     <PackageReleaseNotes>https://github.com/Stillpoint-Software/Hyperbee.Migrations/releases/latest</PackageReleaseNotes>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <Copyright>Stillpoint Software, Inc.</Copyright>
-    <Title>Hyperbee Migrations OpenSearch Provider — AWS SigV4 Extension</Title>
-    <Description>AWS SigV4 authentication for Hyperbee.Migrations.Providers.OpenSearch on AWS Managed OpenSearch Service. Optional opt-in extension (R-21); the core provider package stays free of the AWS SDK transitive dependency tree.</Description>
+    <Title>Hyperbee Migrations OpenSearch Provider - AWS SigV4 Extension</Title>
+    <Description>AWS SigV4 authentication for Hyperbee.Migrations.Providers.OpenSearch on AWS Managed OpenSearch Service. Optional opt-in extension; the core provider package stays free of the AWS SDK transitive dependency tree.</Description>
     <RepositoryUrl>https://github.com/Stillpoint-Software/Hyperbee.Migrations</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>

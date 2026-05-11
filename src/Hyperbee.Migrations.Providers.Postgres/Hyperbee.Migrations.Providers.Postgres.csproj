@@ -11,7 +11,7 @@
     <PackageReleaseNotes>https://github.com/Stillpoint-Software/Hyperbee.Migrations/releases/latest</PackageReleaseNotes>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <Copyright>Stillpoint Software, Inc.</Copyright>
-    <Title>Hyperbee Migrations</Title>
+    <Title>Hyperbee Migrations Postgres Provider</Title>
     <Description>Hyperbee Migrations Postgres Provider adds Postgres support to Hyperbee Migrations.</Description>
     <RepositoryUrl>https://github.com/Stillpoint-Software/Hyperbee.Migrations</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

@@ -71,16 +71,9 @@ public static class CouchbaseHelper
 
             await bucket.Collections.CreateScopeAsync( scopeName ).ConfigureAwait( false );
         }
-        catch ( Exception ex )
+        catch ( Exception ex ) when ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "scope already exists" ) )
         {
-            // Log and rethrow to surface the specific error
-            Console.WriteLine( $"CreateScopeAsync failed: {ex.Message}" );
-
-            // Check if it's an "already exists" error and suppress it
-            if ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "scope already exists" ) )
-                return;
-
-            throw;
+            // Idempotent: the scope already exists; not an error for our purposes.
         }
     }
 
@@ -114,10 +107,11 @@ public static class CouchbaseHelper
             scopeName = Unquote( scopeName );
             return scopes.Any( x => x.Name == scopeName );
         }
-        catch ( Exception ex )
+        catch ( Exception )
         {
-            // Log the exception and return false to trigger fallback behavior
-            Console.WriteLine( $"ScopeExistsAsync failed: {ex.Message}" );
+            // Treat any probe failure as "not present" to trigger the
+            // create-fallback path; the caller will log + handle the real
+            // exception when the subsequent create operation surfaces it.
             return false;
         }
     }
@@ -158,11 +152,9 @@ public static class CouchbaseHelper
             var settings = CreateCollectionSettings.Default;
             await bucket.Collections.CreateCollectionAsync( Unquote( scopeName ), Unquote( collectionName ), settings ).ConfigureAwait( false );
         }
-        catch ( Exception ex )
+        catch ( Exception ex ) when ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "collection already exists" ) )
         {
-            // Log and rethrow to surface the specific error
-            Console.WriteLine( $"CreateCollectionAsync failed: {ex.Message}" );
-            throw;
+            // Idempotent: collection already exists.
         }
     }
 
@@ -201,11 +193,12 @@ public static class CouchbaseHelper
 
             return scopes.Any( x => x.Name == scopeName && x.Collections.Any( y => y.Name == collectionName ) );
         }
-        catch ( Exception ex )
+        catch ( Exception )
         {
-            // Log the exception and return false to trigger fallback behavior
-            // This prevents hanging on management API calls
-            Console.WriteLine( $"CollectionExistsAsync failed: {ex.Message}" );
+            // Treat management-API probe failure as "not present" to trigger
+            // the create-fallback path; prevents hanging on transient
+            // management-API outages. The caller will surface the real
+            // exception when the subsequent create operation runs.
             return false;
         }
     }
@@ -231,10 +224,11 @@ public static class CouchbaseHelper
                 $"SELECT RAW count(*) FROM system:keyspaces WHERE `bucket` = '{Unquote( bucketName )}' AND `scope` = '{Unquote( scopeName )}' AND name = '{Unquote( collectionName )}'"
             ).ConfigureAwait( false );
         }
-        catch ( Exception ex )
+        catch ( Exception )
         {
-            // Log the exception and return false to prevent hanging
-            Console.WriteLine( $"CollectionExistsQueryAsync failed: {ex.Message}" );
+            // N1QL visibility probe failure -> treat as "not yet visible"
+            // and let the WaitUntilAsync loop retry. The caller's WaitHelper
+            // surrounds this and will surface a timeout if it persists.
             return false;
         }
     }
@@ -248,11 +242,9 @@ public static class CouchbaseHelper
                 $"CREATE PRIMARY INDEX ON `default`:`{Unquote( bucketName )}`.`{Unquote( scopeName )}`.`{Unquote( collectionName )}`"
             ).ConfigureAwait( false );
         }
-        catch ( Exception ex )
+        catch ( Exception ex ) when ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "index already exists" ) )
         {
-            // Log and rethrow to surface the specific error
-            Console.WriteLine( $"CreatePrimaryCollectionIndexAsync failed: {ex.Message}" );
-            throw;
+            // Idempotent: primary index already exists.
         }
     }
 
@@ -265,10 +257,11 @@ public static class CouchbaseHelper
                 $"SELECT RAW count(*) FROM system:indexes WHERE bucket_id = '{Unquote( bucketName )}' AND scope_id = '{Unquote( scopeName )}' AND keyspace_id = '{Unquote( collectionName )}' AND is_primary"
             ).ConfigureAwait( false );
         }
-        catch ( Exception ex )
+        catch ( Exception )
         {
-            // Log the exception and return false to trigger index creation
-            Console.WriteLine( $"PrimaryCollectionIndexExistsAsync failed: {ex.Message}" );
+            // Probe failure -> return false so the caller triggers
+            // CreatePrimaryCollectionIndexAsync, which is itself
+            // idempotent on "already exists" responses.
             return false;
         }
     }

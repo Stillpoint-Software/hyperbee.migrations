@@ -1,6 +1,11 @@
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- Transitive pinning lets PackageVersion entries apply to packages we
+         pull in transitively (e.g., Snappier via CouchbaseNetClient) without
+         needing an explicit PackageReference in every consuming project.
+         Required for the CVE pins below to take effect. -->
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
     <!-- Core Microsoft Extensions -->
@@ -48,6 +53,14 @@
     <!-- Parsing -->
     <PackageVersion Include="Parlot" Version="1.5.7" />
     <PackageVersion Include="YamlDotNet" Version="16.3.0" />
+    <!-- Transitive vulnerability pins (CentralPackageTransitivePinningEnabled
+         above is what makes these apply to transitive deps).
+         Snappier <= 1.3.0 is GHSA-pggp-6c3x-2xmx (HIGH); arrives transitively
+         via CouchbaseNetClient + MongoDB.Driver. Fixed in 1.3.1.
+         SharpCompress <= 0.30.1 is GHSA-6c8g-7p36-r338 (MODERATE); arrives
+         transitively via MongoDB.Driver. Fixed in 1.0.0+. -->
+    <PackageVersion Include="Snappier" Version="1.3.1" />
+    <PackageVersion Include="SharpCompress" Version="1.0.0" />
     <!-- Testing Framework -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageVersion Include="MSTest.TestAdapter" Version="4.0.2" />

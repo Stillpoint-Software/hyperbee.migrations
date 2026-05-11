@@ -11,8 +11,8 @@
     <PackageReleaseNotes>https://github.com/Stillpoint-Software/Hyperbee.Migrations/releases/latest</PackageReleaseNotes>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <Copyright>Stillpoint Software, Inc.</Copyright>
-    <Title>Hyperbee Migrations</Title>
-    <Description>Hyperbee Migrations Postgres Provider adds MongoDB support to Hyperbee Migrations.</Description>
+    <Title>Hyperbee Migrations MongoDB Provider</Title>
+    <Description>Hyperbee Migrations MongoDB Provider adds MongoDB support to Hyperbee Migrations.</Description>
     <RepositoryUrl>https://github.com/Stillpoint-Software/Hyperbee.Migrations</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>

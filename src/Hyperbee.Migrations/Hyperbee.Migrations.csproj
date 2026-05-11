@@ -4,14 +4,14 @@
     <IsPackable>true</IsPackable>
     <Authors>Stillpoint Software, Inc.</Authors>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageTags>.NET;migrations;postgresql;couchbase;mongodb</PackageTags>
+    <PackageTags>.NET;migrations;database;postgresql;mongodb;couchbase;aerospike;opensearch</PackageTags>
     <PackageIcon>icon.png</PackageIcon>
     <PackageProjectUrl>https://github.com/Stillpoint-Software/Hyperbee.Migrations/</PackageProjectUrl>
     <PackageReleaseNotes>https://github.com/Stillpoint-Software/Hyperbee.Migrations/releases/latest</PackageReleaseNotes>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <Copyright>Stillpoint Software, Inc.</Copyright>
     <Title>Hyperbee Migrations</Title>
-    <Description>Hyperbee Migrations is a .NET migration framework for Postgresql, MongoDb and Couchbase</Description>
+    <Description>A versioned, journaled migration framework for .NET that supports relational and NoSQL databases (Aerospike, Couchbase, MongoDB, OpenSearch, PostgreSQL) through a single, consistent API. Install a provider package instead of this one directly.</Description>
     <RepositoryUrl>https://github.com/Stillpoint-Software/Hyperbee.Migrations</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
