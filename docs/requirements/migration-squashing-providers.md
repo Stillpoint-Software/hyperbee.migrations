@@ -12,7 +12,7 @@
 
 **The cost of inaction** is that v3.0 cannot ship. The strategy abstraction has been pressure-tested against exactly one implementation; the all-providers-or-nothing rule exists precisely because shipping one validates one implementation, not the abstraction. Operators of the four un-shipped providers cannot compact long migration histories; their fresh-environment provisioning continues to grow linearly.
 
-The shape of the work is uniform per provider (six component types each), but the canonicalization complexity varies materially: Aerospike (Low), MongoDB (Medium-High), Couchbase (High), OpenSearch (High). Implementation order is locked: Aerospike first to harden the contract against a low-risk case before the High-risk providers stress-test it.
+The shape of the work is uniform per provider (six component types each), but the canonicalization complexity varies materially: Aerospike (Low), OpenSearch (High), MongoDB (Medium-High), Couchbase (High). Implementation order revised 2026-05-11 to Aerospike -> **OpenSearch** -> MongoDB -> Couchbase: Aerospike first hardens the contract against a low-risk case; OpenSearch second pressure-tests the contract against the hardest provider while only one prior implementation has to recompile if a contract gap surfaces; MongoDB and Couchbase inherit the pattern.
 
 ## Requirements
 
@@ -251,7 +251,7 @@ Each of the four providers must ship a concrete `ISquashStrategy` implementation
 - No `global::` prefix (per `feedback_no_global_prefix.md`)
 - No `Console.WriteLine` in production code (use `ILogger`)
 - Backward compatibility: existing v2 migrations must continue to work; squash is additive
-- Order of implementation locked: Aerospike -> MongoDB -> Couchbase -> OpenSearch
+- Order of implementation locked (revised 2026-05-11): Aerospike -> **OpenSearch** -> MongoDB -> Couchbase
 - All 4 providers must be done before v3.0 ships; partial scope is not on the table (per `feedback_squash_all_providers_v1.md`)
 - No test failures shipped (per `feedback_no_preexisting_bugs.md`)
 
@@ -287,7 +287,7 @@ Each of the four providers must ship a concrete `ISquashStrategy` implementation
 ### Decided
 
 - **All 4 remaining providers ship in v3.0 (locked rule).** Postgres-only paths are off the table; partial scope is not a negotiating lever. -- *Influences: every requirement here*
-- **Order: Aerospike, MongoDB, Couchbase, OpenSearch.** Increasing canonicalization risk. The first three pressure-test the contract; the highest-risk provider (OpenSearch) lands when the contract is most stable. -- *Influences: depends-on chain across R-P1 through R-P4*
+- **Order: Aerospike, OpenSearch, MongoDB, Couchbase (revised 2026-05-11).** Optimizes for contract validation rather than gradual complexity. Aerospike (Low) hardens the contract against a friendly case; OpenSearch (High) pressure-tests against the hardest provider while only one prior implementation has to recompile if a contract gap surfaces; MongoDB (Medium-High) and Couchbase (High) inherit the established pattern. -- *Influences: depends-on chain across R-P1 -> R-P4 -> R-P2 -> R-P3 (new sequence)* -- *Reverses: original "increasing canonicalization risk" ordering which optimized for build-confidence-gradually*
 - **Strategy contract is amend-via-ADR-0019, not fork.** Captured as R-P7. -- *Influences: shared squash contract surface*
 - **Determinism is C12-byte-equal, not AST-equal.** A canonicalizer that produces byte-stable output is the gate. -- *Influences: R-P5*
 - **Verification round byte-compares snapshot A vs snapshot B from real provider containers, not mocks.** -- *Influences: R-P6*

@@ -45,7 +45,8 @@ Land squash codegen for **Aerospike, MongoDB, Couchbase, and OpenSearch** so v3.
 - No `global::` prefix in source.
 - No `Console.WriteLine` in production code; use `ILogger`.
 - All 4 providers must be done before v3.0 ships; partial scope is not viable.
-- Implementation order is locked: Aerospike -> MongoDB -> Couchbase -> OpenSearch (increasing canonicalization risk).
+- Implementation order is locked: Aerospike -> **OpenSearch** -> MongoDB -> Couchbase (revised 2026-05-11 -- "hardest second" for contract pressure-testing rather than "increasing canonicalization risk"; rationale below).
+- Order rationale: validating the contract against the hardest provider second means we discover any contract gap before building MongoDB and Couchbase on a foundation that turns out to be insufficient. OpenSearch (component templates, ISM policies, painless scripts, plugin matrix) is the hardest case; if it fits, the others almost certainly will. The painless-equivalence spike (originally Task 4.0) moves to the new Phase 2 start.
 - Contract changes follow R-P7: ADR-0019 amendment lands BEFORE the interface changes.
 - No `NullSquashStrategy` ships in v3.0; every provider has a real strategy.
 - Test counts must stay green at every phase boundary (last known: 1443/1443 unit, 87/88 integration with 1 self-skip to be removed in cleanup).
@@ -352,61 +353,17 @@ Concretely, where Aerospike could have pressured the contract:
 - ☑ Plan checkboxes flipped for 1.1-1.10 + 1.12 + 1.13. Task 1.11 explicitly deferred to Phase 5.
 - Memory + push deferred to user authorization.
 
-**Completion criteria:** ☑ Aerospike squash codegen is path-finder-complete; the contract holds; the 6-component shape + capture helper + R-P5 / R-P6 integration tests are in place. Ready for Phase 2 MongoDB to pressure-test the contract against a 2nd provider.
+**Completion criteria:** ☑ Aerospike squash codegen is path-finder-complete; the contract holds; the 6-component shape + capture helper + R-P5 / R-P6 integration tests are in place. Ready for Phase 1 production-hardening pass (Sev 1 A-D + Sev 2 G-H), then Phase 2 OpenSearch to pressure-test the contract against the hardest provider.
 
-### Phase 2: MongoDB squash codegen (R-P2, R-P5-R-P9) (~1.5 weeks)
+### Phase 2: OpenSearch squash codegen (R-P4, R-P5-R-P9) (~2 weeks) -- moved from Phase 4 (2026-05-11)
 
-Medium-High canonicalization risk. BSON-vs-JSON, index `v` field per server version, replica-set vs standalone topology.
+Highest canonicalization risk. Component templates, ISM policies, painless scripts, ingest pipelines, alias graphs. Reordered to be the second provider implemented so the contract is pressure-tested against the hardest case before MongoDB and Couchbase are built on top of it. If a gap surfaces here, the ADR-0019 amendment costs much less than discovering it at Phase 4 with three providers already shipped.
 
-**Tasks 2.1 - 2.13 mirror Phase 1's shape**, with these per-provider differences:
+#### Task 2.0: Painless-equivalence spike (RISKIEST single technical question in v3.0)
 
-- **2.1 `MongoDBTopologySignature`** captures: server major.minor, feature compatibility version (FCV), replica-set vs standalone, default read/write concern, storage engine.
-- **2.2 `MongoDBDataOpClassifier`** classifies `IMongoCollection<>.Insert*`, `Update*`, `Delete*`, `BulkWrite` as data ops; `Database.CreateCollectionAsync`, `Indexes.CreateOneAsync` as structural.
-- **2.3 `MongoDBStatementClassifier`** uses the existing `MongoStatementParser` ([src/Hyperbee.Migrations.Providers.MongoDB/Parsers/MongoStatementParser.cs](../../../src/Hyperbee.Migrations.Providers.MongoDB/Parsers/MongoStatementParser.cs)); covers `CREATE COLLECTION`, `CREATE [UNIQUE] INDEX ON db.col(...)`, `DROP COLLECTION`, `DROP INDEX`, `INSERT INTO` (intent).
-- **2.4 `MongoDBSnapshotCanonicalizer`**:
-  - Capture via `db.runCommand({listCollections})` + `getIndexes()` per collection + collection-options validator
-  - Strip ephemeral fields: `idIndex.v`, `idIndex.ns`, `info.uuid`, `info.readOnly`
-  - **Strip `v` field on each index** (server-version-dependent per the requirements doc Open Question); document the rationale inline in the canonicalizer
-  - Sort collections + indexes alphabetically
-  - Emit script form: `CREATE COLLECTION db.col`, `CREATE [UNIQUE] INDEX name ON db.col(field1, field2)`
-- **2.5 `IntrospectionSnapshotStrategy : ISquashStrategy`** orchestrates the capture; uses the existing `Testcontainers.MongoDb` helper.
-- **2.6 `MongoDBSquashVerifier`** runs the two-container byte-equal verification round.
-- **2.7-2.12** mirror Phase 1.
-- **2.13** phase boundary.
+**Prerequisites:** Phase 1 done (including hardening pass).
 
-**Cross-provider participation check:** if Phase 1 amended `ITopologySignature` (e.g., to add a "feature-compat" axis), MongoDB's implementation MUST use the amended shape; the audit trail is in Appendix B.
-
-### Phase 3: Couchbase squash codegen (R-P3, R-P5-R-P9) (~2 weeks)
-
-High canonicalization risk. CE-vs-EE differences, parameterized N1QL, deferred-build indexes.
-
-**Tasks 3.1 - 3.13 mirror Phase 1's shape**, with these per-provider differences:
-
-- **3.1 `CouchbaseTopologySignature`** captures: server major.minor, edition (CE vs EE), index service GSI vs N1QL-built-in, bucket type, replica count, memory quota.
-- **3.2 `CouchbaseDataOpClassifier`** classifies `Cluster.QueryAsync` (parameterized N1QL: must inspect the SQL for INSERT/UPDATE/DELETE/MERGE), `Bucket.DefaultCollection().UpsertAsync` / `InsertAsync` / `RemoveAsync` as data; bucket/scope/collection/index management as structural.
-- **3.3 `CouchbaseStatementClassifier`** uses the existing Couchbase `StatementParser` ([src/Hyperbee.Migrations.Providers.Couchbase/Parsers/StatementParser.cs](../../../src/Hyperbee.Migrations.Providers.Couchbase/Parsers/StatementParser.cs)).
-- **3.4 `CouchbaseSnapshotCanonicalizer`**:
-  - Capture via `system:keyspaces`, `system:indexes`, Management API for bucket/scope settings
-  - Strip ephemeral fields: `last_rebalance_timestamp`, `index.id`, `bucket.docCount`
-  - **Surface deferred-build indexes**: emit them as deferred CREATE + a trailing BUILD INDEX (per R-P3 Open Question)
-  - Sort keyspaces + indexes deterministically
-  - Emit script form: `CREATE BUCKET`, `CREATE SCOPE`, `CREATE COLLECTION`, `CREATE INDEX ... USING GSI WITH {...}`, `BUILD INDEX`
-- **3.5 `HybridStrategy : ISquashStrategy`** combines the two capture sources (N1QL system tables + Management API).
-- **3.6 `CouchbaseSquashVerifier`** verifies with awareness of deferred-build async behavior (the apply-phase must trigger BUILD INDEX before the snapshot is captured).
-- **3.7-3.12** mirror Phase 1.
-- **3.13** phase boundary.
-
-**Cross-provider participation check:** the Open Question on parameterized N1QL data-op classification (currently surfaced in R-P3) MUST be resolved by Phase 3 Task 3.2; the resolution may amend the classifier contract.
-
-### Phase 4: OpenSearch squash codegen (R-P4, R-P5-R-P9) (~2 weeks)
-
-Highest canonicalization risk. Component templates, ISM policies, painless scripts, ingest pipelines, alias graphs.
-
-#### Task 4.0: Painless-equivalence spike (RISKIEST)
-
-**Prerequisites:** Phase 3 done. Phase 4 has not started.
-
-The single biggest unknown in v3.0. The requirements doc Open Question flags painless byte-equivalence as "exploring" with a fallback. Validate the chosen approach against real-world painless scripts BEFORE committing the full Phase 4 implementation.
+The single biggest unknown in v3.0. The requirements doc Open Question flags painless byte-equivalence as "exploring" with a fallback. Validate the chosen approach against real-world painless scripts BEFORE committing the full Phase 2 implementation.
 
 Spike scope:
 
@@ -415,27 +372,71 @@ Spike scope:
 - If byte-stable canonicalization fails, validate the `[PreservePainlessVerbatim]` annotation fallback: operator commits the exact byte form, and the canonicalizer asserts it has not drifted.
 - Spike output: a short written conclusion (under one page) of "byte-stable rule works for these N scripts" or "fall back to PreservePainlessVerbatim" with rationale.
 
-**Completion criteria:** Spike conclusion written; Phase 4's canonicalizer task (4.4) knows which path to take. Spike artifacts go in `spikes/opensearch-painless/` (delete after Phase 4 lands).
+**Completion criteria:** Spike conclusion written; Phase 2's canonicalizer task (2.4) knows which path to take. Spike artifacts go in `spikes/opensearch-painless/` (delete after Phase 2 lands).
 
-#### Tasks 4.1 - 4.13: per-provider implementation
+#### Tasks 2.1 - 2.13: per-provider implementation
 
 Same shape as Phase 1's tasks but for OpenSearch.
 
-- **4.1 `OpenSearchTopologySignature`** captures: cluster major.minor, distribution (OpenSearch CE vs AWS Managed), ISM plugin version, ingest-pipeline plugin presence.
-- **4.2 `OpenSearchDataOpClassifier`** classifies `_bulk`, `Index`, `Update`, `Delete` as data ops; index/template/policy management as structural.
-- **4.3 `OpenSearchStatementClassifier`** uses the existing `OpenSearchStatementParser` ([src/Hyperbee.Migrations.Providers.OpenSearch/Internal/Grammar/OpenSearchStatementParser.cs](../../../src/Hyperbee.Migrations.Providers.OpenSearch/Internal/Grammar/OpenSearchStatementParser.cs)); covers `CREATE INDEX WITH BODY`, `MIGRATE INDEX`, `ALIAS SWAP`, `CREATE TEMPLATE`, `CREATE COMPONENT`, `CREATE POLICY`, `APPLY POLICY`, `REFRESH`, `WAIT FOR HEALTH`, `REINDEX FROM ... TO ...`.
-- **4.4 `OpenSearchSnapshotCanonicalizer`** -- the work product of Task 4.0 spike:
-  - Capture via REST: `_index_template/*`, `_component_template/*`, `_index/<n>/_mapping`, `_index/<n>/_settings`, `_alias`, `_ism/policies`, `_ingest/pipeline`
-  - Strip ephemeral fields: `creation_date`, `uuid`, `version`
+- **2.1 `OpenSearchTopologySignature`** captures: cluster major.minor, distribution (OpenSearch CE vs AWS Managed), ISM plugin version, ingest-pipeline plugin presence, security plugin presence, k-NN plugin presence. The plugin matrix is the hard Edition-axis pressure test for the contract -- MongoDB FCV and Couchbase CE-vs-EE will be simpler versions of the same pattern.
+- **2.2 `OpenSearchDataOpClassifier`** classifies `_bulk`, `Index`, `Update`, `Delete` as data ops; index/template/policy management as structural.
+- **2.3 `OpenSearchStatementClassifier`** uses the existing `OpenSearchStatementParser` ([src/Hyperbee.Migrations.Providers.OpenSearch/Internal/Grammar/OpenSearchStatementParser.cs](../../../src/Hyperbee.Migrations.Providers.OpenSearch/Internal/Grammar/OpenSearchStatementParser.cs)); covers `CREATE INDEX WITH BODY`, `MIGRATE INDEX`, `ALIAS SWAP`, `CREATE TEMPLATE`, `CREATE COMPONENT`, `CREATE POLICY`, `APPLY POLICY`, `REFRESH`, `WAIT FOR HEALTH`, `REINDEX FROM ... TO ...`.
+- **2.4 `OpenSearchSnapshotCanonicalizer`** -- the work product of Task 2.0 spike:
+  - Capture via REST: `_index_template/*`, `_component_template/*`, `_index/<n>/_mapping`, `_index/<n>/_settings`, `_alias`, `_ism/policies` (or `_opendistro/_ism/policies` per `IsmEndpointCapability`), `_ingest/pipeline`
+  - Strip ephemeral fields: `creation_date`, `uuid`, `version`, ISM `policy_version` / `last_updated_time`
   - Sort indexes + templates + policies deterministically
   - Painless: apply the spike conclusion (byte-stable normalize OR PreservePainlessVerbatim fallback)
   - Emit script form: `CREATE TEMPLATE`, `CREATE COMPONENT`, `CREATE INDEX ... WITH BODY @body.json`, `CREATE POLICY ...`, `BODIES { ... }` header for inline bodies
-- **4.5 `RestStateDiffStrategy : ISquashStrategy`** orchestrates capture + diff.
-- **4.6 `OpenSearchSquashVerifier`** runs on a single-node cluster (multi-node verification is `[TestCategory("LocalOnly")]` per existing convention).
+- **2.5 `RestStateDiffStrategy : ISquashStrategy`** orchestrates capture + diff.
+- **2.6 `OpenSearchSquashVerifier`** runs on a single-node cluster (multi-node verification is `[TestCategory("LocalOnly")]` per existing convention).
+- **2.7-2.12** mirror Phase 1 (DI wiring + R-P5 + R-P6 integration tests + ADR amendment check + phase wrap).
+- **2.13** phase boundary.
+
+**Cross-provider participation check:** OpenSearch is the contract pressure test. If a gap surfaces here, the ADR-0019 amendment must land BEFORE the interface modification, and the cost is recompiling Aerospike against the amended shape (one provider, not three). This is precisely why the order was changed -- the cost of a gap discovered here is bounded.
+
+### Phase 3: MongoDB squash codegen (R-P2, R-P5-R-P9) (~1.5 weeks) -- moved from Phase 2 (2026-05-11)
+
+Medium-High canonicalization risk. BSON-vs-JSON, index `v` field per server version, replica-set vs standalone topology. Reordered to be third because MongoDB's risk profile is dominated by structural/serialization choices (Extended JSON canonical form, `v` field stripping) rather than feature-gating, so it's a lower-information pressure-test than OpenSearch's plugin matrix.
+
+**Tasks 3.1 - 3.13 mirror Phase 1's shape**, with these per-provider differences:
+
+- **3.1 `MongoDBTopologySignature`** captures: server major.minor, feature compatibility version (FCV), replica-set vs standalone, default read/write concern, storage engine. FCV is the Edition-axis analogue (simpler than OpenSearch's plugin matrix).
+- **3.2 `MongoDBDataOpClassifier`** classifies `IMongoCollection<>.Insert*`, `Update*`, `Delete*`, `BulkWrite` as data ops; `Database.CreateCollectionAsync`, `Indexes.CreateOneAsync` as structural.
+- **3.3 `MongoDBStatementClassifier`** uses the existing `MongoStatementParser` ([src/Hyperbee.Migrations.Providers.MongoDB/Parsers/MongoStatementParser.cs](../../../src/Hyperbee.Migrations.Providers.MongoDB/Parsers/MongoStatementParser.cs)); covers `CREATE COLLECTION`, `CREATE [UNIQUE] INDEX ON db.col(...)`, `DROP COLLECTION`, `DROP INDEX`, `INSERT INTO` (intent).
+- **3.4 `MongoDBSnapshotCanonicalizer`**:
+  - Capture via `db.runCommand({listCollections})` + `getIndexes()` per collection + collection-options validator
+  - Strip ephemeral fields: `idIndex.v`, `idIndex.ns`, `info.uuid`, `info.readOnly`
+  - **Strip `v` field on each index** (server-version-dependent per the requirements doc Open Question); document the rationale inline in the canonicalizer
+  - Sort collections + indexes alphabetically
+  - Emit script form: `CREATE COLLECTION db.col`, `CREATE [UNIQUE] INDEX name ON db.col(field1, field2)`
+- **3.5 `IntrospectionSnapshotStrategy : ISquashStrategy`** orchestrates the capture; uses the existing `Testcontainers.MongoDb` helper.
+- **3.6 `MongoDBSquashVerifier`** runs the two-container byte-equal verification round.
+- **3.7-3.12** mirror Phase 1.
+- **3.13** phase boundary.
+
+**Cross-provider participation check:** by Phase 3 the contract has been pressure-tested by Aerospike (low) and OpenSearch (high). If OpenSearch amended `ITopologySignature` (e.g., a plugin-matrix shape), MongoDB MUST use the amended shape; the audit trail is in Appendix B.
+
+### Phase 4: Couchbase squash codegen (R-P3, R-P5-R-P9) (~2 weeks) -- moved from Phase 3 (2026-05-11)
+
+High canonicalization risk. CE-vs-EE differences, parameterized N1QL, deferred-build indexes. Reordered to be last because Couchbase shares Edition-axis shape with OpenSearch's plugin matrix; by the time Couchbase ships, the pattern for capability detection + feature gating will be well-established.
+
+**Tasks 4.1 - 4.13 mirror Phase 1's shape**, with these per-provider differences:
+
+- **4.1 `CouchbaseTopologySignature`** captures: server major.minor, edition (CE vs EE), index service GSI vs N1QL-built-in, bucket type, replica count, memory quota.
+- **4.2 `CouchbaseDataOpClassifier`** classifies `Cluster.QueryAsync` (parameterized N1QL: must inspect the SQL for INSERT/UPDATE/DELETE/MERGE), `Bucket.DefaultCollection().UpsertAsync` / `InsertAsync` / `RemoveAsync` as data; bucket/scope/collection/index management as structural.
+- **4.3 `CouchbaseStatementClassifier`** uses the existing Couchbase `StatementParser` ([src/Hyperbee.Migrations.Providers.Couchbase/Parsers/StatementParser.cs](../../../src/Hyperbee.Migrations.Providers.Couchbase/Parsers/StatementParser.cs)).
+- **4.4 `CouchbaseSnapshotCanonicalizer`**:
+  - Capture via `system:keyspaces`, `system:indexes`, Management API for bucket/scope settings
+  - Strip ephemeral fields: `last_rebalance_timestamp`, `index.id`, `bucket.docCount`
+  - **Surface deferred-build indexes**: emit them as deferred CREATE + a trailing BUILD INDEX (per R-P3 Open Question)
+  - Sort keyspaces + indexes deterministically
+  - Emit script form: `CREATE BUCKET`, `CREATE SCOPE`, `CREATE COLLECTION`, `CREATE INDEX ... USING GSI WITH {...}`, `BUILD INDEX`
+- **4.5 `HybridStrategy : ISquashStrategy`** combines the two capture sources (N1QL system tables + Management API).
+- **4.6 `CouchbaseSquashVerifier`** verifies with awareness of deferred-build async behavior (the apply-phase must trigger BUILD INDEX before the snapshot is captured).
 - **4.7-4.12** mirror Phase 1.
 - **4.13** phase boundary.
 
-**Cross-provider participation check:** by Phase 4 the contract has been pressure-tested against three providers; if a gap surfaces here, the ADR-0019 amendment must be done with extra care -- back-propagating a change to three already-shipped implementations is expensive.
+**Cross-provider participation check:** the Open Question on parameterized N1QL data-op classification (currently surfaced in R-P3) MUST be resolved by Phase 4 Task 4.2; the resolution may amend the classifier contract. By Phase 4, three providers ship; an amendment costs more than at Phase 2, so the resolution should be carefully scoped.
 
 ### Phase 5: Release prep (~1 week)
 
@@ -544,16 +545,16 @@ Cumulative test additions over Phases 1-4: ~120-160 new unit tests + 16 new inte
 
 Per the velocity calibration ([feedback_velocity_calibration.md](../../../../Users/bfarm/.claude/projects/c--Development-hyperbee-migrations/memory/feedback_velocity_calibration.md)): Aerospike provider implementation took 1 day; Couchbase under a week. Squash codegen is heavier than a new provider because it's reading external state + emitting canonical scripts + per-component test coverage.
 
-Estimates:
+Estimates (revised 2026-05-11 after order change + Sev 1/2 production-hardening pass):
 
-- **Phase 0:** 1 day
-- **Phase 1 (Aerospike):** ~1 week (Low canonicalization risk; first contract pressure test)
-- **Phase 2 (MongoDB):** ~1.5 weeks (Medium-High risk; BSON / `v` field)
-- **Phase 3 (Couchbase):** ~2 weeks (High risk; CE-vs-EE, parameterized N1QL, deferred indexes)
-- **Phase 4 (OpenSearch):** ~2 weeks (Highest risk; spike + canonicalization across 5+ resource types)
-- **Phase 5 (release prep):** ~1 week
+- **Phase 0:** 1 day ☑
+- **Phase 1 (Aerospike):** ~1 week (Low canonicalization risk; first contract pressure test) ☑ unit + integration; **+~3 days** for Sev 1 A-D + Sev 2 G-H production-hardening pass
+- **Phase 2 (OpenSearch):** ~2 weeks (Highest canonicalization risk; spike + canonicalization across 5+ resource types). Reordered to be the contract pressure-test against the hardest provider; gap-discovery cost is bounded to recompiling Aerospike if a contract amendment lands here.
+- **Phase 3 (MongoDB):** ~1.5 weeks (Medium-High risk; BSON / `v` field). Reordered to be third because MongoDB's risk is dominated by serialization choices, not feature-gating.
+- **Phase 4 (Couchbase):** ~2 weeks (High risk; CE-vs-EE, parameterized N1QL, deferred indexes). Reordered to be last because Couchbase's Edition-axis shape benefits from the patterns OpenSearch establishes in Phase 2.
+- **Phase 5 (release prep):** ~1.5 weeks (absorbed Sev 2 E-F + Sev 3 J-L deferrals: ContentKind dispatcher behavior, CI lane for R-P5/R-P6, multi-node and storage-backend documentation, KeepFailedContainer wiring with CLI).
 
-**Total: ~8-10 weeks** of single-developer focused work.
+**Total: ~9-11 weeks** of single-developer focused work. Net cost of order change is zero (same total effort, different sequencing). Net cost of production-hardening pass is ~3-5 days, distributed across Phase 1 (now) and Phase 5 (already in the increased estimate).
 
 ## Learnings Ledger
 
