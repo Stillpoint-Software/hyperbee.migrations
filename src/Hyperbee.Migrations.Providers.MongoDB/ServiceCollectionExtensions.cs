@@ -1,8 +1,12 @@
 ﻿using System.Reflection;
 using System.Runtime.Loader;
 using Hyperbee.Migrations.Providers.MongoDB.Resources;
+using Hyperbee.Migrations.Providers.MongoDB.Squash;
+using Hyperbee.Migrations.Squash;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Providers.MongoDB;
 
@@ -55,6 +59,30 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IMigrationRecordStore, MongoDBRecordStore>();
         services.AddSingleton<MigrationRunner>();
         services.AddTransient( typeof( MongoDBResourceRunner<> ) );// technically singleton works because of the nature of migrations, but even so ..
+
+        // Squash codegen wiring (per ADR-0019). Components are stateless and
+        // idempotent; safe singletons.
+        services.TryAddSingleton<MongoDBSnapshotCanonicalizer>();
+        services.TryAddSingleton<MongoDBDataOpClassifier>();
+        services.TryAddSingleton( provider => new IntrospectionSnapshotStrategy(
+            provider.GetRequiredService<MongoDBSnapshotCanonicalizer>(),
+            provider.GetRequiredService<MongoDBDataOpClassifier>(),
+            provider.GetService<ILogger<IntrospectionSnapshotStrategy>>() ) );
+        services.TryAddSingleton<MongoDBSquashVerifier>();
+        services.TryAddSingleton( provider =>
+        {
+            // Default topology instance for descriptor composition;
+            // live CaptureAsync overrides at runtime.
+            ITopologySignature topology = new MongoDBTopologySignature();
+            var descriptor = new SquashStrategyDescriptor(
+                TopologySignature: topology,
+                DataOpClassifier: provider.GetRequiredService<MongoDBDataOpClassifier>(),
+                Generator: provider.GetRequiredService<IntrospectionSnapshotStrategy>(),
+                Verifier: provider.GetRequiredService<MongoDBSquashVerifier>(),
+                Canonicalizer: provider.GetRequiredService<MongoDBSnapshotCanonicalizer>() );
+            descriptor.EnsureValid();
+            return descriptor;
+        } );
 
         return services;
     }
