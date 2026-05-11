@@ -271,4 +271,96 @@ public class OpenSearchSquashEndToEndTests
         ctx.SquashName.Should().Be( "Squash_2000" );
         ctx.SquashVersion.Should().Be( 2000 );
     }
+
+    // ---- Source-scan refusal gate (Task 2.7) -------------------------------
+
+    [TestMethod]
+    public async Task GenerateAsync_SourceScanFindsUnannotated_ReturnsFailedWithDiagnostic()
+    {
+        var tempRoot = Path.Combine( Path.GetTempPath(), "opensearch-scanner-" + Guid.NewGuid().ToString( "N" ) );
+        Directory.CreateDirectory( tempRoot );
+        try
+        {
+            File.WriteAllText( Path.Combine( tempRoot, "SeedUsers.cs" ), """
+                using Hyperbee.Migrations;
+                namespace App;
+                [Migration(2000)]
+                public class SeedUsers : Migration
+                {
+                    public override async Task UpAsync(CancellationToken ct)
+                    {
+                        await _client.IndexAsync(new User { Id = "u1" });
+                    }
+                }
+                """ );
+
+            var strategy = new RestStateDiffStrategy(
+                new OpenSearchSnapshotCanonicalizer(),
+                new OpenSearchDataOpClassifier() )
+            {
+                MigrationSourceRoot = tempRoot
+            };
+
+            var result = await strategy.GenerateAsync(
+                context: MakeContext(),
+                descriptors: MakeDescriptors( 2000 ),
+                options: new SquashGenerationOptions() );
+
+            result.Should().BeOfType<SquashGenerationResult.Failed>();
+            var failed = (SquashGenerationResult.Failed) result;
+            failed.Detail.Should().Contain( "ADR-0019 A5" );
+            failed.Detail.Should().Contain( "SeedUsers" );
+            failed.Detail.Should().Contain( "[DataMigration]" );
+        }
+        finally
+        {
+            try { Directory.Delete( tempRoot, recursive: true ); } catch { }
+        }
+    }
+
+    [TestMethod]
+    public async Task GenerateAsync_SourceScanAllAnnotated_ProceedsPastScanGate()
+    {
+        var tempRoot = Path.Combine( Path.GetTempPath(), "opensearch-scanner-" + Guid.NewGuid().ToString( "N" ) );
+        Directory.CreateDirectory( tempRoot );
+        try
+        {
+            File.WriteAllText( Path.Combine( tempRoot, "SeedUsers.cs" ), """
+                using Hyperbee.Migrations;
+                namespace App;
+                [Migration(2000)]
+                [DataMigration]
+                public class SeedUsers : Migration
+                {
+                    public override async Task UpAsync(CancellationToken ct)
+                    {
+                        await _client.IndexAsync(new User { Id = "u1" });
+                    }
+                }
+                """ );
+
+            var strategy = new RestStateDiffStrategy(
+                new OpenSearchSnapshotCanonicalizer(),
+                new OpenSearchDataOpClassifier() )
+            {
+                MigrationSourceRoot = tempRoot
+            };
+
+            var result = await strategy.GenerateAsync(
+                context: MakeContext(),
+                descriptors: MakeDescriptors( 2000 ),
+                options: new SquashGenerationOptions() );
+
+            // The scan gate passes; the strategy continues to topology
+            // capture which fails against the substitute client. Diagnostic
+            // must NOT mention ADR-0019 A5 (that's the scan refusal text).
+            result.Should().BeOfType<SquashGenerationResult.Failed>();
+            var failed = (SquashGenerationResult.Failed) result;
+            failed.Detail.Should().NotContain( "ADR-0019 A5" );
+        }
+        finally
+        {
+            try { Directory.Delete( tempRoot, recursive: true ); } catch { }
+        }
+    }
 }

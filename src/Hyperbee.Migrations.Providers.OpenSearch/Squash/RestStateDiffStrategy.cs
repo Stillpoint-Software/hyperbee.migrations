@@ -69,8 +69,8 @@ public sealed class RestStateDiffStrategy : ISquashStrategy
 
     /// <summary>
     /// Optional path to a directory containing the user's migration source
-    /// files. When set, the strategy walks the directory via an OpenSearch
-    /// source scanner (Task 2.7; not yet implemented) and refuses generation
+    /// files. When set, the strategy walks the directory via
+    /// <see cref="OpenSearchMigrationSourceScanner"/> and refuses generation
     /// if any <see cref="Migration"/>-derived class in the squash range
     /// matches the data-op heuristic without an explicit
     /// <c>[DataMigration]</c> or <c>[StructuralOnly]</c> annotation
@@ -93,6 +93,30 @@ public sealed class RestStateDiffStrategy : ISquashStrategy
 
         try
         {
+            // Source-scan refusal gate (ADR-0019 A5). When MigrationSourceRoot
+            // is set, walk the migration assemblies' source tree and refuse
+            // generation if any class extending Migration looks like a data
+            // op (uses _client.Index*/Update*/Delete*/Bulk*/Reindex* or has
+            // a flagged non-determinism call site) without an explicit
+            // annotation. Runs BEFORE topology capture so a refused squash
+            // does not spin up an unnecessary cluster probe.
+            if ( !string.IsNullOrWhiteSpace( MigrationSourceRoot ) )
+            {
+                var verdicts = OpenSearchMigrationSourceScanner.Scan( MigrationSourceRoot );
+                var unannotated = verdicts.Where( v => v.RequiresAnnotation ).ToArray();
+                if ( unannotated.Length > 0 )
+                {
+                    var names = string.Join( ", ", unannotated.Select( v => v.ClassName ) );
+                    _logger.LogWarning(
+                        "OpenSearch squash refused: {Count} migration class(es) match the data-op heuristic without [DataMigration]/[StructuralOnly] annotation: {Classes}",
+                        unannotated.Length, names );
+                    return new SquashGenerationResult.Failed(
+                        $"OpenSearch squash refused: {unannotated.Length} migration class(es) match the data-op heuristic without an explicit [DataMigration] or [StructuralOnly] annotation (ADR-0019 A5). " +
+                        $"Classes: {names}. " +
+                        "Annotate each migration explicitly or move it outside the squash range." );
+                }
+            }
+
             // Topology: capture from the live cluster so the squash carries
             // the operator's actual version + distribution + plugin matrix.
             // Topology capture also resolves the ISM endpoint prefix that
