@@ -59,6 +59,63 @@ public static class AerospikeSnapshotCapture
     }
 
     /// <summary>
+    /// Probes the operator's cluster for installed Lua UDFs. Returns the list
+    /// of UDF filenames the cluster reports via the <c>udf-list</c> info
+    /// command, empty when no UDFs are present.
+    /// </summary>
+    /// <remarks>
+    /// V3.0 does NOT round-trip UDFs through squash output (per Task 1.5
+    /// deferral note). The strategy uses this probe to <b>refuse</b> squash
+    /// generation with a clear diagnostic when UDFs are present rather than
+    /// silently dropping them. Operators carry UDFs forward as separate
+    /// non-squashed migrations.
+    /// </remarks>
+    public static IReadOnlyList<string> ListUdfs( IAerospikeClient client, CancellationToken cancellationToken = default )
+    {
+        if ( client == null )
+            throw new ArgumentNullException( nameof( client ) );
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var node = client.Nodes.FirstOrDefault();
+        if ( node == null )
+            return Array.Empty<string>();
+
+        var raw = SafeInfoRequest( node, "udf-list" );
+        return ParseUdfList( raw );
+    }
+
+    // Aerospike's `udf-list` info response format:
+    //   filename=foo.lua,hash=abc123,type=LUA;filename=bar.lua,hash=def456,type=LUA;
+    // OR empty string when no UDFs are installed. Each entry is comma-separated
+    // key=value (DIFFERENT from sets/sindex which use colon separators).
+    internal static IReadOnlyList<string> ParseUdfList( string response )
+    {
+        if ( string.IsNullOrEmpty( response ) )
+            return Array.Empty<string>();
+
+        var filenames = new SortedSet<string>( StringComparer.Ordinal );
+
+        foreach ( var entry in response.Split( ';', StringSplitOptions.RemoveEmptyEntries ) )
+        {
+            foreach ( var pair in entry.Split( ',', StringSplitOptions.RemoveEmptyEntries ) )
+            {
+                var eq = pair.IndexOf( '=' );
+                if ( eq <= 0 )
+                    continue;
+
+                var key = pair.Substring( 0, eq ).Trim();
+                var value = pair.Substring( eq + 1 ).Trim();
+
+                if ( string.Equals( key, "filename", StringComparison.OrdinalIgnoreCase ) && value.Length > 0 )
+                    filenames.Add( value );
+            }
+        }
+
+        return filenames.Count > 0 ? filenames.ToArray() : Array.Empty<string>();
+    }
+
+    /// <summary>
     /// Assembles the <c>[sets]</c>/<c>[sindex]</c> blob the canonicalizer
     /// consumes. Exposed for callers that already hold raw Info responses
     /// (e.g., test fixtures, custom capture harnesses).
@@ -80,15 +137,21 @@ public static class AerospikeSnapshotCapture
         return sb.ToString();
     }
 
+    // Default Info.Request timeout (ms). Bounded so Info probes do not hang
+    // indefinitely during partition rebalance or transient cluster events.
+    // Per-call override available via the InfoPolicy parameter on CaptureAsync.
+    internal const int DefaultInfoTimeoutMs = 5000;
+
     // Aerospike's `sets/<ns>` and `sindex/<ns>` info responses return an empty
     // string for a namespace with no sets / no secondary indexes. Treat a thrown
     // AerospikeException as an empty response (matches the codebase's
     // IndexExistsAsync convention in AerospikeClientExtensions).
     private static string SafeInfoRequest( Node node, string command )
     {
+        var policy = new InfoPolicy { timeout = DefaultInfoTimeoutMs };
         try
         {
-            return Info.Request( node, command ) ?? string.Empty;
+            return Info.Request( policy, node, command ) ?? string.Empty;
         }
         catch ( AerospikeException )
         {

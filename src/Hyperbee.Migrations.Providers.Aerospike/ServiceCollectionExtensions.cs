@@ -1,9 +1,12 @@
 ﻿using System.Reflection;
 using System.Runtime.Loader;
 using Hyperbee.Migrations.Providers.Aerospike.Resources;
+using Hyperbee.Migrations.Providers.Aerospike.Squash;
+using Hyperbee.Migrations.Squash;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Providers.Aerospike;
 
@@ -58,6 +61,35 @@ public static class ServiceCollectionExtensions
         services.AddTransient( typeof( AerospikeResourceRunner<> ) );
 
         services.TryAddSingleton( TimeProvider.System );
+
+        // Squash codegen wiring (per ADR-0019).
+        //
+        // Component instances are stateless and idempotent; safe to register
+        // as singletons. The strategy receives an optional ILogger if one is
+        // present in the container (consumers without logging configured fall
+        // back to NullLogger via the strategy's constructor default).
+        services.TryAddSingleton<AerospikeSnapshotCanonicalizer>();
+        services.TryAddSingleton<AerospikeDataOpClassifier>();
+        services.TryAddSingleton( provider => new InfoSnapshotStrategy(
+            provider.GetRequiredService<AerospikeSnapshotCanonicalizer>(),
+            provider.GetRequiredService<AerospikeDataOpClassifier>(),
+            provider.GetService<ILogger<InfoSnapshotStrategy>>() ) );
+        services.TryAddSingleton<AerospikeSquashVerifier>();
+        services.TryAddSingleton( provider =>
+        {
+            // Topology signature ships a default instance ONLY for descriptor
+            // composition; live CaptureAsync overrides the Properties bag
+            // when the strategy actually runs against a cluster.
+            ITopologySignature topology = new AerospikeTopologySignature();
+            var descriptor = new SquashStrategyDescriptor(
+                TopologySignature: topology,
+                DataOpClassifier: provider.GetRequiredService<AerospikeDataOpClassifier>(),
+                Generator: provider.GetRequiredService<InfoSnapshotStrategy>(),
+                Verifier: provider.GetRequiredService<AerospikeSquashVerifier>(),
+                Canonicalizer: provider.GetRequiredService<AerospikeSnapshotCanonicalizer>() );
+            descriptor.EnsureValid();
+            return descriptor;
+        } );
 
         return services;
     }

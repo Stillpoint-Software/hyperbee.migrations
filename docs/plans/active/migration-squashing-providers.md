@@ -353,7 +353,27 @@ Concretely, where Aerospike could have pressured the contract:
 - ☑ Plan checkboxes flipped for 1.1-1.10 + 1.12 + 1.13. Task 1.11 explicitly deferred to Phase 5.
 - Memory + push deferred to user authorization.
 
-**Completion criteria:** ☑ Aerospike squash codegen is path-finder-complete; the contract holds; the 6-component shape + capture helper + R-P5 / R-P6 integration tests are in place. Ready for Phase 1 production-hardening pass (Sev 1 A-D + Sev 2 G-H), then Phase 2 OpenSearch to pressure-test the contract against the hardest provider.
+**Completion criteria:** ☑ Aerospike squash codegen is path-finder-complete; the contract holds; the 6-component shape + capture helper + R-P5 / R-P6 integration tests are in place.
+
+#### Phase 1 production-hardening pass (Sev 1 A-D + Sev 2 G-H) ☑ COMPLETE 2026-05-11
+
+Production-grade gaps identified during the post-Phase-1 review were closed before Phase 2 began. Six items shipped:
+
+- **Sev 1 A -- UDF refusal.** `AerospikeSnapshotCapture.ListUdfs` probes `Info.Request("udf-list")`; the strategy refuses generation with a diagnostic naming the installed UDF modules when any are present. UDFs cannot be silently dropped on fresh-install replay. Operators carry UDFs forward as separate non-squashed migrations.
+- **Sev 1 B -- `Edition` topology axis.** `AerospikeTopologySignature.Edition` captures "Community" / "Enterprise" via `Info.Request("edition")`; `NormalizeEdition` standardizes server-version phrasing variants; `IsCompatibleWith` enforces strict (case-insensitive) equality. Stops the silent-corruption risk of an Enterprise-source squash applied to a Community target.
+- **Sev 1 C -- `SquashStrategyDescriptor` DI wiring.** `ServiceCollectionExtensions.AddAerospikeMigrations` now registers the canonicalizer, classifier, strategy, verifier, and a composed `SquashStrategyDescriptor` whose constructor `EnsureValid` enforces ProviderId agreement across all five components. 7 wiring tests prove resolution + singleton semantics.
+- **Sev 1 D -- `AerospikeMigrationSourceScanner` (ADR-0019 A5).** Roslyn-based scanner walks user migration source files, detects client-write call sites (`_client.Put/Delete/Touch/Operate`) and non-determinism (the same catalog as the data-op classifier), and refuses squash when any `[Migration]`-attributed class extending `Migration` has a data-op pattern without `[DataMigration]` or `[StructuralOnly]`. Strategy exposes `MigrationSourceRoot { get; init; }`; when set, the scan refusal gate runs after UDF refusal and before topology capture. Cross-provider hoist candidate: when Phase 2 OpenSearch needs its own scanner, the shared shape (Migration-extends + attribute check + non-determinism scan) becomes the right abstraction to hoist into a core-lib base class.
+- **Sev 2 G -- ILogger injection.** `InfoSnapshotStrategy` accepts an optional `ILogger<InfoSnapshotStrategy>` (defaults to `NullLogger`). Refusals log at Warning; each diagnostic also logs at Warning; success logs at Information with range + replace count + content length. Operators see refusal reasons and diagnostics without walking `Generated`.
+- **Sev 2 H -- Info.Request timeout budget.** Both `AerospikeTopologySignature.CaptureAsync` and `AerospikeSnapshotCapture` now pass an explicit `InfoPolicy { timeout = 5000 }` to every `Info.Request` call. Bounded so the sync info-protocol probes do not hang during partition rebalance.
+
+**Test impact:** squash suite 224 -> 264 (+40 new across 5 test classes: 4 Edition tests, 6 UDF probe tests, 7 DI wiring tests, 17 source-scanner tests, 6 strategy gate tests). Core suite 356/356 still green. No contract changes; ADR-0019 unchanged.
+
+**Cross-provider observations carried into Phase 2:**
+- The `MigrationSourceRoot { get; init; }` strategy property is provider-neutral. When OpenSearch's `RestStateDiffStrategy` lands, it should expose the same property; the scanner implementation differs (OpenSearch DML happens through `IOpenSearchClient.IndexAsync/UpdateAsync/DeleteAsync/Bulk` not `_client.Put`).
+- The shared scanner shape (Migration-extends + attribute recognizer + non-determinism scan + `ClassVerdict.RequiresAnnotation`) is now visible in two providers (Postgres + Aerospike). When the third provider (OpenSearch) needs its own, that's the right moment to hoist `MigrationSourceScannerBase` into the core library.
+- Diagnostics logging pattern (refusal at Warning + per-diagnostic at Warning + success at Information) is provider-neutral. OpenSearch should mirror.
+
+Ready for Phase 2 OpenSearch.
 
 ### Phase 2: OpenSearch squash codegen (R-P4, R-P5-R-P9) (~2 weeks) -- moved from Phase 4 (2026-05-11)
 

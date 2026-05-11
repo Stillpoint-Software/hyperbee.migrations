@@ -233,4 +233,162 @@ public class AerospikeSquashEndToEndTests
         Action nullDataOp = () => new InfoSnapshotStrategy( new AerospikeSnapshotCanonicalizer(), null! );
         nullDataOp.Should().Throw<ArgumentNullException>().WithParameterName( "dataOpClassifier" );
     }
+
+    [TestMethod]
+    public void Strategy_NullLogger_AcceptsAndUsesNullLogger()
+    {
+        // ILogger is optional; nulls collapse to NullLogger so consumers
+        // who don't wire logging still get a working strategy.
+        var strategy = new InfoSnapshotStrategy(
+            new AerospikeSnapshotCanonicalizer(),
+            new AerospikeDataOpClassifier(),
+            logger: null );
+
+        strategy.ProviderId.Should().Be( "aerospike" );
+    }
+
+    [TestMethod]
+    public async Task GenerateAsync_UdfsPresent_ReturnsFailedWithDiagnostic()
+    {
+        // Squash MUST refuse rather than silently drop Lua UDFs. The
+        // refusal diagnostic must name the offending modules so the
+        // operator knows what to carry forward.
+        var strategy = new InfoSnapshotStrategy(
+            new AerospikeSnapshotCanonicalizer(),
+            new AerospikeDataOpClassifier() )
+        {
+            UdfProbe = ( _, _ ) => new[] { "audit_log.lua", "score_calculator.lua" }
+        };
+
+        var result = await strategy.GenerateAsync(
+            context: MakeContext(),
+            descriptors: MakeDescriptors( 1000, 2000 ),
+            options: new SquashGenerationOptions() );
+
+        result.Should().BeOfType<SquashGenerationResult.Failed>();
+        var failed = (SquashGenerationResult.Failed) result;
+        failed.Detail.Should().Contain( "UDF" );
+        failed.Detail.Should().Contain( "audit_log.lua" );
+        failed.Detail.Should().Contain( "score_calculator.lua" );
+        failed.Detail.Should().Contain( "Carry UDFs forward" );
+    }
+
+    [TestMethod]
+    public async Task GenerateAsync_SourceScanFindsUnannotated_ReturnsFailedWithDiagnostic()
+    {
+        // Write a tiny source tree containing one unannotated data-op migration.
+        // The scanner gate must refuse before topology capture.
+        var tempRoot = Path.Combine( Path.GetTempPath(), "aerospike-scanner-" + Guid.NewGuid().ToString( "N" ) );
+        Directory.CreateDirectory( tempRoot );
+        try
+        {
+            File.WriteAllText( Path.Combine( tempRoot, "SeedUsers.cs" ), """
+                using Hyperbee.Migrations;
+                namespace App;
+                [Migration(2000)]
+                public class SeedUsers : Migration
+                {
+                    public override async Task UpAsync(CancellationToken ct)
+                    {
+                        await _client.Put(null, ct, new Key("test", "users", "u1"), new Bin("name", "alice"));
+                    }
+                }
+                """ );
+
+            var strategy = new InfoSnapshotStrategy(
+                new AerospikeSnapshotCanonicalizer(),
+                new AerospikeDataOpClassifier() )
+            {
+                UdfProbe = ( _, _ ) => Array.Empty<string>(),
+                MigrationSourceRoot = tempRoot
+            };
+
+            var result = await strategy.GenerateAsync(
+                context: MakeContext(),
+                descriptors: MakeDescriptors( 2000 ),
+                options: new SquashGenerationOptions() );
+
+            result.Should().BeOfType<SquashGenerationResult.Failed>();
+            var failed = (SquashGenerationResult.Failed) result;
+            failed.Detail.Should().Contain( "ADR-0019 A5" );
+            failed.Detail.Should().Contain( "SeedUsers" );
+            failed.Detail.Should().Contain( "[DataMigration]" );
+        }
+        finally
+        {
+            try { Directory.Delete( tempRoot, recursive: true ); } catch { }
+        }
+    }
+
+    [TestMethod]
+    public async Task GenerateAsync_SourceScanAllAnnotated_ProceedsPastScanGate()
+    {
+        var tempRoot = Path.Combine( Path.GetTempPath(), "aerospike-scanner-" + Guid.NewGuid().ToString( "N" ) );
+        Directory.CreateDirectory( tempRoot );
+        try
+        {
+            File.WriteAllText( Path.Combine( tempRoot, "SeedUsers.cs" ), """
+                using Hyperbee.Migrations;
+                namespace App;
+                [Migration(2000)]
+                [DataMigration]
+                public class SeedUsers : Migration
+                {
+                    public override async Task UpAsync(CancellationToken ct)
+                    {
+                        await _client.Put(null, ct, new Key("test", "users", "u1"), new Bin("name", "alice"));
+                    }
+                }
+                """ );
+
+            var strategy = new InfoSnapshotStrategy(
+                new AerospikeSnapshotCanonicalizer(),
+                new AerospikeDataOpClassifier() )
+            {
+                UdfProbe = ( _, _ ) => Array.Empty<string>(),
+                MigrationSourceRoot = tempRoot
+            };
+
+            var result = await strategy.GenerateAsync(
+                context: MakeContext(),
+                descriptors: MakeDescriptors( 2000 ),
+                options: new SquashGenerationOptions() );
+
+            // The scan gate passes; the strategy continues to topology capture,
+            // which fails against the substitute client. Diagnostic must NOT
+            // mention ADR-0019 A5 (that's the scan refusal text).
+            result.Should().BeOfType<SquashGenerationResult.Failed>();
+            var failed = (SquashGenerationResult.Failed) result;
+            failed.Detail.Should().NotContain( "ADR-0019 A5" );
+        }
+        finally
+        {
+            try { Directory.Delete( tempRoot, recursive: true ); } catch { }
+        }
+    }
+
+    [TestMethod]
+    public async Task GenerateAsync_NoUdfs_ProceedsPastRefusalGate()
+    {
+        // Empty UDF list must NOT refuse. The strategy continues to
+        // topology capture (which will throw against the substitute
+        // client) -- so we expect a Failed result whose Detail does
+        // NOT mention UDFs.
+        var strategy = new InfoSnapshotStrategy(
+            new AerospikeSnapshotCanonicalizer(),
+            new AerospikeDataOpClassifier() )
+        {
+            UdfProbe = ( _, _ ) => Array.Empty<string>()
+        };
+
+        var result = await strategy.GenerateAsync(
+            context: MakeContext(),
+            descriptors: MakeDescriptors( 1000, 2000 ),
+            options: new SquashGenerationOptions() );
+
+        // Will Fail at topology capture (no real cluster), not at UDF refusal.
+        result.Should().BeOfType<SquashGenerationResult.Failed>();
+        var failed = (SquashGenerationResult.Failed) result;
+        failed.Detail.Should().NotContain( "UDF" );
+    }
 }

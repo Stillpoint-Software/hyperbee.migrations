@@ -25,7 +25,8 @@ public class AerospikeTopologySignatureTests
         NsupPeriod = 120,
         MemorySize = 1073741824L,
         StorageEngine = "memory",
-        ClusterName = "null"
+        ClusterName = "null",
+        Edition = "Community"
     };
 
     [TestMethod]
@@ -108,6 +109,34 @@ public class AerospikeTopologySignatureTests
     }
 
     [TestMethod]
+    public void IsCompatibleWith_DifferentEdition_Incompatible()
+    {
+        // Community vs Enterprise is a hard incompatibility: replaying an
+        // Enterprise-source squash against a Community target silently
+        // passes structural compare but fails at runtime on any
+        // Enterprise-only feature path (SC namespaces, XDR, etc.).
+        var a = BaselineSignature();
+        var b = a with { Edition = "Enterprise" };
+
+        a.IsCompatibleWith( b, out var reason ).Should().BeFalse();
+        reason.Should().Contain( "edition" );
+        reason.Should().Contain( "Community" );
+        reason.Should().Contain( "Enterprise" );
+    }
+
+    [TestMethod]
+    public void IsCompatibleWith_EditionCaseInsensitive()
+    {
+        // Normalization happens at capture time, but the compare uses
+        // OrdinalIgnoreCase as defense-in-depth for hand-constructed signatures.
+        var a = BaselineSignature() with { Edition = "community" };
+        var b = BaselineSignature() with { Edition = "COMMUNITY" };
+
+        a.IsCompatibleWith( b, out var reason ).Should().BeTrue();
+        reason.Should().BeNullOrEmpty();
+    }
+
+    [TestMethod]
     public void IsCompatibleWith_CrossProvider_Incompatible()
     {
         var aerospike = BaselineSignature();
@@ -135,6 +164,34 @@ public class AerospikeTopologySignatureTests
         sig.Properties.Should().ContainKey( "memory_size" ).WhoseValue.Should().Be( "1073741824" );
         sig.Properties.Should().ContainKey( "storage_engine" ).WhoseValue.Should().Be( "memory" );
         sig.Properties.Should().ContainKey( "cluster_name" ).WhoseValue.Should().Be( "null" );
+        sig.Properties.Should().ContainKey( "edition" ).WhoseValue.Should().Be( "Community" );
+    }
+
+    [TestMethod]
+    public void NormalizeEdition_RecognizesCommunityAndEnterprise()
+    {
+        AerospikeTopologySignature.NormalizeEdition( "Aerospike Community Edition" ).Should().Be( "Community" );
+        AerospikeTopologySignature.NormalizeEdition( "Aerospike Enterprise Edition" ).Should().Be( "Enterprise" );
+        // Case variants
+        AerospikeTopologySignature.NormalizeEdition( "AEROSPIKE COMMUNITY EDITION" ).Should().Be( "Community" );
+        AerospikeTopologySignature.NormalizeEdition( "aerospike enterprise edition" ).Should().Be( "Enterprise" );
+    }
+
+    [TestMethod]
+    public void NormalizeEdition_EmptyOrWhitespace_ReturnsEmpty()
+    {
+        AerospikeTopologySignature.NormalizeEdition( "" ).Should().Be( "" );
+        AerospikeTopologySignature.NormalizeEdition( "   " ).Should().Be( "" );
+        AerospikeTopologySignature.NormalizeEdition( null ).Should().Be( "" );
+    }
+
+    [TestMethod]
+    public void NormalizeEdition_UnknownPhrasing_PreservedTrimmed()
+    {
+        // Future-proof against server-version phrasing changes: unknown
+        // edition strings round-trip verbatim (trimmed) so strict-equality
+        // compare still works when source and target agree.
+        AerospikeTopologySignature.NormalizeEdition( "  Aerospike Cloud Edition  " ).Should().Be( "Aerospike Cloud Edition" );
     }
 
     [TestMethod]

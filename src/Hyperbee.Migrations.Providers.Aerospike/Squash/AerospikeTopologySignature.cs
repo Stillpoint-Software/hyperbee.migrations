@@ -45,6 +45,14 @@ public sealed record AerospikeTopologySignature : ITopologySignature
     public string StorageEngine { get; init; } = "";
     public string ClusterName { get; init; } = "";
 
+    /// <summary>
+    /// Aerospike edition: <c>Community</c> or <c>Enterprise</c>. Load-bearing
+    /// for compatibility because Enterprise-only features (strong-consistency
+    /// namespaces, XDR, encryption-at-rest, role-based access) silently fail
+    /// when the captured topology is replayed against a Community target.
+    /// </summary>
+    public string Edition { get; init; } = "";
+
     public IReadOnlyDictionary<string, string> Properties => new Dictionary<string, string>
     {
         ["server_major"] = ServerMajor.ToString( CultureInfo.InvariantCulture ),
@@ -55,7 +63,8 @@ public sealed record AerospikeTopologySignature : ITopologySignature
         ["nsup_period"] = NsupPeriod.ToString( CultureInfo.InvariantCulture ),
         ["memory_size"] = MemorySize.ToString( CultureInfo.InvariantCulture ),
         ["storage_engine"] = StorageEngine,
-        ["cluster_name"] = ClusterName
+        ["cluster_name"] = ClusterName,
+        ["edition"] = Edition
     };
 
     public bool IsCompatibleWith( ITopologySignature other, out string reason )
@@ -114,15 +123,24 @@ public sealed record AerospikeTopologySignature : ITopologySignature
             return false;
         }
 
+        // Edition mismatch (Community vs Enterprise) is hard-incompatible:
+        // an Enterprise-source squash applied to a Community target silently
+        // applies then fails at runtime on any Enterprise-only feature path.
+        if ( !string.Equals( ar.Edition, Edition, StringComparison.OrdinalIgnoreCase ) )
+        {
+            reason = $"edition differs (this='{Edition}', other='{ar.Edition}')";
+            return false;
+        }
+
         reason = null;
         return true;
     }
 
     /// <summary>
     /// Captures the live Aerospike cluster's topology axes via the info protocol.
-    /// Probes the first connected node for `build`, `cluster-name`, and
-    /// `namespace/&lt;namespace&gt;`. Namespace name is supplied by the caller so
-    /// the signature reflects the operator's effective deployment scope.
+    /// Probes the first connected node for `build`, `edition`, `cluster-name`,
+    /// and `namespace/&lt;namespace&gt;`. Namespace name is supplied by the caller
+    /// so the signature reflects the operator's effective deployment scope.
     /// </summary>
     public static Task<AerospikeTopologySignature> CaptureAsync(
         IAerospikeClient client,
@@ -142,7 +160,12 @@ public sealed record AerospikeTopologySignature : ITopologySignature
                 "Aerospike topology capture failed: no connected nodes. " +
                 "Verify the cluster is available before squashing." );
 
-        var responses = Info.Request( null, node, "build", "cluster-name", $"namespace/{@namespace}" );
+        // Bounded InfoPolicy timeout prevents indefinite hang during partition
+        // rebalance or transient cluster events. Info.Request is otherwise
+        // a synchronous network call with no built-in cancellation hook.
+        var infoPolicy = new InfoPolicy { timeout = 5000 };
+
+        var responses = Info.Request( infoPolicy, node, "build", "edition", "cluster-name", $"namespace/{@namespace}" );
 
         if ( !responses.TryGetValue( "build", out var buildRaw ) || string.IsNullOrEmpty( buildRaw ) )
             throw new MigrationException( "Aerospike info `build` returned empty; cannot determine server version." );
@@ -154,6 +177,7 @@ public sealed record AerospikeTopologySignature : ITopologySignature
         var namespaceProps = ParseInfoMap( namespaceRaw );
 
         responses.TryGetValue( "cluster-name", out var clusterName );
+        responses.TryGetValue( "edition", out var editionRaw );
 
         return Task.FromResult( new AerospikeTopologySignature
         {
@@ -165,8 +189,30 @@ public sealed record AerospikeTopologySignature : ITopologySignature
             NsupPeriod = ReadInt( namespaceProps, "nsup-period" ),
             MemorySize = ReadLong( namespaceProps, "memory-size" ),
             StorageEngine = namespaceProps.TryGetValue( "storage-engine", out var se ) ? se : "",
-            ClusterName = clusterName ?? ""
+            ClusterName = clusterName ?? "",
+            Edition = NormalizeEdition( editionRaw )
         } );
+    }
+
+    // Aerospike `edition` info command returns one of:
+    //   "Aerospike Community Edition"
+    //   "Aerospike Enterprise Edition"
+    // Normalize to a single-word identifier so the signature property stays
+    // byte-stable across server-version phrasing changes.
+    internal static string NormalizeEdition( string raw )
+    {
+        if ( string.IsNullOrWhiteSpace( raw ) )
+            return "";
+
+        if ( raw.Contains( "Enterprise", StringComparison.OrdinalIgnoreCase ) )
+            return "Enterprise";
+        if ( raw.Contains( "Community", StringComparison.OrdinalIgnoreCase ) )
+            return "Community";
+
+        // Unknown edition phrasing -- preserve the raw response trimmed; the
+        // strict-equality compare in IsCompatibleWith still works as long as
+        // both source and target are normalized the same way.
+        return raw.Trim();
     }
 
     // Aerospike `build` returns a dotted version string, e.g. "6.4.0.1" or

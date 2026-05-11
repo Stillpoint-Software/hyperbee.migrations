@@ -109,4 +109,67 @@ public class AerospikeSnapshotCaptureTests
         Func<Task> act = () => AerospikeSnapshotCapture.CaptureAsync( client, "test", cts.Token );
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
+
+    // ---- UDF probe ---------------------------------------------------------
+
+    [TestMethod]
+    public void ParseUdfList_RecognizesCommaSeparatedKeyValueEntries()
+    {
+        const string response = "filename=foo.lua,hash=abc123,type=LUA;filename=bar.lua,hash=def456,type=LUA";
+
+        var udfs = AerospikeSnapshotCapture.ParseUdfList( response );
+
+        udfs.Should().HaveCount( 2 );
+        udfs.Should().Contain( "foo.lua" );
+        udfs.Should().Contain( "bar.lua" );
+    }
+
+    [TestMethod]
+    public void ParseUdfList_EmptyResponse_ReturnsEmpty()
+    {
+        AerospikeSnapshotCapture.ParseUdfList( "" ).Should().BeEmpty();
+        AerospikeSnapshotCapture.ParseUdfList( null ).Should().BeEmpty();
+    }
+
+    [TestMethod]
+    public void ParseUdfList_SortsEntriesOrdinal()
+    {
+        // Sort order matters: the strategy emits a diagnostic containing the
+        // UDF list and it should be deterministic for log/CI comparison.
+        const string response = "filename=zzz.lua,type=LUA;filename=aaa.lua,type=LUA;filename=mmm.lua,type=LUA";
+
+        var udfs = AerospikeSnapshotCapture.ParseUdfList( response );
+
+        udfs.Should().Equal( "aaa.lua", "mmm.lua", "zzz.lua" );
+    }
+
+    [TestMethod]
+    public void ParseUdfList_SkipsMalformedEntries()
+    {
+        const string response = "filename=ok.lua,type=LUA;;orphan;type=LUA;filename=,type=LUA";
+
+        var udfs = AerospikeSnapshotCapture.ParseUdfList( response );
+
+        // Only the well-formed `ok.lua` entry survives.
+        udfs.Should().Equal( "ok.lua" );
+    }
+
+    [TestMethod]
+    public void ListUdfs_NullClient_Throws()
+    {
+        Action act = () => AerospikeSnapshotCapture.ListUdfs( null! );
+        act.Should().Throw<ArgumentNullException>().WithParameterName( "client" );
+    }
+
+    [TestMethod]
+    public void ListUdfs_NoConnectedNodes_ReturnsEmpty()
+    {
+        // No-nodes case must NOT throw; treats absence-of-cluster as
+        // absence-of-UDFs so the strategy's refusal logic flows cleanly
+        // into the normal "no nodes" topology error instead.
+        var client = Substitute.For<Aerospike.Client.IAerospikeClient>();
+        client.Nodes.Returns( Array.Empty<Aerospike.Client.Node>() );
+
+        AerospikeSnapshotCapture.ListUdfs( client ).Should().BeEmpty();
+    }
 }
