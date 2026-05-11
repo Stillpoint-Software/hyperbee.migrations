@@ -66,10 +66,10 @@ public sealed class IntrospectionSnapshotStrategy : ISquashStrategy
 
     /// <summary>
     /// Optional path to a directory containing the user's migration source
-    /// files. When set, the strategy walks the directory via a MongoDB
-    /// source scanner (follow-up task; not yet implemented) and refuses
-    /// generation if any <see cref="Migration"/>-derived class in the
-    /// squash range matches the data-op heuristic without an explicit
+    /// files. When set, the strategy walks the directory via
+    /// <see cref="MongoDBMigrationSourceScanner"/> and refuses generation
+    /// if any <see cref="Migration"/>-derived class in the squash range
+    /// matches the data-op heuristic without an explicit
     /// <c>[DataMigration]</c> or <c>[StructuralOnly]</c> annotation
     /// (per ADR-0019 A5). When null, the source-scan refusal gate is skipped.
     /// </summary>
@@ -90,6 +90,28 @@ public sealed class IntrospectionSnapshotStrategy : ISquashStrategy
 
         try
         {
+            // Source-scan refusal gate (ADR-0019 A5). When MigrationSourceRoot
+            // is set, walk the migration assemblies' source tree and refuse
+            // generation if any class extending Migration looks like a data op
+            // without an explicit annotation. Runs BEFORE topology capture so
+            // a refused squash does not waste a cluster probe.
+            if ( !string.IsNullOrWhiteSpace( MigrationSourceRoot ) )
+            {
+                var verdicts = MongoDBMigrationSourceScanner.Scan( MigrationSourceRoot );
+                var unannotated = verdicts.Where( v => v.RequiresAnnotation ).ToArray();
+                if ( unannotated.Length > 0 )
+                {
+                    var names = string.Join( ", ", unannotated.Select( v => v.ClassName ) );
+                    _logger.LogWarning(
+                        "MongoDB squash refused: {Count} migration class(es) match the data-op heuristic without [DataMigration]/[StructuralOnly] annotation: {Classes}",
+                        unannotated.Length, names );
+                    return new SquashGenerationResult.Failed(
+                        $"MongoDB squash refused: {unannotated.Length} migration class(es) match the data-op heuristic without an explicit [DataMigration] or [StructuralOnly] annotation (ADR-0019 A5). " +
+                        $"Classes: {names}. " +
+                        "Annotate each migration explicitly or move it outside the squash range." );
+                }
+            }
+
             // Topology: capture from the live cluster so the squash carries
             // the operator's actual version + FCV + deployment + concerns.
             var topology = await MongoDBTopologySignature

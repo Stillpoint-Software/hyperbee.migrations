@@ -279,4 +279,95 @@ public class MongoDBSquashEndToEndTests
         ctx.SquashVersion.Should().Be( 2000 );
         ctx.DatabaseName.Should().Be( "appdb" );
     }
+
+    // ---- Source-scan refusal gate (Task 3.7) -------------------------------
+
+    [TestMethod]
+    public async Task GenerateAsync_SourceScanFindsUnannotated_ReturnsFailedWithDiagnostic()
+    {
+        var tempRoot = Path.Combine( Path.GetTempPath(), "mongodb-scanner-" + Guid.NewGuid().ToString( "N" ) );
+        Directory.CreateDirectory( tempRoot );
+        try
+        {
+            File.WriteAllText( Path.Combine( tempRoot, "SeedUsers.cs" ), """
+                using Hyperbee.Migrations;
+                namespace App;
+                [Migration(2000)]
+                public class SeedUsers : Migration
+                {
+                    public override async Task UpAsync(CancellationToken ct)
+                    {
+                        await collection.InsertOneAsync(new User { Id = "u1" });
+                    }
+                }
+                """ );
+
+            var strategy = new IntrospectionSnapshotStrategy(
+                new MongoDBSnapshotCanonicalizer(),
+                new MongoDBDataOpClassifier() )
+            {
+                MigrationSourceRoot = tempRoot
+            };
+
+            var result = await strategy.GenerateAsync(
+                context: MakeContext(),
+                descriptors: MakeDescriptors( 2000 ),
+                options: new SquashGenerationOptions() );
+
+            result.Should().BeOfType<SquashGenerationResult.Failed>();
+            var failed = (SquashGenerationResult.Failed) result;
+            failed.Detail.Should().Contain( "ADR-0019 A5" );
+            failed.Detail.Should().Contain( "SeedUsers" );
+            failed.Detail.Should().Contain( "[DataMigration]" );
+        }
+        finally
+        {
+            try { Directory.Delete( tempRoot, recursive: true ); } catch { }
+        }
+    }
+
+    [TestMethod]
+    public async Task GenerateAsync_SourceScanAllAnnotated_ProceedsPastScanGate()
+    {
+        var tempRoot = Path.Combine( Path.GetTempPath(), "mongodb-scanner-" + Guid.NewGuid().ToString( "N" ) );
+        Directory.CreateDirectory( tempRoot );
+        try
+        {
+            File.WriteAllText( Path.Combine( tempRoot, "SeedUsers.cs" ), """
+                using Hyperbee.Migrations;
+                namespace App;
+                [Migration(2000)]
+                [DataMigration]
+                public class SeedUsers : Migration
+                {
+                    public override async Task UpAsync(CancellationToken ct)
+                    {
+                        await collection.InsertOneAsync(new User { Id = "u1" });
+                    }
+                }
+                """ );
+
+            var strategy = new IntrospectionSnapshotStrategy(
+                new MongoDBSnapshotCanonicalizer(),
+                new MongoDBDataOpClassifier() )
+            {
+                MigrationSourceRoot = tempRoot
+            };
+
+            var result = await strategy.GenerateAsync(
+                context: MakeContext(),
+                descriptors: MakeDescriptors( 2000 ),
+                options: new SquashGenerationOptions() );
+
+            // Scan gate passes; topology capture fails against the
+            // substitute client. Diagnostic must NOT mention ADR-0019 A5.
+            result.Should().BeOfType<SquashGenerationResult.Failed>();
+            var failed = (SquashGenerationResult.Failed) result;
+            failed.Detail.Should().NotContain( "ADR-0019 A5" );
+        }
+        finally
+        {
+            try { Directory.Delete( tempRoot, recursive: true ); } catch { }
+        }
+    }
 }
