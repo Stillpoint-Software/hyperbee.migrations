@@ -9,6 +9,8 @@ using Hyperbee.Migrations.Providers.OpenSearch.Internal.Dispatch;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Middleware;
 using Hyperbee.Migrations.Providers.OpenSearch.Resources;
+using Hyperbee.Migrations.Providers.OpenSearch.Squash;
+using Hyperbee.Migrations.Squash;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -98,6 +100,35 @@ public static class ServiceCollectionExtensions
         // Resource runner (ADR-0002). Generic over the migration type for resource
         // path resolution. Transient because each migration instance gets its own logger.
         services.AddTransient( typeof( OpenSearchResourceRunner<> ) );
+
+        // Squash codegen wiring (per ADR-0019).
+        //
+        // Component instances are stateless and idempotent; safe to register
+        // as singletons. The strategy receives an optional ILogger if one is
+        // present in the container (consumers without logging configured fall
+        // back to NullLogger via the strategy's constructor default).
+        services.TryAddSingleton<OpenSearchSnapshotCanonicalizer>();
+        services.TryAddSingleton<OpenSearchDataOpClassifier>();
+        services.TryAddSingleton( provider => new RestStateDiffStrategy(
+            provider.GetRequiredService<OpenSearchSnapshotCanonicalizer>(),
+            provider.GetRequiredService<OpenSearchDataOpClassifier>(),
+            provider.GetService<ILogger<RestStateDiffStrategy>>() ) );
+        services.TryAddSingleton<OpenSearchSquashVerifier>();
+        services.TryAddSingleton( provider =>
+        {
+            // Topology signature ships a default instance ONLY for descriptor
+            // composition; live CaptureAsync overrides the Properties bag
+            // when the strategy actually runs against a cluster.
+            ITopologySignature topology = new OpenSearchTopologySignature();
+            var descriptor = new SquashStrategyDescriptor(
+                TopologySignature: topology,
+                DataOpClassifier: provider.GetRequiredService<OpenSearchDataOpClassifier>(),
+                Generator: provider.GetRequiredService<RestStateDiffStrategy>(),
+                Verifier: provider.GetRequiredService<OpenSearchSquashVerifier>(),
+                Canonicalizer: provider.GetRequiredService<OpenSearchSnapshotCanonicalizer>() );
+            descriptor.EnsureValid();
+            return descriptor;
+        } );
 
         return services;
     }

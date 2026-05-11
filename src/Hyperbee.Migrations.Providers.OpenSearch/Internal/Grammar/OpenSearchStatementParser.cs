@@ -487,12 +487,16 @@ public sealed class OpenSearchStatementParser
         var withTemplate = with.SkipAnd( template ).SkipAnd( identifier )
             .Then( static name => new TemplateBodyRef( name ) );
 
-        // either WITH TEMPLATE <id> or WITH BODY $body, not both. Modeled as a
-        // tuple (TemplateBodyRef? template, BodyRef? body) where exactly one is
-        // populated. Mutual exclusion is enforced by OneOf alternation.
+        // either WITH TEMPLATE <id> or WITH BODY <body-source>, not both.
+        // Modeled as a tuple (TemplateBodyRef? template, BodySource? body)
+        // where exactly one is populated. Mutual exclusion is enforced by
+        // OneOf alternation. The body slot is `BodySource?` (the abstract
+        // base) so both the sibling-property form (BodyRef from `$name`)
+        // and the file-ref form (BodyFileRef from `@path`) round-trip
+        // without a runtime cast failure.
         var migrateBodySource = OneOf(
-            withTemplate.Then( static t => ((TemplateBodyRef?) t, (BodyRef?) null) ),
-            bodyRef.Then( static b => ((TemplateBodyRef?) null, (BodyRef?) b) )
+            withTemplate.Then( static t => ((TemplateBodyRef?) t, (BodySource?) null) ),
+            bodyRef.Then( static b => ((TemplateBodyRef?) null, (BodySource?) b) )
         );
 
         var viaAlias = via.SkipAnd( alias ).SkipAnd( identifier );
