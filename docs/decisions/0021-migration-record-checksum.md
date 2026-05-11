@@ -1,6 +1,6 @@
 # ADR-0021: Migration Record Carries Content Checksum
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-05-04
 **Related design:** [docs/design/migration-squashing.md](../design/migration-squashing.md)
 **Related ADRs:** ADR-0003 (Provider Record Store Contract), ADR-0019 (Replaces-Graph Mechanism)

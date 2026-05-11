@@ -1,6 +1,6 @@
 # ADR-0020: Migration Squashes are Up-Only
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-05-04
 **Related design:** [docs/design/migration-squashing.md](../design/migration-squashing.md)
 **Related ADRs:** ADR-0019 (Replaces-Graph Mechanism)

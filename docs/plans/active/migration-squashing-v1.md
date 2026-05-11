@@ -1,8 +1,32 @@
-# Plan: Migration Squashing v1 (Postgres + Universal Scaffolding + Script-Format)
+# Plan: Migration Squashing v1 (All 5 Providers + Universal Scaffolding + Script-Format)
 
-**Status:** Active
+**Status:** Active — Phases 0-6 ☑ COMPLETE; Phases 7-8 ◐ PARTIAL; per-provider squash codegen split to sibling plan
 **Created:** 2026-05-05
-**Branch:** `devs/bfarmer/migration-squashing-v1` (to be created in Phase 0)
+**Last revised:** 2026-05-11 — Phase 6 (Postgres squash codegen) marked DONE; the per-provider squash codegen work for the four remaining providers (Aerospike, MongoDB, Couchbase, OpenSearch) lifted into a sibling plan: [migration-squashing-providers.md](migration-squashing-providers.md). v3.0 ships when both plans complete (release-gate AND).
+**Previous revision:** 2026-05-09 — scope expanded from "Postgres only" to "all 5 providers" per [ADR-0019 A7 retraction](../../decisions/0019-migration-squash-replaces-graph.md#a7-p0-9-v1-ships-all-five-providers-retracted-2026-05-09).
+**Branch:** `devs/bfarmer/provider-squash` (existing; the sibling per-provider plan continues on the same branch).
+
+> **SCOPE CHANGE 2026-05-11.** Phase 6 (Postgres squash codegen) is DONE
+> (committed 2026-05-06; see Phase 6 Status entry below). The per-provider
+> squash codegen work for the four remaining providers (Aerospike, MongoDB,
+> Couchbase, OpenSearch) has been lifted into a sibling plan:
+> **[migration-squashing-providers.md](migration-squashing-providers.md)**.
+> That sibling plan is the canonical source for per-provider work (6 phases,
+> R-P1 through R-P9 from [docs/requirements/migration-squashing-providers.md](../../requirements/migration-squashing-providers.md),
+> ~8-10 weeks). This plan continues to track the universal scaffolding,
+> Postgres codegen (done), and the remaining Phase 7/8 closers (CLI,
+> Testcontainers-backed verification round, operator guide). v3.0 ships
+> when **both** this plan's deferred items AND the sibling per-provider
+> plan complete.
+>
+> **Previous SCOPE CHANGE 2026-05-09 (historical).** This plan was originally
+> scoped "v1 = Postgres only, NoSQL providers in v1.1 / v1.2." That phasing
+> was retracted: v1 ships squash codegen for **all 5 providers** together.
+> Rationale: the `ISquashStrategy` abstraction is only proven correct by
+> being implemented against the full provider matrix. References below to
+> "Postgres only" / "v1.1" / "v1.2" / `NullSquashStrategy` are historical
+> context. Phase 5 (`NullSquashStrategy`) is obsolete. The retraction is
+> durable; see `feedback_squash_all_providers_v1.md`.
 
 **Inputs:**
 - Requirements: [docs/requirements/migration-squashing.md](../../requirements/migration-squashing.md)
@@ -10,7 +34,7 @@
 - Consensus + hardening: [docs/design/migration-squashing-consensus-destructive.md](../../design/migration-squashing-consensus-destructive.md)
 - Research: [0005](../../research/0005-migration-squashing.md), [0006 (historical, additive)](../../research/0006-migration-squashing-assessment.md), [0007 (destructive, drives this plan)](../../research/0007-migration-squashing-destructive-assessment.md)
 - EF Core reference: [docs/research/ef-core-squash-reference.md](../../research/ef-core-squash-reference.md)
-- Implementation examples: [Postgres path-finder](../../design/migration-squashing-example-postgres.md), [Aerospike](../../design/migration-squashing-example-aerospike.md), [OpenSearch](../../design/migration-squashing-example-opensearch.md), [MongoDB](../../design/migration-squashing-example-mongodb.md), [Couchbase](../../design/migration-squashing-couchbase-example.md)
+- Implementation examples: [Postgres path-finder](../../design/migration-squashing-example-postgres.md), [Aerospike](../../design/migration-squashing-example-aerospike.md), [OpenSearch](../../design/migration-squashing-example-opensearch.md), [MongoDB](../../design/migration-squashing-example-mongodb.md), [Couchbase](../../design/migration-squashing-example-couchbase.md)
 - ADRs: 0019 (squash mechanism + 19 amendments), 0020 (up-only), 0021 (checksum + 2 amendments), 0022 (script-format resources, NEW)
 
 ## Velocity calibration
@@ -36,7 +60,7 @@ This feature ships as **Hyperbee.Migrations v3.0** (current is v2.x). The squash
 
 ### Default Interface Methods on `IMigrationRecordStore`
 
-The three new methods (`WriteAsync(MigrationRecord, WritePrecondition, ct)`, `LoadAppliedVersionsAsync(candidateIds, ct)`, `LoadSatisfyingRowsAsync(versions, ct)`) ship with **safe DIM implementations** that delegate to the existing v2 methods. Custom record-store implementations work unchanged but get degraded behavior:
+The three new methods (`WriteAsync(MigrationRecord, WritePrecondition, ct)`, `IntersectWithAppliedAsync(candidateIds, ct)`, `IntersectWithSquashedAsync(versions, ct)`) ship with **safe DIM implementations** that delegate to the existing v2 methods. Custom record-store implementations work unchanged but get degraded behavior:
 
 - No write-time `Kind`/`Replaces` integrity check (per ADR-0021 A1)
 - No realtime-bulk-read optimization (falls back to per-id `ExistsAsync` loop)
@@ -80,12 +104,15 @@ Ship the v1 destructive-model migration-squash feature satisfying:
 - ITopologySignature with schema versioning per A14
 - All 9 P0 + 10 P1 amendments from Assessment 0007
 
-**Non-goals (deferred to v1.1 / v1.2):**
-- Aerospike `InfoSnapshotStrategy` (v1.1)
-- MongoDB `IntrospectionSnapshotStrategy` (v1.1)
-- Couchbase `HybridStrategy` (v1.2)
-- OpenSearch `RestStateDiffStrategy` (v1.2)
-- `--seal-history` retroactive checksum tool (Phase 2)
+**In scope (per 2026-05-09 retraction — all 5 providers ship together):**
+- Postgres `PgDumpSnapshotStrategy` (Medium canonicalization risk; mature `pg_dump` tooling)
+- Aerospike `InfoSnapshotStrategy` (Low risk)
+- MongoDB `IntrospectionSnapshotStrategy` (Medium-High risk)
+- Couchbase `HybridStrategy` (High risk)
+- OpenSearch `RestStateDiffStrategy` (High risk)
+
+**Non-goals (deferred to a later release):**
+- `--seal-history` retroactive checksum tool
 
 ## Style Reference
 
@@ -122,7 +149,7 @@ Citations follow the OpenSearch-provider plan precedent (≥10 file:line refs ac
 | **0** | Foundation + Infrastructure | Test fixtures, branch, codebase audit, no breaking changes | Existing 75/75 OpenSearch + provider unit tests still green |
 | **1** | Universal Ledger Scaffolding | MigrationRecord + MigrationRecordKind + Checksum + integrity exception across all 5 providers | Existing migrations work; new fields readable; integrity check refuses tampered rows |
 | **2** | MigrationAttribute + Discovery | `Replaces`, `ReplacesRange`, load-time validation, MigrationApplyMode | New `[Migration(Replaces=...)]` declared migrations discoverable; invalid refs fail loudly |
-| **3** | Universal Reconciliation Logic | Auto-mark / fresh-install / mid-range branches; re-squash transitivity; LoadAppliedVersionsAsync realtime obligation | Mature env auto-marks a hand-authored squash; fresh env runs body; mid-range raises `MidRangeSquashException` |
+| **3** | Universal Reconciliation Logic | Auto-mark / fresh-install / mid-range branches; re-squash transitivity; IntersectWithAppliedAsync realtime obligation | Mature env auto-marks a hand-authored squash; fresh env runs body; mid-range raises `MidRangeSquashException` |
 | **4** | Script-Format Resource Support | ADR-0022 — multi-statement script grammar lift across all 4 NoSQL providers; Postgres `.sql` aliased | Existing JSON-array migrations still work; new `.statements` script files parseable for all 5 |
 | **5** | ISquashStrategy Contract + NullSquashStrategy | Composite descriptor; ITopologySignature with schema versioning; IDataOpClassifier + non-determinism scan; per-provider Null implementations | All 5 providers register; squash CLI invocation against non-Postgres returns clean refusal (not ServiceNotFound) |
 | **6** | Postgres v1 Squash Generator | `PgDumpSnapshotStrategy` (path-finder) with statement classifier, server-version-matched container, post-processing pipeline, sequence setval, CONCURRENTLY stripping | End-to-end: real Postgres squash generates valid `Squash_M.sql` + summary that passes verification round |
@@ -182,8 +209,8 @@ Read each provider's record store + runner and confirm the existing surface meet
 - [ ] `MigrationLedgerIntegrityException` (new) — derives from a core-level base provider exception type; thrown by record stores on Kind/Replaces inconsistency per ADR-0021 A1
 - [ ] **`IMigrationRecordStore` gains three new methods, each with DIM (default interface method) implementations** that preserve v2 behavior for custom implementations:
   - `Task<WriteOutcome> WriteAsync(MigrationRecord record, WritePrecondition precondition, CancellationToken ct = default)` — DIM default: ignore precondition + checksum/kind; delegate to existing `WriteAsync(record.Id)`; return `WriteOutcome.Created`
-  - `Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(IEnumerable<string> candidateIds, CancellationToken ct = default)` — DIM default: per-id `ExistsAsync` loop (degraded; no realtime-bulk-read optimization)
-  - `Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(IEnumerable<long> versions, CancellationToken ct = default)` — DIM default: only direct id matches (no transitive squash satisfaction; mature envs that auto-marked an inner squash will fail `MidRangeSquashException` against an outer squash if their custom store hasn't overridden this)
+  - `Task<IReadOnlySet<string>> IntersectWithAppliedAsync(IEnumerable<string> candidateIds, CancellationToken ct = default)` — DIM default: per-id `ExistsAsync` loop (degraded; no realtime-bulk-read optimization)
+  - `Task<IReadOnlySet<long>> IntersectWithSquashedAsync(IEnumerable<long> versions, CancellationToken ct = default)` — DIM default: only direct id matches (no transitive squash satisfaction; mature envs that auto-marked an inner squash will fail `MidRangeSquashException` against an outer squash if their custom store hasn't overridden this)
 - [ ] `IMigrationRecordStore.WriteAsync` contract (new overload) documented to enforce `Kind == Squash ⟺ Replaces non-empty` at write time — read+write enforcement
 - [ ] XML doc on each new DIM method explicitly notes "shipped providers override; custom implementations should override for full squash support; default behavior preserves v2 semantics"
 
@@ -295,13 +322,13 @@ Read each provider's record store + runner and confirm the existing surface meet
 
 ## Phase 3 — Universal Reconciliation Logic
 
-**Objective:** Implement runner-side reconciliation with auto-mark / fresh-install / mid-range branches; `LoadAppliedVersionsAsync` realtime obligation per provider; re-squash transitivity rule.
+**Objective:** Implement runner-side reconciliation with auto-mark / fresh-install / mid-range branches; `IntersectWithAppliedAsync` realtime obligation per provider; re-squash transitivity rule.
 
 **ADR compliance:** ADR-0019 (especially A6 transitivity, A17 Kind/Replaces consistency), C2 verification (deferred to Phase 7).
 
-### Task 3.1 — `LoadAppliedVersionsAsync` realtime per provider
+### Task 3.1 — `IntersectWithAppliedAsync` realtime per provider
 
-Add `IMigrationRecordStore.LoadAppliedVersionsAsync(IEnumerable<string> candidateIds, CancellationToken ct) → IReadOnlySet<string>` returning the subset present in the ledger.
+Add `IMigrationRecordStore.IntersectWithAppliedAsync(IEnumerable<string> candidateIds, CancellationToken ct) → IReadOnlySet<string>` returning the subset present in the ledger.
 
 Per-provider implementation per consensus C6 + C9 + Round 1b:
 - [ ] **Postgres:** single `SELECT record_id FROM ledger WHERE record_id = ANY($1)`
@@ -319,8 +346,8 @@ Per ADR-0019 amended pseudocode:
 ```csharp
 // For each discovered migration with non-empty resolved Replaces
 var replacedIds = squash.Replaces.Select(IdFor);
-var satisfied = await store.LoadSatisfyingRowsAsync(replacedIds, ct);
-// LoadSatisfyingRowsAsync: returns versions where row.Kind == Migration AND row.Id == version
+var satisfied = await store.IntersectWithSquashedAsync(replacedIds, ct);
+// IntersectWithSquashedAsync: returns versions where row.Kind == Migration AND row.Id == version
 //                        OR row.Kind == Squash AND version ∈ row.Replaces
 
 if (satisfied.Count == squash.Replaces.Count) {
@@ -336,7 +363,7 @@ if (satisfied.Count == 0) {
 throw new MidRangeSquashException(...)
 ```
 
-- [ ] `LoadSatisfyingRowsAsync` interface added (transitivity-aware variant of `LoadAppliedVersionsAsync`)
+- [ ] `IntersectWithSquashedAsync` interface added (transitivity-aware variant of `IntersectWithAppliedAsync`)
 - [ ] Per-provider implementation: same realtime primitive but reads `Replaces` field of squash rows for transitive matching
 - [ ] Reconciliation in `MigrationRunner.RunAsync()` updated
 
@@ -377,7 +404,7 @@ To exercise reconciliation without the codegen (which lands in Phase 6):
 **Cross-provider participation check:** Synthetic test corpus runs against all 5 providers; same assertions; per-provider testcontainer fixtures. ✓
 
 **Phase 3 Completion Criteria:**
-- [ ] `LoadSatisfyingRowsAsync` implemented across all 5 providers
+- [ ] `IntersectWithSquashedAsync` implemented across all 5 providers
 - [ ] Reconciliation pseudocode in runner; auto-mark/fresh-install/mid-range branches all exercised
 - [ ] `WritePrecondition` + `WriteOutcome` per-provider implementations validated
 - [ ] Re-squash transitivity test passes
@@ -521,7 +548,15 @@ For Aerospike, Couchbase, MongoDB, OpenSearch:
 
 ---
 
-## Phase 6 — Postgres v1 Squash Generator (path-finder)
+## Phase 6 — Postgres v1 Squash Generator (path-finder) ☑ COMPLETE 2026-05-06
+
+> **NOTE (2026-05-11).** Phase 6 shipped Postgres squash codegen only. The
+> per-provider squash codegen for the four remaining providers (Aerospike,
+> MongoDB, Couchbase, OpenSearch) is tracked in the sibling plan:
+> **[migration-squashing-providers.md](migration-squashing-providers.md)**.
+> What follows is the as-shipped Phase 6 plan for Postgres, preserved for
+> historical reference. See the Phase 6 Status entry near the bottom of
+> this file for the completion summary.
 
 **Objective:** Concrete `PgDumpSnapshotStrategy` implementation with all hardening: server-version-matched container, `pg_dump` post-processing pipeline, statement classifier, sequence `setval` post-emission, `CREATE INDEX CONCURRENTLY` stripping, in-process dump-vs-dump verification, IDataOpClassifier with non-determinism scan, mandatory `[DataMigration]` annotation.
 
@@ -638,7 +673,7 @@ For Aerospike, Couchbase, MongoDB, OpenSearch:
 ### Task 7.3 — Fleet readiness check (Phase 1 of two-phase gate)
 
 - [ ] Parallel env probing via `Parallel.ForEachAsync(maxParallelism: 8)` per A6 (PA-6 redesign)
-- [ ] Per-env: load `LoadAppliedVersionsAsync(allCandidateIds)`; compute `maxAppliedVersion`; classify as `<N` / `[N..M)` / `≥M`
+- [ ] Per-env: load `IntersectWithAppliedAsync(allCandidateIds)`; compute `maxAppliedVersion`; classify as `<N` / `[N..M)` / `≥M`
 - [ ] Refuse with `MidRangeFleetException` listing offending envs + per-env first-missing version + last-applied version
 
 ### Task 7.4 — Squash artifact header + Phase 2 of fleet gate
@@ -720,7 +755,7 @@ Per ADR-0019 A3:
 
 ### Task 8.4 — Operator guide
 
-- [ ] New doc `docs/guides/squashing-migrations.md`:
+- [ ] New doc `docs/site/squashing-migrations.md`:
   - When to squash (when fresh-env provisioning > 30s, when migration count > 50)
   - Authoring a squash (CLI invocation, fleet manifest, override block)
   - Reviewing a squash PR (read summary.md, not artifact bytes)
@@ -728,11 +763,14 @@ Per ADR-0019 A3:
   - Recovering from `StaleFleetMemberException`
   - Roadmap (v1 = Postgres only; v1.1 / v1.2 sequencing)
 
-### Task 8.5 — EF Core migration bridge guide (per Assessment 0007 cross-cutting)
+### Task 8.5 — (REMOVED) EF Core migration bridge guide
 
-- [ ] `docs/guides/migrating-from-ef-core.md` per consensus open item
-- [ ] How to bridge `__EFMigrationsHistory` to `MigrationRecord`
-- [ ] Recommended workflow: synchronize fleet to known EF version → introduce hyperbee `[Migration(N, Replaces=[…all-prior-EF-versions…])]` baseline → `--accept-unverified-version` allowlist for EF-era nulls
+Dropped 2026-05-09 — the EF Core bridge guide is out of scope for this codebase
+and not a planned deliverable. The corresponding `docs/guides/migrating-from-ef-core.md`
+file (which had been drafted earlier in the squash work) has been removed. The
+EF Core consultant document under `docs/research/ef-core-squash-reference.md`
+remains as research input but no operator-facing migration-from-EF-Core guide
+will ship.
 
 ### Task 8.6 — CHANGELOG + version bump to v3.0
 
@@ -747,7 +785,7 @@ Per ADR-0019 A3:
 
 - [ ] New doc `docs/guides/upgrading-from-v2.md`:
   - **Schema migration** — automatic and idempotent on first v3 apply; pre-existing rows read clean (`Checksum=null, Kind=Migration`)
-  - **Custom `IMigrationRecordStore` implementations** — DIM defaults preserve v2 behavior; recipe for opting into squash support by overriding `WriteAsync(MigrationRecord, WritePrecondition, ct)`, `LoadAppliedVersionsAsync`, `LoadSatisfyingRowsAsync`
+  - **Custom `IMigrationRecordStore` implementations** — DIM defaults preserve v2 behavior; recipe for opting into squash support by overriding `WriteAsync(MigrationRecord, WritePrecondition, ct)`, `IntersectWithAppliedAsync`, `IntersectWithSquashedAsync`
   - **Mixed-version fleet hazard** — don't run v2 and v3 against the same ledger simultaneously; deploy v3 to all envs before squashing; ADR-0019 A2 two-phase fleet readiness gate is the safety net
   - **Squash is operationally one-way** — once committed, original migration source files are removed; rollback to v2 unsupported; backup-restore is the recovery path if needed
   - **What stays the same** — existing migrations (no `Replaces`) work unchanged; existing `*.statements.json` resources work unchanged (legacy loader); existing `dotnet build` / `dotnet test` flows work unchanged
@@ -773,7 +811,7 @@ Tasks that look provider-shaped get explicit per-provider notes here. Tasks that
 | 1.1 (core types) | n/a | n/a | n/a | n/a | n/a |
 | 1.2-1.6 (record store extension) | sparse bins; trivial additive | JSON doc; trivial | JSON doc; trivial | ledger index mapping bump (ADR-0018 split-aware) | two ALTER TABLEs + CHECK constraint |
 | 1.7 (default checksum) | resource-bytes hash | resource-bytes hash | resource-bytes hash | resource-bytes hash incl. body refs | resource-bytes hash for `.sql` |
-| 3.1 (LoadAppliedVersionsAsync realtime) | BatchGet strong consistency | MultiGet + mutation token | find with ReadConcern.Majority on RS, Local on standalone | _mget realtime=true | SELECT ... WHERE record_id = ANY |
+| 3.1 (IntersectWithAppliedAsync realtime) | BatchGet strong consistency | MultiGet + mutation token | find with ReadConcern.Majority on RS, Local on standalone | _mget realtime=true | SELECT ... WHERE record_id = ANY |
 | 3.3 (WritePrecondition) | RecordExistsAction.CREATE_ONLY | Insert + DocumentExistsException | InsertOne + DuplicateKey (standalone) / transaction (RS) | OpType=Create | INSERT ON CONFLICT DO NOTHING |
 | 3.5 (synthetic squash test corpus) | runs in test container | runs in 7-state bootstrap container | runs in standalone+RS containers | runs in single-node + multi-node containers | runs in standard Postgres container |
 | 4.2-4.5 (script-format grammar lift) | AQL subset multi-statement | N1QL subset multi-statement | Mongo-shell-like multi-statement | 21-statement AST multi-statement (richest, prototype first) | n/a (already script form) |
@@ -925,7 +963,7 @@ Codebase audit verifying the design's assumptions against current HEAD (`migrati
 **Completion summary:**
 - New core types: `MigrationRecordKind`, `WritePrecondition`, `WriteOutcome`, `MigrationLedgerIntegrityException`, `IChecksumStrategy`, `DefaultChecksumStrategy`.
 - `MigrationRecord` extended with `Checksum`, `Kind`, `Replaces` (concrete `long[]` for clean cross-provider serialization; `IMigrationRecord.Replaces` exposes `IReadOnlyList<long>`).
-- `IMigrationRecordStore` extended with three DIM-defaulted methods: `WriteAsync(MigrationRecord, WritePrecondition, CT) → WriteOutcome`, `LoadAppliedVersionsAsync`, `LoadSatisfyingRowsAsync`. v2 record stores compile and run unchanged via the DIM defaults.
+- `IMigrationRecordStore` extended with three DIM-defaulted methods: `WriteAsync(MigrationRecord, WritePrecondition, CT) → WriteOutcome`, `IntersectWithAppliedAsync`, `IntersectWithSquashedAsync`. v2 record stores compile and run unchanged via the DIM defaults.
 - All 5 provider record stores override `WriteAsync(MigrationRecord, ...)` with realtime semantics:
   - Postgres: idempotent `ALTER TABLE ADD COLUMN IF NOT EXISTS` + `INSERT ... ON CONFLICT DO NOTHING/UPDATE` + `bigint[]` array literal.
   - Aerospike: `RecordExistsAction.CREATE_ONLY` for MustNotExist; checksum-equality re-check on `KEY_EXISTS_ERROR`.
@@ -955,21 +993,21 @@ Codebase audit verifying the design's assumptions against current HEAD (`migrati
 
 **Completion summary:**
 - `MidRangeSquashException` (new) carries `SquashVersion`, `MissingVersions[]`, `AppliedVersions[]`; default message lists missing versions plus three documented recovery paths (backup-restore, re-introduce-from-git, recover-from-mid-range CLI).
-- `MigrationRunner` reconciliation: for each squash in discovery order, `ClassifySquashAsync` projects the resolved Replaces set against the ledger via `LoadAppliedVersionsAsync` (direct) + `LoadSatisfyingRowsAsync` (transitive). Three branches: Mature → auto-mark via `WriteSquashJournalAsync` (using `WritePrecondition.MustNotExist` for concurrent-runner idempotency); Fresh → run `UpAsync` with `ApplyMode.Fresh`; partial subset → `MidRangeSquashException`.
+- `MigrationRunner` reconciliation: for each squash in discovery order, `ClassifySquashAsync` projects the resolved Replaces set against the ledger via `IntersectWithAppliedAsync` (direct) + `IntersectWithSquashedAsync` (transitive). Three branches: Mature → auto-mark via `WriteSquashJournalAsync` (using `WritePrecondition.MustNotExist` for concurrent-runner idempotency); Fresh → run `UpAsync` with `ApplyMode.Fresh`; partial subset → `MidRangeSquashException`.
 - `WriteSquashJournalAsync` emits `Kind=Squash` rows with the resolved `Replaces` array and computed checksum; `WriteOutcome.PreconditionFailed` surfaces a `MigrationException` calling out checksum drift.
-- `IsLedgerEmptyAsync` rewired to use `LoadAppliedVersionsAsync` (single bulk realtime call) instead of the per-id `ExistsAsync` loop.
-- Per-provider `LoadAppliedVersionsAsync` realtime overrides (replacing the DIM default):
+- `IsLedgerEmptyAsync` rewired to use `IntersectWithAppliedAsync` (single bulk realtime call) instead of the per-id `ExistsAsync` loop.
+- Per-provider `IntersectWithAppliedAsync` realtime overrides (replacing the DIM default):
   - **Postgres:** `WHERE record_id = ANY(@ids)` — single round-trip parameterized array.
   - **MongoDB:** `find({_id: {$in: ids}})` with `ReadConcern.Majority + ReadPreference.Primary` (RS-safe; falls back to local on standalone).
   - **Couchbase:** parallel `ExistsAsync` fan-out (KV realtime probes; one round-trip per id, concurrent).
   - **Aerospike:** `BatchGet` with `BatchPolicy` strong consistency; null-entry detection.
   - **OpenSearch:** `_mget` with `realtime=true` (NOT `_search` — `_search` is refresh-bound and would miss recent writes).
-- Per-provider `LoadSatisfyingRowsAsync` transitive overrides:
+- Per-provider `IntersectWithSquashedAsync` transitive overrides:
   - **Postgres:** `unnest(replaces) WHERE kind = 1 AND replaces && @versions` — GIN-indexable.
   - **MongoDB:** `find({kind: 1, replaces: {$in: versions}})` + client-side intersect.
   - **Couchbase:** N1QL `UNNEST replaces v WHERE kind = 1 AND v IN $versions` with `RequestPlus`.
   - **OpenSearch:** `_search` with terms filter on `replaces[]` + `kind` term; capped at 10 000 squash rows.
-  - **Aerospike:** deferred — DIM default returns empty, so re-squash transitivity is unsupported on Aerospike in v1. Direct `Migration_<v>` auto-mark still works via `LoadAppliedVersionsAsync`. Tracking for follow-up: listener-bridged Query against `Kind=Squash` with TaskCompletionSource adapter.
+  - **Aerospike:** deferred — DIM default returns empty, so re-squash transitivity is unsupported on Aerospike in v1. Direct `Migration_<v>` auto-mark still works via `IntersectWithAppliedAsync`. Tracking for follow-up: listener-bridged Query against `Kind=Squash` with TaskCompletionSource adapter.
 - `MigrationRunner.ClassifySquashAsync` exposed as `internal static` so the test suite can exercise the Fresh branch directly (full RunAsync can't reach it in v1 because Phase 2 discovery rejects squashes whose Replaces names a missing-from-assembly version; this is by design until post-mature originals can be safely deleted in a future cycle).
 - 7 new Phase 3 reconciliation tests in `ReconciliationTests`: mature auto-mark, fresh classification, partial classification, mid-range via Journal=false, re-squash transitivity, idempotency under concurrent reconcile. **23/23 squash tests pass; 356/356 core tests still green on net8/9/10.**
 
@@ -1060,7 +1098,7 @@ Codebase audit verifying the design's assumptions against current HEAD (`migrati
 3. **Task 7.5 — Testcontainers-backed verification round wiring** (snapshot A cache + parallel A/B + container lifecycle on failure). The verifier shape ships; only concrete capture is needed.
 4. **Task 7.6 + 7.7** — Stranding flags + source removal (CLI-bound).
 5. **Task 8.3 — Round-trip determinism gate** for ADR-0022 script-form resources (parse + re-emit + re-parse → AST-equivalent).
-6. **Task 8.4 — Operator guide** (`docs/guides/squashing-migrations.md`). The upgrade guide handles the migration story; the operator guide is a forward-looking authoring resource.
+6. **Task 8.4 — Operator guide** (`docs/site/squashing-migrations.md`). The upgrade guide handles the migration story; the operator guide is a forward-looking authoring resource.
 7. **Task 8.5 — EF Core migration bridge guide.**
 
 These deferrals are documented in detail at the top of this Status section.

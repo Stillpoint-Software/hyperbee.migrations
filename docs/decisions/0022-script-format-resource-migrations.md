@@ -1,6 +1,6 @@
 # ADR-0022: Script-Format Resource Migrations (Cross-Provider)
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-05-05
 **Amendments:** A1 (2026-05-06) — Postgres dollar-quote authoring rules added per spike finding F6 (`spikes/postgres-classifier/SPIKE_REPORT.md`).
 **Related design:** [docs/design/migration-squashing.md](../design/migration-squashing.md), [docs/design/migration-squashing-consensus-destructive.md](../design/migration-squashing-consensus-destructive.md)

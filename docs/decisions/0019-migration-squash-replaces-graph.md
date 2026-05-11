@@ -79,7 +79,7 @@ Empty `Replaces` AND empty `ReplacesRange` means "regular migration." Either non
 For each discovered migration with non-empty resolved `Replaces`:
 
 ```
-1. let allReplacedApplied = await store.LoadAppliedVersionsAsync(replaced);
+1. let allReplacedApplied = await store.IntersectWithAppliedAsync(replaced);
    // Per realtime obligation: providers SHALL use realtime point-lookup APIs (_mget,
    // findOneAndProject, KV Get with mutation tokens, SELECT with FOR UPDATE), never
    // eventually-consistent search.
@@ -180,7 +180,7 @@ Squashes are themselves migrations. A future operator can squash a previous squa
 The destructive model inherits these consensus amendments (from [docs/design/migration-squashing-consensus.md](../design/migration-squashing-consensus.md)) verbatim — they apply identically:
 
 - **U1:** Abstract `WritePrecondition` over per-provider tokens (`MustNotExist`, `MustMatchVersion(opaqueToken)`).
-- **U2:** `LoadAppliedVersionsAsync(candidateIds, ct)` realtime obligation.
+- **U2:** `IntersectWithAppliedAsync(candidateIds, ct)` realtime obligation.
 - **U4:** `MigrationApplyMode` enum (Fresh / PartialCatchUp; PartialCatchUp not reachable in destructive model under happy path but kept for individual original execution before squash exists).
 - **U5:** DDL preserved verbatim; `SquashHints` applies only to data ops.
 - **U6:** TTL-based locks must auto-renew or be configurably-long during snapshot apply.
@@ -254,9 +254,9 @@ Reconciliation pseudocode amended:
 
 ```
 let replacedSet = squash.Replaces  // recorded as authored, NOT transitively expanded
-let satisfiedSet = await store.LoadSatisfyingRowsAsync(replacedSet)
+let satisfiedSet = await store.IntersectWithSquashedAsync(replacedSet)
 
-// LoadSatisfyingRowsAsync semantics: returns versions where
+// IntersectWithSquashedAsync semantics: returns versions where
 //   row.Kind == Migration AND row.Id == version  -- direct match
 // OR
 //   row.Kind == Squash AND version ∈ row.Replaces  -- transitive match via squash row
@@ -268,17 +268,23 @@ else: MidRangeSquashException
 
 `Replaces` is recorded as authored in the squash; transitivity is a runtime resolution concern. Composes naturally for re-re-squashing.
 
-### A7 (P0-9): v1 ships Postgres only
+### A7 (P0-9): v1 ships all five providers (RETRACTED 2026-05-09)
 
-Per IR-CP-4 (Red wins): OpenSearch and Couchbase are High canonicalization risk per consensus C11; MongoDB is Medium-High. Shipping High-risk providers in v1 means the first time real production migrations exercise the canonicalizer is in a customer's destructive squash. The right sequencing:
+**Original (Assessment 0007 IR-CP-4):** v1 ships Postgres only; NoSQL providers ship in v1.1 / v1.2 because OpenSearch and Couchbase are High canonicalization risk and the first production exposure should be lower-risk.
 
-| Phase | Providers shipping `ISquashStrategy` | Rationale |
+**Retracted 2026-05-09:** v1 ships squash codegen for **all five providers** (Aerospike, Couchbase, MongoDB, OpenSearch, Postgres) together.
+
+**Why the reversal:** validating the `ISquashStrategy` abstraction against ONE provider proves that one implementation, not the abstraction. If the shape is wrong, the gap surfaces in v1.1+ when the second provider can't fit — at which point the v1 API is already locked and the wart is permanent. Implementing all five together is the only way to know the abstraction is correct, and that proof is more valuable than the canonicalization-risk hedge the original phasing was buying.
+
+| Provider | Snapshot strategy | Canonicalization risk |
 |---|---|---|
-| **v1** | Postgres only (`PgDumpSnapshotStrategy`) | Path-finder; Medium canonicalization risk; mature `pg_dump` tooling; largest user base for destructive squash ergonomics |
-| **v1.1** (~3 months after v1) | Aerospike (`InfoSnapshotStrategy`) + MongoDB (`IntrospectionSnapshotStrategy`) | Aerospike Low risk; MongoDB Medium-High. Cross-provider canonicalization-spec maturity informed by Postgres production metrics |
-| **v1.2** (~6 months after v1) | Couchbase (`HybridStrategy`) + OpenSearch (`RestStateDiffStrategy`) | Both High risk; benefit from canonicalization-spec settling against Aerospike/MongoDB corpora |
+| Postgres | `PgDumpSnapshotStrategy` | Medium (`pg_dump` is mature) |
+| Aerospike | `InfoSnapshotStrategy` | Low |
+| MongoDB | `IntrospectionSnapshotStrategy` | Medium-High |
+| OpenSearch | `RestStateDiffStrategy` | High |
+| Couchbase | `HybridStrategy` | High |
 
-v1 promotion gate: Postgres metrics (verifier-refusal rate <5%, canonicalization memory <500MB on real corpora, classifier LOC <1500) under thresholds for ≥1 release cycle. Other providers ship `NullSquashStrategy` returning `Unsupported(...)` until their phase. **Hand-authoring is NOT a fallback** — see ADR-0019 amendment A11 (deletion of `Unsupported` "hand-author" guidance from MD-8).
+The High-risk providers (OpenSearch, Couchbase) require harder canonicalization work but ship together with the rest. Verifier-refusal rates and corpus metrics are tracked per provider; a high refusal rate on one provider does not block the others' release. **Hand-authoring is NOT a fallback** for any provider — `NullSquashStrategy` is removed from v1 (see amendment A11 deletion of `Unsupported` "hand-author" guidance).
 
 ### A8 (P1-1): Non-determinism scan in classifier
 
@@ -454,7 +460,7 @@ Per IR-N4: if verification fails (B' diverges from B), the ephemeral container l
 
 The "Negative" section of the original Decision is updated with these post-amendment realities:
 - Operators must now provide structured override fields (ticket-id + owner + reason); higher friction for projects without a tracker (mitigated by stub-resolves regex default)
-- v1 supports Postgres only; Aerospike/MongoDB/OpenSearch/Couchbase users get hand-authoring guidance pointing at the `--prune` audit-aware tool until their provider's strategy ships
+- v1 ships squash codegen for all five providers concurrently (per A7 retraction 2026-05-09); the High-risk providers (OpenSearch, Couchbase) ship alongside the lower-risk ones because the abstraction is only proven by being implemented against the full provider matrix
 - The `recover from-mid-range` subcommand exists; operators must understand it is non-normal-path tooling
 
 ## References

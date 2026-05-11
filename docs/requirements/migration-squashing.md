@@ -200,9 +200,11 @@ The exact attribution mechanism (per-statement marker in `statements.json` for r
 
 ### Theme 3: Per-Provider Generation Strategy
 
-#### R-09: v1 ships **Postgres only** with destructive squash codegen; v1.1 = Aerospike+MongoDB; v1.2 = Couchbase+OpenSearch (REVISED 2026-05-05 per Assessment 0007)
+#### R-09: v3.0 ships destructive squash codegen for **all 5 providers** (RETRACTED PHASING 2026-05-09)
 
-> **REVISED** per Assessment 0007 IR-CP-4 (Red wins). Original framing (retained below for traceability) assumed multi-provider v1 with universal scaffolding only. The destructive-model reframe + canonicalization-risk analysis (consensus C11) shows OpenSearch + Couchbase High-risk providers should not ship in v1 — production migrations would exercise the canonicalizer for the first time in customer destructive squashes. v1 ships Postgres `PgDumpSnapshotStrategy` only (path-finder); other providers ship `NullSquashStrategy` returning `Unsupported(...)`. v1.1 (~3 months later, gated on Postgres metrics under thresholds): Aerospike (Low risk) + MongoDB (Medium-High). v1.2 (~6 months later): Couchbase + OpenSearch (both High risk). Hand-authoring is NOT a documented fallback (per MD-8 deletion).
+> **CURRENT (2026-05-09):** v3.0 ships squash codegen for all 5 providers (Aerospike, Couchbase, MongoDB, OpenSearch, Postgres) together. Implementation order is Aerospike (Low canonicalization risk) -> MongoDB (Medium-High) -> Couchbase (High) -> OpenSearch (High); the per-provider requirements are captured in the sibling doc [migration-squashing-providers.md](migration-squashing-providers.md). `NullSquashStrategy` is removed from v3.0; every provider ships a real strategy. Rationale: the strategy abstraction is only proven correct by being implemented against the full provider matrix; shipping against one provider validates one implementation, not the abstraction. Locked rule per [feedback_squash_all_providers_v1.md](../../../../Users/bfarm/.claude/projects/c--Development-hyperbee-migrations/memory/feedback_squash_all_providers_v1.md).
+>
+> **PRIOR (REVISED 2026-05-05, NOW RETRACTED 2026-05-09):** v1 ships Postgres only; Aerospike + MongoDB in v1.1, Couchbase + OpenSearch in v1.2. Justification at the time was canonicalization-risk staging. Retracted because partial scope cannot prove the abstraction; the High-risk providers shipping later means their pressure-tests of the contract land after the API is locked, creating either breakage or wart accretion.
 
 #### R-09 (original framing — superseded by revision above):
 

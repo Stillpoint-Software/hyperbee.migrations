@@ -1,0 +1,637 @@
+# Plan: Squash Codegen for the Four Non-Postgres Providers (v3.0 Release Gate)
+
+**Status:** Active
+**Created:** 2026-05-11
+**Requirements:** [docs/requirements/migration-squashing-providers.md](../../requirements/migration-squashing-providers.md) (R-P1 through R-P9)
+**Constraining ADRs:** ADR-0019 (Replaces graph + 19 amendments), ADR-0020 (squashes are up-only), ADR-0021 (record checksum), ADR-0022 (script-format resources)
+**Branch:** `devs/bfarmer/provider-squash` (existing branch; per-provider work continues here)
+**Locked rules:**
+- [feedback_squash_all_providers_v1.md](../../../../Users/bfarm/.claude/projects/c--Development-hyperbee-migrations/memory/feedback_squash_all_providers_v1.md) -- all 5 ship together, no partial scope, no scope-reduction trade
+- [feedback_no_preexisting_bugs.md](../../../../Users/bfarm/.claude/projects/c--Development-hyperbee-migrations/memory/feedback_no_preexisting_bugs.md) -- no test failures shipped
+- [feedback_no_global_prefix.md](../../../../Users/bfarm/.claude/projects/c--Development-hyperbee-migrations/memory/feedback_no_global_prefix.md)
+- [feedback_no_nonascii_docs.md](../../../../Users/bfarm/.claude/projects/c--Development-hyperbee-migrations/memory/feedback_no_nonascii_docs.md)
+
+## Objective
+
+Land squash codegen for **Aerospike, MongoDB, Couchbase, and OpenSearch** so v3.0 can ship. Each provider gets its own `Squash/` directory in `src/Hyperbee.Migrations.Providers.{Provider}/Squash/` containing six concrete components (TopologySignature, DataOpClassifier, StatementClassifier, SnapshotCanonicalizer, SnapshotStrategy, SquashVerifier) plus a SquashGenerationContext and any provider-specific helper types. Each provider gets a parallel unit-test class per component, a determinism gate integration test (R-P5), an end-to-end verification round integration test (R-P6), and a CLI integration test (R-P9).
+
+**Success criteria** (all four conditions, AND-gated):
+
+1. All four providers' `Squash/` directories contain the six required components plus context + helpers.
+2. `dotnet hyperbee-migrations squash --provider {name} --range 1000..2000` produces a deterministic `Squash_2000.statements` file for each provider.
+3. Determinism gate (R-P5) and verification round (R-P6) tests pass for each provider.
+4. `ISquashStrategy` and the four sibling interfaces (`ITopologySignature`, `IDataOpClassifier`, `ISnapshotCanonicalizer`, `ISquashVerifier`) have not been changed without a matching ADR-0019 amendment (R-P7).
+
+## Inputs
+
+- Requirements: [migration-squashing-providers.md](../../requirements/migration-squashing-providers.md)
+- Parent feature requirements: [migration-squashing.md](../../requirements/migration-squashing.md) (R-09 retracted 2026-05-09)
+- Shared squash contract (19 files): [src/Hyperbee.Migrations/Squash/](../../../src/Hyperbee.Migrations/Squash/)
+   - `ISquashStrategy` -- the orchestrator interface
+   - `ITopologySignature` -- the per-provider topology axes
+   - `IDataOpClassifier` -- Roslyn-based call-site classification
+   - `ISnapshotCanonicalizer` -- byte-stable serialization
+   - `ISquashVerifier` -- snapshot-A vs snapshot-B byte-compare
+   - `ISquashGenerationContext`, `SquashGenerationOptions`, `SquashGenerationResult`, `SquashMetadata`, `SquashStrategyDescriptor`, `RecoveryAcknowledgement`, `SquashFleetGate`, `MidRangeFleetException`, `StaleFleetMemberException`, `UnregisteredEnvironmentException`, `DataOpClassification`, `ContentKind`, `ContentEncoding`
+- Postgres reference implementation: [src/Hyperbee.Migrations.Providers.Postgres/Squash/](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/) (10 files, ~1700 LOC)
+- Squash test infrastructure: [tests/Hyperbee.Migrations.Squash.Tests/](../../../tests/Hyperbee.Migrations.Squash.Tests/) (125 passing unit tests)
+- Integration test fixtures: [tests/Hyperbee.Migrations.Integration.Tests/Container/](../../../tests/Hyperbee.Migrations.Integration.Tests/Container/) -- one Testcontainers helper per provider
+- Sample migrations per provider: [runners/samples/Hyperbee.Migrations.{Provider}.Samples/](../../../runners/samples/)
+
+## Constraints
+
+- Multi-target `net8.0` / `net9.0` / `net10.0`. Tests must pass on all three.
+- ASCII-only docs.
+- No `global::` prefix in source.
+- No `Console.WriteLine` in production code; use `ILogger`.
+- All 4 providers must be done before v3.0 ships; partial scope is not viable.
+- Implementation order is locked: Aerospike -> MongoDB -> Couchbase -> OpenSearch (increasing canonicalization risk).
+- Contract changes follow R-P7: ADR-0019 amendment lands BEFORE the interface changes.
+- No `NullSquashStrategy` ships in v3.0; every provider has a real strategy.
+- Test counts must stay green at every phase boundary (last known: 1443/1443 unit, 87/88 integration with 1 self-skip to be removed in cleanup).
+
+## Phases
+
+### Phase 0: Foundation + Postgres-reference audit (~1 day)
+
+Read the Postgres squash implementation in detail, document its file:line shape, identify what's truly shared vs provider-specific, snapshot the strategy contract so future amendments are diffable.
+
+#### Task 0.1: Postgres-reference file:line walk ☑ COMPLETE 2026-05-11
+
+**Prerequisites:** Branch checked out; `dotnet build` clean.
+
+- Read each of the 10 Postgres squash source files in [src/Hyperbee.Migrations.Providers.Postgres/Squash/](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/).
+- For each file, record in a Phase 0 audit appendix at the bottom of this plan:
+  - Public-API surface (types + methods)
+  - Per-method approximate LOC
+  - Dependencies (shared squash contract types, provider client API, Roslyn, file I/O)
+  - What's "Postgres-specific glue" vs "could be shared via a base class" vs "shaped by the canonical pattern but provider-specific content"
+- Output: an `### Appendix A: Postgres reference shape` section at the bottom of this plan.
+
+**Completion criteria:** Appendix A exists with one entry per Postgres squash file; ambiguous shared-vs-specific cells flagged for Phase 1 resolution.
+
+#### Task 0.2: Contract snapshot ☑ COMPLETE 2026-05-11
+
+**Prerequisites:** Task 0.1 complete.
+
+- Capture the current `ISquashStrategy` / `ITopologySignature` / `IDataOpClassifier` / `ISnapshotCanonicalizer` / `ISquashVerifier` shapes (member list + signatures) in `### Appendix B: Strategy contract snapshot (2026-05-11)` at the bottom of this plan.
+- This snapshot becomes the diff baseline. Any phase that amends a contract type MUST update the snapshot and reference the ADR-0019 amendment number.
+
+**Completion criteria:** Appendix B exists with verbatim contract surfaces.
+
+#### Task 0.3: Per-provider introspection-API survey ☑ COMPLETE 2026-05-11
+
+**Prerequisites:** Task 0.1 complete.
+
+For each of the four target providers, document the introspection API the snapshot strategy will use, in `### Appendix C: Per-provider introspection surfaces`:
+
+- **Aerospike:** `Info.Request(node, "namespaces;sets;sindex;udf-list")` per ADR-0019 Phase 6 expansion notes. Identify the exact info-key set; sample the output format on a real container.
+- **MongoDB:** `db.runCommand({listCollections})`, `db.getCollection(...).getIndexes()`, schema validators via `options.validator`. Sample output against the test container.
+- **Couchbase:** `system:keyspaces`, `system:indexes`, Management API for bucket/scope settings. Sample N1QL output.
+- **OpenSearch:** `_index_template/*`, `_component_template/*`, `_index/<n>/_mapping`, `_index/<n>/_settings`, `_alias`, `_ism/policies`, `_ingest/pipeline`, painless scripts. Sample REST output.
+
+**Completion criteria:** Appendix C names the exact endpoints and sample-output shape for each provider.
+
+#### Task 0.4: Plan update + commit
+
+**Prerequisites:** 0.1 through 0.3 complete.
+
+Commit Phase 0 work; update plan checkboxes; update the project status memory to reflect Phase 0 done.
+
+### Phase 1: Aerospike squash codegen (R-P1, R-P5, R-P6, R-P8, R-P9) (~1 week)
+
+Low canonicalization risk. First non-Postgres pressure test of the strategy contract.
+
+#### Task 1.1: `AerospikeTopologySignature` (R-P1 partial)
+
+**Prerequisites:** Phase 0 done. Appendix B contract snapshot in place.
+
+Implement `Hyperbee.Migrations.Providers.Aerospike.Squash.AerospikeTopologySignature : ITopologySignature` capturing:
+
+- `SchemaVersion = 1`
+- `ProviderId = "aerospike"`
+- Properties: server major.minor; namespace name; replication-factor; default-ttl; nsup-period; memory-size; storage-engine (memory vs device); cluster-name
+
+Source: `Info.Request(node, "build;edition;namespace/{ns}")`.
+
+**Completion criteria:** Type compiles; `IsCompatibleWith` returns true for same-version-different-name comparison only when the topology actually matches; returns false with diagnostic on mismatch.
+
+#### Task 1.2: `AerospikeDataOpClassifier` (R-P1 partial, Roslyn-based)
+
+**Prerequisites:** Task 1.1 complete.
+
+Implement `AerospikeDataOpClassifier : IDataOpClassifier` (Roslyn syntax walker over migration source):
+
+- `_client.Put(...)` -> `IsDataOp = true`
+- `_client.Delete(...)` -> `IsDataOp = true`
+- `_client.Operate(...)` (write ops) -> `IsDataOp = true`
+- `_client.Touch(...)` -> `IsDataOp = true`
+- `_client.Get*`, `_client.Exists*`, `_client.Query*` (read-only) -> `IsDataOp = false`
+- `Info.Request(...)`, `Info.Reset(...)`, namespace/set/sindex management -> `IsDataOp = false`
+- Unknown call sites on `_client` (or `IAsyncClient`) -> `IsUnclassified = true`
+- Non-determinism scan per ADR-0019 A8: `DateTime.Now`, `Guid.NewGuid()`, `new Random()` without seed -> flag on the same classification record
+
+Reference the Postgres equivalent at [src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresDataOpClassifier.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresDataOpClassifier.cs) (133 LOC) for the Roslyn-walker shape.
+
+**Completion criteria:** Classifier correctly partitions a fixture migration class set into data-op / structural / unclassified; non-determinism scan flags the documented patterns.
+
+#### Task 1.3: `AerospikeStatementClassifier` (R-P1 partial, parser-driven)
+
+**Prerequisites:** Task 1.2 complete.
+
+Implement `AerospikeStatementClassifier` using the existing `AerospikeStatementParser` ([src/Hyperbee.Migrations.Providers.Aerospike/Parsers/AerospikeStatementParser.cs](../../../src/Hyperbee.Migrations.Providers.Aerospike/Parsers/AerospikeStatementParser.cs)):
+
+- `CREATE INDEX`, `DROP INDEX`, `CREATE SET`, `CREATE UDF`, `DROP UDF` -> structural
+- `INSERT INTO`, `DELETE FROM` (parser supports both as intent-only statements) -> data
+- Unknown statements -> unclassified
+
+Reference: [PostgresStatementClassifier.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresStatementClassifier.cs) (289 LOC).
+
+**Completion criteria:** Classifier returns expected `DataOpClassification` for each statement type in fixture resource content.
+
+#### Task 1.4: `AerospikeSnapshotCanonicalizer` (R-P1 partial)
+
+**Prerequisites:** Task 1.3 complete. Task 0.3 Appendix C documents the `Info.Request` output format.
+
+Implement `AerospikeSnapshotCanonicalizer : ISnapshotCanonicalizer`:
+
+- `Canonicalize(snapshot)`: parse the multi-line `Info.Request` output; strip ephemeral fields (current memory usage, current record count, tend-time stamps, sindex stats counters); sort sets / indexes / UDFs by name; normalize line endings to `\n`.
+- `EmitScript(canonicalContent)`: emit a `.statements` file using AQL-flavored syntax:
+  - `CREATE SET <ns>.<set>;` for each set
+  - `CREATE INDEX WAIT <name> ON <ns>.<set>(<bin>) [STRING|NUMERIC|GEO2DSPHERE];` for each secondary index
+  - `CREATE UDF <module> AS '<lua_source>';` for each UDF (if UDF capture is in scope; document if deferred)
+- Determinism contract: `Canonicalize(b) == Canonicalize(Canonicalize(b))` (idempotent)
+
+Reference: [PostgresSnapshotCanonicalizer.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresSnapshotCanonicalizer.cs) (135 LOC).
+
+**Completion criteria:** Canonicalizer is idempotent against fixture snapshots; `EmitScript` output parses cleanly through the existing `AerospikeStatementParser` (round-trip stable).
+
+#### Task 1.5: `InfoSnapshotStrategy` (R-P1 partial)
+
+**Prerequisites:** 1.1 through 1.4 complete.
+
+Implement `InfoSnapshotStrategy : ISquashStrategy` (`ProviderId = "aerospike"`):
+
+- `GenerateAsync(context, descriptors, options, ct)`:
+  1. Use the context's ephemeral Aerospike container (provided via `ISquashGenerationContext`).
+  2. Invoke the data-op classifier across the descriptor set; refuse with `SquashGenerationResult.Failed` if any unclassified call site is found and no `[StructuralOnly]` / `[DataMigration]` annotation overrides it (per ADR-0019 A5).
+  3. Apply each descriptor's UpAsync against the ephemeral container in order.
+  4. Capture the snapshot via `Info.Request(node, "namespaces;sets;sindex;udf-list")`.
+  5. Canonicalize via `AerospikeSnapshotCanonicalizer`.
+  6. Carry forward data ops verbatim per ADR-0019.
+  7. Emit a single `.statements` script via `EmitScript`.
+  8. Return `SquashGenerationResult.Generated` with the emitted content and topology signature.
+
+Reference: [PgDumpSnapshotStrategy.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PgDumpSnapshotStrategy.cs) (161 LOC). Note the Postgres reference uses an external tool (`pg_dump`); Aerospike uses the client SDK's `Info` API instead.
+
+**Completion criteria:** Strategy runs end-to-end against a Testcontainers Aerospike instance; emits a `.statements` file; carries forward data ops.
+
+#### Task 1.6: `AerospikeSquashVerifier` (R-P1 partial, A4 verification round)
+
+**Prerequisites:** Task 1.5 complete.
+
+Implement `AerospikeSquashVerifier : ISquashVerifier`:
+
+- Spin a second ephemeral Aerospike container (parallel to context's primary).
+- Apply the generated squash's `UpAsync` against the second container.
+- Capture both snapshots via `Info.Request`.
+- Canonicalize both via `AerospikeSnapshotCanonicalizer`.
+- Byte-compare.
+- On match: return `VerificationResult.Success`; tear down both containers.
+- On mismatch: return `VerificationResult.Failed` with diff summary; preserve container only when `options.KeepFailedContainer` is set (ADR-0019 A18).
+
+Reference: [PostgresSquashVerifier.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresSquashVerifier.cs) (153 LOC).
+
+**Completion criteria:** Verifier returns `Success` for a real fixture range; returns `Failed` with sensible diff when a canonicalizer bug is intentionally injected.
+
+#### Task 1.7: `AerospikeSquashGenerationContext` (R-P1 wiring)
+
+**Prerequisites:** 1.1 through 1.6 complete.
+
+Implement `AerospikeSquashGenerationContext : ISquashGenerationContext` -- the per-strategy plumbing wrapping the Testcontainers Aerospike instance, the `IAsyncClient`, and the topology signature.
+
+Reference: [PostgresSquashGenerationContext.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresSquashGenerationContext.cs) (83 LOC).
+
+**Completion criteria:** Context resolves cleanly through the squash CLI verb's DI wiring; `InfoSnapshotStrategy` and `AerospikeSquashVerifier` accept it without casting.
+
+#### Task 1.8: Unit tests per component (R-P8)
+
+**Prerequisites:** Task 1.7 complete.
+
+Add unit-test classes to `tests/Hyperbee.Migrations.Squash.Tests/` (or per-provider subdirectory):
+
+- `AerospikeTopologySignatureTests` -- `IsCompatibleWith` semantics across version diffs, missing axes, schema-version bumps
+- `AerospikeDataOpClassifierTests` -- fixture migration classes with mixed data / structural / unknown call sites; non-determinism flag cases
+- `AerospikeStatementClassifierTests` -- each supported statement kind; unknown-statement fallback
+- `AerospikeSnapshotCanonicalizerTests` -- idempotence, ephemeral-field stripping, sort-order determinism, line-ending normalization
+- `InfoSnapshotStrategyTests` -- mocked context; refuse-on-unclassified; happy path
+- `AerospikeSquashVerifierTests` -- success path; injected-mismatch failure path
+
+**Completion criteria:** ~30-40 new unit tests; all green on net8 / net9 / net10.
+
+#### Task 1.9: Determinism gate integration test (R-P5)
+
+**Prerequisites:** Task 1.8 complete.
+
+Add `AerospikeSquashDeterminismTests` (integration test, may be `[TestCategory("LocalOnly")]` if container wall-clock exceeds CI budget):
+
+- Fixture: a deterministic migration range (no Now/NewGuid/Random in fixtures).
+- Run `InfoSnapshotStrategy.GenerateAsync` twice against fresh containers.
+- SHA-256 both emitted scripts.
+- Assert byte-equal.
+
+**Completion criteria:** Test passes; failure mode is informative (names byte offset of first divergence).
+
+#### Task 1.10: Verification-round integration test (R-P6)
+
+**Prerequisites:** Task 1.9 complete.
+
+Add `AerospikeSquashVerificationTests`:
+
+- Spin a primary Aerospike container.
+- Apply migrations 1000..2000 from the Aerospike sample.
+- Run `InfoSnapshotStrategy.GenerateAsync`.
+- Run `AerospikeSquashVerifier.VerifyAsync`.
+- Assert `VerificationResult.Success`.
+
+**Completion criteria:** Test passes against the real Aerospike Testcontainers fixture; both containers torn down on success.
+
+#### Task 1.11: CLI integration test (R-P9)
+
+**Prerequisites:** Task 1.10 complete.
+
+Add `AerospikeSquashCliTests`:
+
+- Invoke `dotnet hyperbee-migrations squash --provider aerospike --range 1000..2000 --output <temp>/Squash_2000.statements` against the Aerospike sample assembly.
+- Assert the file exists.
+- Re-run the CLI; SHA-256 both files; assert byte-equal (C12 across CLI invocations).
+- Run the verification round against the produced file.
+
+**Completion criteria:** Test passes; CLI exits 0; output file is byte-stable.
+
+#### Task 1.12: ADR-0019 amendment (R-P7, only if contract changed)
+
+**Prerequisites:** 1.1 through 1.11 complete.
+
+If implementing Aerospike surfaced a gap in the strategy contract (e.g., `ISquashVerifier` needed an additional callback that Postgres didn't), write an ADR-0019 amendment Axx documenting:
+
+- Surfacing provider: Aerospike
+- The gap (concrete code symptom)
+- The proposed contract change
+- Source-compatibility for the Postgres implementation (and the not-yet-shipped MongoDB / Couchbase / OpenSearch implementations)
+
+Update Appendix B (contract snapshot) to reflect the new shape.
+
+**Completion criteria:** If no contract change occurred, document "No contract changes for Aerospike" in the phase boundary memo and move on. If a contract change occurred, ADR-0019 amendment is committed BEFORE the interface modification.
+
+#### Task 1.13: Phase 1 boundary
+
+**Prerequisites:** All preceding Phase 1 tasks complete.
+
+- Run the full test suite (unit + integration where feasible). Confirm green.
+- Rebase onto `origin/main`; push.
+- Update plan checkboxes.
+- Update `project_squash_v1_progress.md` memory.
+- Brief written summary of Phase 1 outcomes in the plan's Learnings Ledger at the bottom.
+
+**Completion criteria:** Tests green; branch pushed; memory updated; ready for Phase 2 prerequisites.
+
+### Phase 2: MongoDB squash codegen (R-P2, R-P5-R-P9) (~1.5 weeks)
+
+Medium-High canonicalization risk. BSON-vs-JSON, index `v` field per server version, replica-set vs standalone topology.
+
+**Tasks 2.1 - 2.13 mirror Phase 1's shape**, with these per-provider differences:
+
+- **2.1 `MongoDBTopologySignature`** captures: server major.minor, feature compatibility version (FCV), replica-set vs standalone, default read/write concern, storage engine.
+- **2.2 `MongoDBDataOpClassifier`** classifies `IMongoCollection<>.Insert*`, `Update*`, `Delete*`, `BulkWrite` as data ops; `Database.CreateCollectionAsync`, `Indexes.CreateOneAsync` as structural.
+- **2.3 `MongoDBStatementClassifier`** uses the existing `MongoStatementParser` ([src/Hyperbee.Migrations.Providers.MongoDB/Parsers/MongoStatementParser.cs](../../../src/Hyperbee.Migrations.Providers.MongoDB/Parsers/MongoStatementParser.cs)); covers `CREATE COLLECTION`, `CREATE [UNIQUE] INDEX ON db.col(...)`, `DROP COLLECTION`, `DROP INDEX`, `INSERT INTO` (intent).
+- **2.4 `MongoDBSnapshotCanonicalizer`**:
+  - Capture via `db.runCommand({listCollections})` + `getIndexes()` per collection + collection-options validator
+  - Strip ephemeral fields: `idIndex.v`, `idIndex.ns`, `info.uuid`, `info.readOnly`
+  - **Strip `v` field on each index** (server-version-dependent per the requirements doc Open Question); document the rationale inline in the canonicalizer
+  - Sort collections + indexes alphabetically
+  - Emit script form: `CREATE COLLECTION db.col`, `CREATE [UNIQUE] INDEX name ON db.col(field1, field2)`
+- **2.5 `IntrospectionSnapshotStrategy : ISquashStrategy`** orchestrates the capture; uses the existing `Testcontainers.MongoDb` helper.
+- **2.6 `MongoDBSquashVerifier`** runs the two-container byte-equal verification round.
+- **2.7-2.12** mirror Phase 1.
+- **2.13** phase boundary.
+
+**Cross-provider participation check:** if Phase 1 amended `ITopologySignature` (e.g., to add a "feature-compat" axis), MongoDB's implementation MUST use the amended shape; the audit trail is in Appendix B.
+
+### Phase 3: Couchbase squash codegen (R-P3, R-P5-R-P9) (~2 weeks)
+
+High canonicalization risk. CE-vs-EE differences, parameterized N1QL, deferred-build indexes.
+
+**Tasks 3.1 - 3.13 mirror Phase 1's shape**, with these per-provider differences:
+
+- **3.1 `CouchbaseTopologySignature`** captures: server major.minor, edition (CE vs EE), index service GSI vs N1QL-built-in, bucket type, replica count, memory quota.
+- **3.2 `CouchbaseDataOpClassifier`** classifies `Cluster.QueryAsync` (parameterized N1QL: must inspect the SQL for INSERT/UPDATE/DELETE/MERGE), `Bucket.DefaultCollection().UpsertAsync` / `InsertAsync` / `RemoveAsync` as data; bucket/scope/collection/index management as structural.
+- **3.3 `CouchbaseStatementClassifier`** uses the existing Couchbase `StatementParser` ([src/Hyperbee.Migrations.Providers.Couchbase/Parsers/StatementParser.cs](../../../src/Hyperbee.Migrations.Providers.Couchbase/Parsers/StatementParser.cs)).
+- **3.4 `CouchbaseSnapshotCanonicalizer`**:
+  - Capture via `system:keyspaces`, `system:indexes`, Management API for bucket/scope settings
+  - Strip ephemeral fields: `last_rebalance_timestamp`, `index.id`, `bucket.docCount`
+  - **Surface deferred-build indexes**: emit them as deferred CREATE + a trailing BUILD INDEX (per R-P3 Open Question)
+  - Sort keyspaces + indexes deterministically
+  - Emit script form: `CREATE BUCKET`, `CREATE SCOPE`, `CREATE COLLECTION`, `CREATE INDEX ... USING GSI WITH {...}`, `BUILD INDEX`
+- **3.5 `HybridStrategy : ISquashStrategy`** combines the two capture sources (N1QL system tables + Management API).
+- **3.6 `CouchbaseSquashVerifier`** verifies with awareness of deferred-build async behavior (the apply-phase must trigger BUILD INDEX before the snapshot is captured).
+- **3.7-3.12** mirror Phase 1.
+- **3.13** phase boundary.
+
+**Cross-provider participation check:** the Open Question on parameterized N1QL data-op classification (currently surfaced in R-P3) MUST be resolved by Phase 3 Task 3.2; the resolution may amend the classifier contract.
+
+### Phase 4: OpenSearch squash codegen (R-P4, R-P5-R-P9) (~2 weeks)
+
+Highest canonicalization risk. Component templates, ISM policies, painless scripts, ingest pipelines, alias graphs.
+
+#### Task 4.0: Painless-equivalence spike (RISKIEST)
+
+**Prerequisites:** Phase 3 done. Phase 4 has not started.
+
+The single biggest unknown in v3.0. The requirements doc Open Question flags painless byte-equivalence as "exploring" with a fallback. Validate the chosen approach against real-world painless scripts BEFORE committing the full Phase 4 implementation.
+
+Spike scope:
+
+- Survey 10-20 painless scripts from existing OpenSearch migration samples (or open-source examples if internal scripts are unavailable).
+- Test the byte-stable canonicalization rule against them: do the canonicalized outputs round-trip through OpenSearch's painless compiler equivalently?
+- If byte-stable canonicalization fails, validate the `[PreservePainlessVerbatim]` annotation fallback: operator commits the exact byte form, and the canonicalizer asserts it has not drifted.
+- Spike output: a short written conclusion (under one page) of "byte-stable rule works for these N scripts" or "fall back to PreservePainlessVerbatim" with rationale.
+
+**Completion criteria:** Spike conclusion written; Phase 4's canonicalizer task (4.4) knows which path to take. Spike artifacts go in `spikes/opensearch-painless/` (delete after Phase 4 lands).
+
+#### Tasks 4.1 - 4.13: per-provider implementation
+
+Same shape as Phase 1's tasks but for OpenSearch.
+
+- **4.1 `OpenSearchTopologySignature`** captures: cluster major.minor, distribution (OpenSearch CE vs AWS Managed), ISM plugin version, ingest-pipeline plugin presence.
+- **4.2 `OpenSearchDataOpClassifier`** classifies `_bulk`, `Index`, `Update`, `Delete` as data ops; index/template/policy management as structural.
+- **4.3 `OpenSearchStatementClassifier`** uses the existing `OpenSearchStatementParser` ([src/Hyperbee.Migrations.Providers.OpenSearch/Internal/Grammar/OpenSearchStatementParser.cs](../../../src/Hyperbee.Migrations.Providers.OpenSearch/Internal/Grammar/OpenSearchStatementParser.cs)); covers `CREATE INDEX WITH BODY`, `MIGRATE INDEX`, `ALIAS SWAP`, `CREATE TEMPLATE`, `CREATE COMPONENT`, `CREATE POLICY`, `APPLY POLICY`, `REFRESH`, `WAIT FOR HEALTH`, `REINDEX FROM ... TO ...`.
+- **4.4 `OpenSearchSnapshotCanonicalizer`** -- the work product of Task 4.0 spike:
+  - Capture via REST: `_index_template/*`, `_component_template/*`, `_index/<n>/_mapping`, `_index/<n>/_settings`, `_alias`, `_ism/policies`, `_ingest/pipeline`
+  - Strip ephemeral fields: `creation_date`, `uuid`, `version`
+  - Sort indexes + templates + policies deterministically
+  - Painless: apply the spike conclusion (byte-stable normalize OR PreservePainlessVerbatim fallback)
+  - Emit script form: `CREATE TEMPLATE`, `CREATE COMPONENT`, `CREATE INDEX ... WITH BODY @body.json`, `CREATE POLICY ...`, `BODIES { ... }` header for inline bodies
+- **4.5 `RestStateDiffStrategy : ISquashStrategy`** orchestrates capture + diff.
+- **4.6 `OpenSearchSquashVerifier`** runs on a single-node cluster (multi-node verification is `[TestCategory("LocalOnly")]` per existing convention).
+- **4.7-4.12** mirror Phase 1.
+- **4.13** phase boundary.
+
+**Cross-provider participation check:** by Phase 4 the contract has been pressure-tested against three providers; if a gap surfaces here, the ADR-0019 amendment must be done with extra care -- back-propagating a change to three already-shipped implementations is expensive.
+
+### Phase 5: Release prep (~1 week)
+
+#### Task 5.1: ADR sweep
+
+- Promote ADR-0019 to Accepted (it has been Proposed throughout the squash work; with all 5 providers shipped, it's fully validated).
+- Promote ADR-0023 to Accepted (assuming the multi-runner composition plan has landed; otherwise note its status in the v3.0 release notes).
+- Verify each per-phase ADR amendment (Task X.12) is documented + numbered correctly in ADR-0019.
+- Verify `docs/decisions/INDEX.md` shows current statuses.
+
+#### Task 5.2: CHANGELOG sweep
+
+- Update `CHANGELOG.md` to reflect:
+  - All 5 providers have squash codegen (replace any residual "Postgres only" language; this should already be done from earlier cleanup but re-verify)
+  - List the per-provider strategy types (`InfoSnapshotStrategy`, `IntrospectionSnapshotStrategy`, `HybridStrategy`, `RestStateDiffStrategy`)
+  - List the new exception types if any were added per ADR-0019 amendments
+  - List any contract changes from Phase 1-4 ADR amendments
+
+#### Task 5.3: Documentation reconciliation
+
+- Walk `docs/site/squashing-migrations.md`; verify every per-provider claim matches what shipped.
+- Walk each `docs/site/{provider}.md`; verify the Statement format section + statement summary tables reflect any new statement kinds shipped by the canonicalizer.
+- Walk the per-provider package READMEs; verify install / quick-start examples still compile.
+- Update `docs/plans/active/migration-squashing-v1.md`: mark Phase 6 fully DONE (Postgres) + cross-link to this plan + mark this plan's Phases 1-5 done.
+
+#### Task 5.4: Release dry run
+
+- `dotnet pack` the full solution; inspect NuGet metadata for each package (Title, Description, Tags, ReadmeFile -- the P0 cleanup items should have fixed these already; verify).
+- Verify NuGet packages would publish cleanly (no NU1903, no NU1701).
+- Verify `multi_node_tests.yml` workflow state matches operational reality (workflow_dispatch only, no nightly cron).
+- Verify `pack_publish.yml` is ready to trigger on the v3.0.0 tag.
+
+#### Task 5.5: Test suite full pass
+
+- Run unit tests on net8 / net9 / net10. Confirm green.
+- Run integration tests (non-LocalOnly) on net10. Confirm green.
+- Run LocalOnly tests locally. Confirm green.
+- Capture pass-rate snapshot in the plan's Learnings Ledger.
+
+#### Task 5.6: PR to main + tag v3.0.0
+
+- Open PR `devs/bfarmer/provider-squash` -> `main`.
+- After CI passes: squash-merge to main, tag `v3.0.0`, `pack_publish.yml` fires automatically.
+- Verify NuGet packages appear on nuget.org.
+
+## Dependencies (cross-task)
+
+- Phase 0 blocks Phase 1.
+- Phase 1 blocks Phase 2 (the strategy contract may amend; subsequent providers consume the amended shape).
+- Phase 2 blocks Phase 3 (same reason).
+- Phase 3 blocks Phase 4 (same reason).
+- Phase 4 blocks Phase 5.
+- Within each per-provider phase, tasks N.1 -> N.2 -> N.3 -> N.4 -> N.5 -> N.6 -> N.7 in sequence (each builds on the previous); tasks N.8 (unit tests) can interleave with N.1-N.7 (write the test alongside each component); N.9 (determinism gate) and N.10 (verification round) and N.11 (CLI test) come after N.7; N.12 (ADR amendment) is conditional; N.13 closes the phase.
+
+## Riskiest task
+
+**Task 4.0 -- OpenSearch painless-equivalence spike.** If the spike conclusion is "byte-stable normalization doesn't work for our corpus," the fallback (`[PreservePainlessVerbatim]`) requires operator action on every squash containing painless scripts. That's an operational regression vs the implicit promise of "squash just works." The spike must happen BEFORE Phase 4 Task 4.4 (canonicalizer); if both paths fail, v3.0 needs a release-scope decision (deferred painless support is not on the table per the locked rule, but the contract may need an explicit annotation pathway documented at C12-test time).
+
+## Test plan per phase
+
+| Phase | Unit tests | Integration tests | Determinism gate | Verification round | CLI test |
+|---|---|---|---|---|---|
+| 0 | n/a | n/a | n/a | n/a | n/a |
+| 1 (Aerospike) | ~30-40 new | green on all net TFMs | passes | passes | passes |
+| 2 (MongoDB) | ~30-40 new | green | passes | passes | passes |
+| 3 (Couchbase) | ~30-40 new | green | passes | passes | passes |
+| 4 (OpenSearch) | ~30-40 new | green | passes | passes | passes |
+| 5 (release prep) | regression-test full suite | regression-test full suite | regression-test | regression-test | regression-test |
+
+Cumulative test additions over Phases 1-4: ~120-160 new unit tests + 16 new integration tests (4 per provider: determinism gate, verification round, CLI test, plus the unit-tests-by-component split).
+
+## ADR compliance check
+
+| Task | Honors ADR | How |
+|---|---|---|
+| All Phase 1-4 Task .1 (TopologySignature) | ADR-0019 A14 (topology schema versioning) | `SchemaVersion = 1`; documented compatibility-rule semantics |
+| All Phase 1-4 Task .2 (DataOpClassifier) | ADR-0019 A5 (default-deny annotation) + A8 (non-determinism scan) | Roslyn walker; unclassified -> refuse without `[DataMigration]` / `[StructuralOnly]` |
+| All Phase 1-4 Task .4 (SnapshotCanonicalizer) | ADR-0019 A12 / C12 (generation determinism) + ADR-0022 (script form) | `Canonicalize` is idempotent; `EmitScript` emits `.statements` script form |
+| All Phase 1-4 Task .5 (SnapshotStrategy) | ADR-0019 destructive model + A4 (verification round) + A6 (transitivity) | Captures equivalent end state; emits `Kind=Squash` records with `Replaces=[N..M]` |
+| All Phase 1-4 Task .6 (SquashVerifier) | ADR-0019 A4 (verification round) + A18 (container lifecycle) | Two-container byte-equal; preserves container only on `--keep-failed-container` |
+| Phase 1-4 Task .9 (determinism gate test) | ADR-0019 A12 / C12 | Re-runs codegen, asserts byte-equal hash |
+| Phase 1-4 Task .12 (ADR amendment if contract changed) | ADR-0019 R-P7 / contract evolution rule | Amendment lands before interface change |
+| Phase 5 Task 5.1 (ADR sweep) | ADR-0019 + 0020 + 0021 + 0022 | Promote Accepted; verify amendment trail |
+
+## Risk register
+
+| Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| OpenSearch painless byte-equivalence proves intractable for the corpus | Medium-High | Forces `[PreservePainlessVerbatim]` annotation pathway; degrades the "squash just works" promise | Task 4.0 spike early; document the fallback contract in ADR-0019 amendment with explicit operator workflow |
+| Contract amendment in Phase 1 forces rework on the Postgres reference | Low-Medium | Postgres squash code changes alongside the contract; existing tests must stay green | R-P7 -- amendment lands first; reference implementation updates as part of the same change set |
+| Testcontainers Couchbase cluster startup exceeds CI budget | Medium | Phase 3 verification-round test demoted to `[TestCategory("LocalOnly")]` | Document the demotion in the test class header (reason + when to revisit); add a comparable smoke test that runs on CI without spinning the full cluster |
+| MongoDB index `v` field strip breaks against a server version we didn't test | Low | A squash captured on server X applies non-equivalently on server Y | Phase 2 Task 2.4 + R-P5 test: parameterize the determinism gate by server version; document in the canonicalizer header which versions are validated |
+| The 8-10 week timeline slips | Medium | v3.0 ships later than hoped | Honest weekly status updates in the plan's Learnings Ledger; the locked rule means scope doesn't trade for time |
+| A contract amendment in Phase 3 or 4 breaks already-shipped Phase 1/2 code | Medium | Test failures in already-done providers; rework required | Amendments must include source-compat note; Phase 5 Task 5.5 runs all tests as a final gate |
+
+## Status
+
+- Phase 0: not started
+- Phase 1 (Aerospike): not started
+- Phase 2 (MongoDB): not started
+- Phase 3 (Couchbase): not started
+- Phase 4 (OpenSearch): not started
+- Phase 5 (release prep): not started
+
+## Effort
+
+Per the velocity calibration ([feedback_velocity_calibration.md](../../../../Users/bfarm/.claude/projects/c--Development-hyperbee-migrations/memory/feedback_velocity_calibration.md)): Aerospike provider implementation took 1 day; Couchbase under a week. Squash codegen is heavier than a new provider because it's reading external state + emitting canonical scripts + per-component test coverage.
+
+Estimates:
+
+- **Phase 0:** 1 day
+- **Phase 1 (Aerospike):** ~1 week (Low canonicalization risk; first contract pressure test)
+- **Phase 2 (MongoDB):** ~1.5 weeks (Medium-High risk; BSON / `v` field)
+- **Phase 3 (Couchbase):** ~2 weeks (High risk; CE-vs-EE, parameterized N1QL, deferred indexes)
+- **Phase 4 (OpenSearch):** ~2 weeks (Highest risk; spike + canonicalization across 5+ resource types)
+- **Phase 5 (release prep):** ~1 week
+
+**Total: ~8-10 weeks** of single-developer focused work.
+
+## Learnings Ledger
+
+(Updated after each phase by `/nop:implement`.)
+
+- *Phase 0:* ☑ COMPLETE 2026-05-11 — Postgres reference (10 files, ~1700 LOC) audited; 5-component contract surface snapshotted as diff baseline (per R-P7); per-provider introspection surfaces sized + risk-classified (Aerospike Low / Mongo Medium / Couchbase Medium-High / OpenSearch High). Findings: (1) `StatementSplitter` is a Postgres-specific helper — the four JSON-bodied providers iterate structured documents directly, no splitter needed; (2) `PostgresMigrationSourceScanner` (Roslyn-based non-determinism scan) is provider-neutral and could be hoisted to the core library in Phase 5 if a second provider needs it verbatim — flagging for cross-provider participation review during Phase 1; (3) only the Postgres record store has any introspection footprint today (all 4 NoSQL record stores are write-only) — each provider's strategy must add fresh introspection call sites; (4) Couchbase + OpenSearch already have per-store locking primitives suitable for verification rounds (mutex + CAS create); Aerospike + MongoDB rely on the migration-scope ledger lock. See Appendices A/B/C below.
+- *Phase 1:* [pending]
+- *Phase 2:* [pending]
+- *Phase 3:* [pending]
+- *Phase 4:* [pending]
+- *Phase 5:* [pending]
+
+## Appendices
+
+### Appendix A: Postgres reference shape
+
+Populated 2026-05-11 from a read-only walk of `src/Hyperbee.Migrations.Providers.Postgres/Squash/` (10 files).
+
+| File | LOC | Public types | Key methods | Pattern (1 line) |
+|---|---|---|---|---|
+| [PostgresTopologySignature.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresTopologySignature.cs#L28) | 209 | `PostgresTopologySignature` (sealed record) | `IsCompatibleWith`, static `CaptureAsync(NpgsqlConnection, CT)`, private `ProbeLocaleProvidersAsync`, `ListExtensionsAsync` | Captures server major/minor + extensions + locale axes via system-catalog probes; exact-match major, exact-match extension set. |
+| [PostgresDataOpClassifier.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresDataOpClassifier.cs#L31) | 133 | `PostgresDataOpClassifier` | `Classify(string)`, static `ScanNonDeterminism(string)` | Regex-based DML/DDL/DO-block classifier with non-determinism scan (now/random/uuid/etc.); default-deny on unclassified. |
+| [PostgresStatementClassifier.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresStatementClassifier.cs#L23) | 289 | `ClassifiedStatement` (record), `PostgresStatementClassifier` (static) | `Classify(string)` returning `ClassifiedStatement(Kind, SchemaName, ObjectName, Body, Detail)` | Per-statement kind/schema/name extraction via regex cascade including DROP family + ATTACH PARTITION + ADD CONSTRAINT specializations. |
+| [PostgresStatementKind.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresStatementKind.cs#L8) | 59 | `PostgresStatementKind` (byte enum) | (none) | Enumeration of ~40 Postgres-specific statement kinds (CREATE/ALTER/DROP families + preamble + GRANT/REVOKE). |
+| [PostgresStatementSplitter.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresStatementSplitter.cs#L20) | 251 | `PostgresStatementSplitter` (static) | `Split(string)`, private `StripPsqlDirectives`, `TryReadDollarTag`, `MatchesDollarTag` | Manual lexer that splits SQL on `;` while respecting single/double quotes, nested `/* */` comments, `--` line comments, and `$tag$...$tag$` dollar-quoted bodies; strips `\restrict` psql directives. |
+| [PostgresSnapshotCanonicalizer.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresSnapshotCanonicalizer.cs#L29) | 135 | `PostgresSnapshotCanonicalizer` | `Canonicalize(string)`, `EmitScript(string)` | Line-wise filter that strips SET preamble, search_path, psql directives, pg_dump banners; collapses blank runs; refuses `CREATE INDEX CONCURRENTLY`. |
+| [PgDumpSnapshotStrategy.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PgDumpSnapshotStrategy.cs#L35) | 161 | `PgDumpSnapshotStrategy` | `GenerateAsync(context, descriptors, options, CT)` | Orchestrator: capture topology -> CaptureSnapshotAsync (delegate) -> canonicalize -> classify all statements -> append setval block -> emit Generated. |
+| [PostgresSquashVerifier.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresSquashVerifier.cs#L33) | 153 | `PostgresSquashVerifier` | `VerifyAsync(context, generated, CT)`, private `SummarizeDiff` | Two-snapshot byte-equality verifier; injects `CaptureFromGeneratedAsync` delegate to replay the generated squash, then canonicalize+compare with historic capture. |
+| [PostgresSquashGenerationContext.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresSquashGenerationContext.cs#L25) | 83 | `PostgresSquashGenerationContext`, `SnapshotCaptureRequest` (record), `SnapshotCaptureResult` (record) | constructor; exposes `DataSource` (NpgsqlDataSource) + `CaptureSnapshotAsync` delegate | Concrete context bundling the live `NpgsqlDataSource` and a caller-injected capture delegate; carries `SquashName`/`SquashVersion` from the base interface. |
+| [PostgresMigrationSourceScanner.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresMigrationSourceScanner.cs#L31) | 223 | `PostgresMigrationSourceScanner` (static), `ClassVerdict` (record) | `Scan(sourceRoot)`, private `ClassifyClass`, `ClassExtendsMigration`, `IsAttributeName`, `MemberAccessName` | Roslyn-based source walker that emits a per-class `RequiresAnnotation` verdict; flags string-literal DML + .NET non-determinism call sites (DateTime.Now, Guid.NewGuid, new Random()). |
+
+**Provider author's port template (6-component shape).** Every provider must ship five contract-bearing components plus one or more provider-internal helpers:
+
+1. **TopologySignature** (`ITopologySignature`) -- captures the deterministic axes of the live deployment that govern codegen reproducibility: server major version, feature flags / extensions / plugins, locale or encoding, deployment topology (single-node vs replica vs cluster). Provides `CaptureAsync` against the live client. Implements `IsCompatibleWith` with strict equality on the hard axes and tolerant comparison on soft axes (minor versions, build numbers). `SchemaVersion` bumped on shape changes per R-P7.
+2. **DataOpClassifier** (`IDataOpClassifier`) -- classifies a single statement string (or call-site string for code-only migrations) as `IsDataOp` / `RequiresPreservation` / `IsUnclassified`. Provider-native verbs and a non-determinism scan that flags time/random/identity calls. Default-deny: anything ambiguous returns `IsUnclassified=true` so the CLI refuses until the migration is annotated.
+3. **Snapshot strategy** (`ISquashStrategy`) -- the orchestrator. Captures the live topology, invokes the (delegate-injected) capture function for snapshot B, runs it through the canonicalizer, classifies every statement to surface diagnostics, appends any post-state-restoration content (Postgres: setval; others: per-provider analogue), and returns `SquashGenerationResult.Generated` (or `Failed` on refusal). Per ADR-0019 the capture function itself is delegate-injected to keep the runtime free of test-container deps.
+4. **SnapshotCanonicalizer** (`ISnapshotCanonicalizer`) -- normalizes captured bytes into a byte-stable form. `Canonicalize(snapshot)` must be idempotent. `EmitScript(content)` produces the final script-form output for embedding into the squash migration's resource file. This is the load-bearing function for the C12 determinism gate.
+5. **SquashVerifier** (`ISquashVerifier`) -- runs the snapshot-A vs snapshot-B byte-compare. Re-applies the historical migration range to a fresh container (via the same context.CaptureSnapshotAsync delegate), applies the generated squash to a second fresh container (via an additional delegate, e.g., `CaptureFromGeneratedAsync`), canonicalizes both, asserts byte equality, and on mismatch summarizes a diff.
+6. **SquashGenerationContext** (concrete `ISquashGenerationContext`) -- carries the live client (NpgsqlDataSource / IMongoClient / etc.) plus the caller-injected capture delegate(s). Postgres also defines `SnapshotCaptureRequest`/`SnapshotCaptureResult` records to type the delegate's parameters.
+
+**Provider-internal helpers (not required by the contract):**
+
+- **StatementKind enum** ([PostgresStatementKind.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresStatementKind.cs)) -- Postgres-specific enumeration; each provider's analogue will be radically different (Aerospike: namespace/set/index/UDF; Mongo: collection/index/view/role; Couchbase: bucket/scope/collection/index/UDF; OpenSearch: index/template/component-template/pipeline/policy/alias).
+- **StatementClassifier** ([PostgresStatementClassifier.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresStatementClassifier.cs)) -- emits the per-statement `(Kind, SchemaName, ObjectName)` tuple consumed by the strategy. For JSON-bodied providers (Mongo/OpenSearch/Couchbase) this is a JSON descriptor walk rather than regex.
+- **StatementSplitter** ([PostgresStatementSplitter.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresStatementSplitter.cs)) -- only relevant for providers whose snapshot is a script-form text dump. Aerospike, Mongo, Couchbase, OpenSearch all introspect into JSON / structured documents and likely don't need a splitter at all -- they iterate objects directly.
+- **MigrationSourceScanner** ([PostgresMigrationSourceScanner.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresMigrationSourceScanner.cs)) -- Roslyn walker; the .NET non-determinism scan is provider-neutral and the same scanner could be hoisted to the core library or copied per-provider with adjusted DML pattern.
+
+### Appendix B: Strategy contract snapshot (2026-05-11)
+
+All paths are under `src/Hyperbee.Migrations/Squash/`. Per R-P7, any change to a signature on this surface requires an amended ADR-0019 before the code change lands.
+
+**[ISquashStrategy.cs](../../../src/Hyperbee.Migrations/Squash/ISquashStrategy.cs#L18)** -- provider-supplied generator entry point.
+- `string ProviderId { get; }` -- matches the topology signature's ProviderId.
+- `Task<SquashGenerationResult> GenerateAsync(ISquashGenerationContext context, IReadOnlyList<MigrationDescriptor> descriptors, SquashGenerationOptions options, CancellationToken cancellationToken = default)` (line 30) -- generate a squash from the supplied descriptor range; returns Generated on success or Failed on refusal.
+
+**[ITopologySignature.cs](../../../src/Hyperbee.Migrations/Squash/ITopologySignature.cs#L22)** -- captures axes that affect codegen determinism.
+- `int SchemaVersion { get; }` (line 28) -- signature shape version, bumped on axis changes per R-P7 / ADR-0019 A14.
+- `string ProviderId { get; }` (line 34) -- keys the verification cache and refuses cross-provider compares early.
+- `IReadOnlyDictionary<string, string> Properties { get; }` (line 40) -- ordered, deterministic axis bag (no timestamps, no machine identity).
+- `bool IsCompatibleWith(ITopologySignature other, out string reason)` (line 47) -- returns true when topologies are compatible; on false, `reason` is a human-readable diagnostic.
+
+**[IDataOpClassifier.cs](../../../src/Hyperbee.Migrations/Squash/IDataOpClassifier.cs#L26)** -- provider-flavored data-op classifier.
+- `DataOpClassification Classify(string statementOrCallSite)` (line 33) -- provider chooses how to parse; the input is a verbatim statement OR stringified call-site location.
+
+**[DataOpClassification.cs](../../../src/Hyperbee.Migrations/Squash/DataOpClassification.cs#L34)** -- record returned by classifier.
+- `sealed record DataOpClassification(bool IsDataOp, bool RequiresPreservation, bool IsUnclassified, bool RequiresAnnotation, string EmissionHint = null)` (line 34).
+
+**[ISnapshotCanonicalizer.cs](../../../src/Hyperbee.Migrations/Squash/ISnapshotCanonicalizer.cs#L23)** -- normalization for byte-stable codegen.
+- `string ProviderId { get; }` (line 26).
+- `string Canonicalize(string snapshot)` (line 32) -- must be idempotent: `Canonicalize(b) == Canonicalize(Canonicalize(b))`.
+- `string EmitScript(string canonicalContent)` (line 40) -- final script-form output for embedding; must be byte-stable for the C12 gate.
+
+**[ISquashVerifier.cs](../../../src/Hyperbee.Migrations/Squash/ISquashVerifier.cs#L17)** -- runs the A/B byte-equality round.
+- `string ProviderId { get; }` (line 20).
+- `Task<VerificationResult> VerifyAsync(ISquashGenerationContext context, SquashGenerationResult.Generated generated, CancellationToken cancellationToken = default)` (line 26).
+- `abstract record VerificationResult` (line 33) with variants `Success(ITopologySignature Topology, TimeSpan Elapsed)` and `Failed(string Detail, string DiffSummary, Exception Cause = null)`.
+
+**[ISquashGenerationContext.cs](../../../src/Hyperbee.Migrations/Squash/ISquashGenerationContext.cs#L17)** -- minimal execution context. Providers downcast to a concrete shape.
+- `string ProviderId { get; }` (line 20).
+- `string SquashName { get; }` (line 27) -- caller-supplied id prefix.
+- `long SquashVersion { get; }` (line 30) -- version the new migration will declare via `[Migration]`.
+- Postgres concrete shape ([PostgresSquashGenerationContext.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresSquashGenerationContext.cs#L25)) adds `NpgsqlDataSource DataSource` and `Func<SnapshotCaptureRequest, CancellationToken, Task<SnapshotCaptureResult>> CaptureSnapshotAsync`. Each provider must mirror this: a live client property + one or more `Func<TRequest, CT, Task<TResult>>` capture delegates.
+
+**[SquashGenerationResult.cs](../../../src/Hyperbee.Migrations/Squash/SquashGenerationResult.cs#L12)** -- two-variant outcome.
+- `abstract record SquashGenerationResult` (line 12).
+- `sealed record Generated(string Content, ContentKind Kind, ContentEncoding Encoding, IReadOnlyList<long> Replaces, IReadOnlyList<string> Diagnostics, ITopologySignature Topology)` (line 21).
+- `sealed record Failed(string Detail, Exception Cause = null)` (line 33). Per ADR-0019 A11 the earlier `Unsupported` variant was removed.
+
+**[SquashGenerationOptions.cs](../../../src/Hyperbee.Migrations/Squash/SquashGenerationOptions.cs#L8)** -- caller-supplied knobs.
+- `long? LowerBound { get; init; }` (line 15).
+- `long? UpperBound { get; init; }` (line 22).
+- `IReadOnlyList<string> AcceptStranding { get; init; }` (line 30).
+- `bool SkipVerifyForTestingOnly { get; init; }` (line 39) -- testing-only; CLI does not expose it.
+
+**[SquashStrategyDescriptor.cs](../../../src/Hyperbee.Migrations/Squash/SquashStrategyDescriptor.cs#L24)** -- composite that DI registers as a single unit.
+- `sealed record SquashStrategyDescriptor(ITopologySignature TopologySignature, IDataOpClassifier DataOpClassifier, ISquashStrategy Generator, ISquashVerifier Verifier, ISnapshotCanonicalizer Canonicalizer)` (line 24).
+- `void EnsureValid()` (line 36) -- null-check all five and assert all four other components share the topology signature's `ProviderId`, throws `MigrationException` otherwise.
+
+### Appendix C: Per-provider introspection surfaces
+
+#### Aerospike
+
+- **NuGet client lib:** `Aerospike.Client` 8.2.0 (Directory.Packages.props line 48).
+- **State capture mechanism:** Aerospike has no schema dump tool. Equivalent state capture is the **Info protocol** (`asinfo`-style key-value requests) plus enumeration via the client's management APIs. Namespaces are server-config-defined and not introspectable as DDL; sets/indexes/UDFs ARE introspectable.
+- **State capture entry point:** `IAsyncClient` does not expose Info directly in the record store. Squash codegen would need to call `IAerospikeClient.Info(InfoPolicy, Node[], string[])` or the legacy `Info.Request(Node, ...)` with commands `namespaces`, `sets`, `sindex/<ns>`, `udf-list`, `udf-get:filename=<udf>`, `bins/<ns>`, `build` (server version), `edition`. The record store only uses `_client.Put/Get/Delete/Touch/Query` ([AerospikeRecordStore.cs](../../../src/Hyperbee.Migrations.Providers.Aerospike/AerospikeRecordStore.cs#L75)) -- no introspection currently exists.
+- **Topology axes:** server version (`build` info command), edition (community vs enterprise -- affects SC/strong-consistency availability), namespace strong-consistency flag (per-namespace, `namespace/<ns>` info), replication factor, configured set list, configured secondary-index types available.
+- **Locking mechanism for verification round:** CREATE_ONLY ledger record with TTL ([AerospikeRecordStore.cs](../../../src/Hyperbee.Migrations.Providers.Aerospike/AerospikeRecordStore.cs#L60)) -- same mechanism the record store already uses for `MigrationLock`. Verifier reuses; no per-snapshot lock needed beyond the migration lock that wraps the whole generation.
+- **Sample size of structures introspected:** Small. Namespaces (server-configured, not created by migrations -- captured for topology only), sets, secondary indexes, UDF Lua modules, bin schemas (where used). Roughly 4-5 object kinds total.
+- **Canonicalization risk:** **Low**. Info-protocol responses are line-oriented `key=value;...` strings -- deterministic by construction. UDF module content is Lua source text (verbatim). Main risk: ordering of returned sets/indexes per server response varies -- must sort client-side.
+
+#### MongoDB
+
+- **NuGet client lib:** `MongoDB.Driver` 3.6.0 + `MongoDB.Bson` 3.6.0 (Directory.Packages.props lines 31-32).
+- **State capture mechanism:** MongoDB has no `mongodump --schema-only` analogue. Schema/structure capture is the union of `db.runCommand({listCollections})`, `db.getCollection(...).Indexes.List()`, `db.runCommand({listIndexes})`, view definitions in `system.views`, JSON schema validators on each collection, and (for ops) the role definitions in `admin.system.roles`.
+- **State capture entry point:** `IMongoClient.GetDatabase().ListCollectionsAsync(...)` and `IMongoCollection<T>.Indexes.ListAsync(...)`. The record store ([MongoDBRecordStore.cs](../../../src/Hyperbee.Migrations.Providers.MongoDB/MongoDBRecordStore.cs#L27)) only uses `db.GetCollection<MigrationRecord>(...)` for read/write -- squash codegen needs to add the introspection calls.
+- **Topology axes:** server version (`{buildInfo: 1}` admin command), deployment topology (standalone / replica set / sharded -- from `{isMaster}` / `{hello}`), feature compatibility version (FCV, from `{getParameter: 1, featureCompatibilityVersion: 1}`), default read/write concerns, sharded-cluster flag (affects collection-creation shape).
+- **Locking mechanism for verification round:** Singleton `MigrationLock` document with `Id == 1` and `ReleaseOn` TTL field ([MongoDBRecordStore.cs](../../../src/Hyperbee.Migrations.Providers.MongoDB/MongoDBRecordStore.cs#L42)). No per-capture lock; the migration lock spans the generation.
+- **Sample size of structures introspected:** Medium. Collections, indexes (each with options dict: `unique`, `sparse`, `partialFilterExpression`, collation, wildcards, TTL), views (with pipeline), JSON schema validators, time-series options, capped flags. Roughly 6-8 object kinds.
+- **Canonicalization risk:** **Medium**. Index `v` field varies by server version (v:1, v:2; v:2 is current). `_id` index is implicit and always present -- must filter out. Index `key` ordering matters; document field order within key spec is server-canonical. Collation defaults differ by FCV. Pipeline definitions in views are BSON -- Extended JSON canonical form is the right serialization, not the relaxed form.
+
+#### Couchbase
+
+- **NuGet client lib:** `CouchbaseNetClient` 3.8.1 + `Couchbase.Extensions.DependencyInjection` 3.8.1 + `Couchbase.Extensions.Locks` 2.1.0 (Directory.Packages.props lines 27-29).
+- **State capture mechanism:** Couchbase mixes management APIs (REST + SDK wrappers) with N1QL system catalog queries. Schema-equivalent capture is: `cluster.Buckets.GetAllBucketsAsync()` (settings: RAM quota, replicas, eviction policy, flush), per-bucket `bucket.Collections.GetAllScopesAsync()` (scope + collection tree), N1QL `SELECT * FROM system:indexes WHERE keyspace_id = '<bucket>'` (GSI definitions), N1QL `SELECT * FROM system:functions` (UDFs), `cluster.UserManager` for roles, and FTS/Eventing/Analytics via their respective management APIs.
+- **State capture entry point:** `IClusterProvider.GetClusterAsync() -> ICluster`. The record store ([CouchbaseRecordStore.cs](../../../src/Hyperbee.Migrations.Providers.Couchbase/CouchbaseRecordStore.cs#L35)) already uses `cluster.BucketAsync(...)`, `bucket.ScopeAsync(...)`, `scope.CollectionAsync(...)`, `cluster.Buckets.CreateBucketAsync(...)` ([line 65](../../../src/Hyperbee.Migrations.Providers.Couchbase/CouchbaseRecordStore.cs#L65)), `cluster.QueryIndexes.CreatePrimaryIndexAsync(...)` ([line 95](../../../src/Hyperbee.Migrations.Providers.Couchbase/CouchbaseRecordStore.cs#L95)), and `cluster.QueryAsync<long>(...)` ([line 330](../../../src/Hyperbee.Migrations.Providers.Couchbase/CouchbaseRecordStore.cs#L330)). The bootstrapper layer (`clusterHelper`) provides `BucketExistsAsync`, `CreateScopeAsync`, `CollectionExistsQueryAsync` -- squash can hoist their listing analogues.
+- **Topology axes:** server version (`SELECT version FROM system:metadata` or REST `/pools/default`), cluster topology (single-node vs multi-node, MDS vs all-services), services enabled per node (kv, query, index, fts, eventing, analytics, backup), storage backend per bucket (Couchstore vs Magma), GSI deployment plan, RBAC enabled.
+- **Locking mechanism for verification round:** `Couchbase.Extensions.Locks` mutex ([CouchbaseRecordStore.cs](../../../src/Hyperbee.Migrations.Providers.Couchbase/CouchbaseRecordStore.cs#L198)) via `collection.RequestMutexAsync(name, expireInterval)` with auto-renew. Server-side document-based mutex; correct primitive for verifier rounds.
+- **Sample size of structures introspected:** Medium-large. Buckets (with quota/replica/eviction settings), scopes, collections (with TTL), primary + secondary GSI indexes (with `WHERE` clauses and `WITH` options), UDFs (JavaScript + N1QL), FTS indexes (separate API + JSON shape), eventing functions, analytics datasets/dataverses. Roughly 8-10 object kinds.
+- **Canonicalization risk:** **Medium-High**. GSI index definitions: server normalizes index expressions (parentheses, type coercions) at create time, so `CREATE INDEX ... ON keyspace((field))` round-trips differently than the operator wrote it. FTS index JSON is large and contains server-injected defaults. Bucket settings have many implicit defaults that differ between Couchbase Server versions. JavaScript UDF source preserves verbatim, but signature canonical form varies. View ddocs (legacy, but still supported) carry map/reduce JS -- verbatim but encoding-sensitive.
+
+#### OpenSearch
+
+- **NuGet client lib:** `OpenSearch.Client` 1.8.0 + `OpenSearch.Net` 1.8.0 (+ `OpenSearch.Net.Auth.AwsSigV4` 1.8.0) (Directory.Packages.props lines 50-52).
+- **State capture mechanism:** REST API endpoints flattened into JSON dumps. `GET /_cluster/state/metadata` (or its subsets: `/indices`, `/templates`), `GET /_index_template/*`, `GET /_component_template/*`, `GET /_template/*` (legacy), `GET /_ingest/pipeline/*`, `GET /_alias` (or `/_cat/aliases?format=json`), `GET /<index>/_settings`, `GET /<index>/_mapping`, `GET /_plugins/_ism/policies` (when ISM plugin is detected -- there's already a capability detection step in [IsmEndpointDetectStep.cs](../../../src/Hyperbee.Migrations.Providers.OpenSearch/Internal/Bootstrap/Steps/IsmEndpointDetectStep.cs)), `GET /_security/role/*` (with security plugin).
+- **State capture entry point:** `IOpenSearchClient` from `OpenSearch.Client`, used throughout [OpenSearchRecordStore.cs](../../../src/Hyperbee.Migrations.Providers.OpenSearch/OpenSearchRecordStore.cs#L122). The strong-typed client surfaces `Indices.GetAsync`, `Indices.GetTemplateV2Async`, `Indices.GetMappingAsync`, `Indices.GetSettingsAsync`, `Cluster.StateAsync`, `Cluster.HealthAsync`. For ISM-specific endpoints fall through to `OpenSearch.Net`'s low-level `_client.LowLevel.DoRequestAsync(...)`.
+- **Topology axes:** cluster version (from `Cluster.HealthAsync` / root `/`), distribution flavor (OpenSearch vs Elasticsearch -- affects feature surface), installed plugins (`GET /_cat/plugins?format=json` -- security, ISM, k-NN, alerting, anomaly-detection all alter the shape), ISM endpoint capability (already detected -- `_plugins/_ism` vs `_opendistro/_ism` per [IsmEndpointCapability.cs](../../../src/Hyperbee.Migrations.Providers.OpenSearch/Internal/IsmEndpointCapability.cs)), node count, shard allocation awareness, default analyzers.
+- **Locking mechanism for verification round:** Singleton lock document with op_type=create + CAS via `if_seq_no` / `if_primary_term`, plus stale-takeover heartbeat ([OpenSearchRecordStore.cs](../../../src/Hyperbee.Migrations.Providers.OpenSearch/OpenSearchRecordStore.cs#L122)). `Refresh.WaitFor` on writes. Verifier reuses; per-snapshot lock is the migration lock.
+- **Sample size of structures introspected:** Large. Indices (with settings + mapping + aliases each), index templates (v2 + legacy), component templates, ingest pipelines (with processor arrays), ISM policies (with state-transition graphs), aliases (with filters + routing), saved searches (when alerting plugin present), role mappings (security plugin). Roughly 8-12 object kinds, several with nested sub-objects.
+- **Canonicalization risk:** **High**. Painless script bytes inside ingest pipelines and ISM policies -- embedded scripts must round-trip exactly, including whitespace. Index mappings: server injects `_doc` root, dynamic templates with default-set fields, normalizers -- all server-augmented post-create. ISM policy JSON has version-stamped fields (`policy_version`, `last_updated_time`) that MUST be stripped. Settings come back fully expanded with server-default values (`number_of_shards`, `refresh_interval`, analysis chains) -- these must either be normalized to a canonical default set or operators must always pass full settings explicitly. Alias filters are query DSL JSON -- field-order canonical form required. Component template composition order matters and the server response may not preserve operator-authored order.
