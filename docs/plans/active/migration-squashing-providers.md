@@ -379,20 +379,28 @@ Ready for Phase 2 OpenSearch.
 
 Highest canonicalization risk. Component templates, ISM policies, painless scripts, ingest pipelines, alias graphs. Reordered to be the second provider implemented so the contract is pressure-tested against the hardest case before MongoDB and Couchbase are built on top of it. If a gap surfaces here, the ADR-0019 amendment costs much less than discovering it at Phase 4 with three providers already shipped.
 
-#### Task 2.0: Painless-equivalence spike (RISKIEST single technical question in v3.0)
+#### Task 2.0: Painless-equivalence spike (RISKIEST single technical question in v3.0) ☑ COMPLETE 2026-05-11
 
 **Prerequisites:** Phase 1 done (including hardening pass).
 
-The single biggest unknown in v3.0. The requirements doc Open Question flags painless byte-equivalence as "exploring" with a fallback. Validate the chosen approach against real-world painless scripts BEFORE committing the full Phase 2 implementation.
+The single biggest unknown in v3.0. The requirements doc Open Question flagged painless byte-equivalence as "exploring" with a `[PreservePainlessVerbatim]` annotation as fallback. Spike investigated whether byte-stable canonicalization of painless source is feasible.
 
-Spike scope:
+**Spike outcome:** Question reframed and dissolved. See [spikes/opensearch-painless/SPIKE_REPORT.md](../../../spikes/opensearch-painless/SPIKE_REPORT.md) for the full analysis.
 
-- Survey 10-20 painless scripts from existing OpenSearch migration samples (or open-source examples if internal scripts are unavailable).
-- Test the byte-stable canonicalization rule against them: do the canonicalized outputs round-trip through OpenSearch's painless compiler equivalently?
-- If byte-stable canonicalization fails, validate the `[PreservePainlessVerbatim]` annotation fallback: operator commits the exact byte form, and the canonicalizer asserts it has not drifted.
-- Spike output: a short written conclusion (under one page) of "byte-stable rule works for these N scripts" or "fall back to PreservePainlessVerbatim" with rationale.
+**Key findings:**
 
-**Completion criteria:** Spike conclusion written; Phase 2's canonicalizer task (2.4) knows which path to take. Spike artifacts go in `spikes/opensearch-painless/` (delete after Phase 2 lands).
+1. **Zero painless scripts in the codebase.** Survey of all sample migrations, integration tests, and production source returned no embedded painless scripts. v3.0 can establish the painless storage rule BEFORE customers depend on a specific behavior.
+2. **Painless is a JSON string value, not a structure the canonicalizer parses.** OpenSearch stores painless as opaque-string content inside JSON documents in cluster state. The cluster does not parse painless at storage time -- only at execution time. JSON string preservation is structural.
+3. **The byte-stability concern dissolves into JSON canonicalization.** Two runs against the same cluster state produce byte-equal canonical output as long as JSON keys are sorted, ephemeral fields are stripped (per Phase 0 Appendix C: `creation_date`, `uuid`, `version`, `policy_version`, `last_updated_time`), whitespace is normalized, and string values are embedded verbatim. Painless source bytes ride through as-is.
+4. **No painless parser dependency, no operator annotation needed.** The `[PreservePainlessVerbatim]` annotation contemplated in the original requirements is unnecessary -- verbatim preservation IS the canonicalizer rule for all painless. No fallback path required because there's no "normalize-painless" alternative to fall back from.
+
+**Phase 2 implications:**
+
+- **Task 2.4 (`OpenSearchSnapshotCanonicalizer`) scope is smaller than originally estimated.** No painless parser, no operator annotation infrastructure. Estimated LOC drops from "uncertain, possibly 500+ with parser" to "~300 LOC, comparable to the JSON canonicalization piece of any structured-data canonicalizer."
+- **Cross-provider precedent established:** opaque-content + structural-canonical split. MongoDB Phase 3 (BSON aggregation pipelines, partialFilterExpression queries) and Couchbase Phase 4 (N1QL function definitions, FTS JSON) will follow the same rule -- treat content as opaque, canonicalize structure.
+- **R-P5 and R-P6 integration tests for OpenSearch carry double duty:** they prove canonicalizer determinism AND prove the cluster's verbatim-string assumption holds in production OpenSearch.
+
+**Completion criteria:** ☑ Spike conclusion written ([SPIKE_REPORT.md](../../../spikes/opensearch-painless/SPIKE_REPORT.md)); ☑ Task 2.4 (canonicalizer) knows which path to take (opaque-string painless + structural JSON canonicalization); ☑ no follow-up empirical work blocks Phase 2 implementation; spike artifact retained for future reference (delete after Phase 2 lands and the canonicalizer code makes the decision visible in source).
 
 #### Tasks 2.1 - 2.13: per-provider implementation
 
@@ -401,11 +409,12 @@ Same shape as Phase 1's tasks but for OpenSearch.
 - **2.1 `OpenSearchTopologySignature`** captures: cluster major.minor, distribution (OpenSearch CE vs AWS Managed), ISM plugin version, ingest-pipeline plugin presence, security plugin presence, k-NN plugin presence. The plugin matrix is the hard Edition-axis pressure test for the contract -- MongoDB FCV and Couchbase CE-vs-EE will be simpler versions of the same pattern.
 - **2.2 `OpenSearchDataOpClassifier`** classifies `_bulk`, `Index`, `Update`, `Delete` as data ops; index/template/policy management as structural.
 - **2.3 `OpenSearchStatementClassifier`** uses the existing `OpenSearchStatementParser` ([src/Hyperbee.Migrations.Providers.OpenSearch/Internal/Grammar/OpenSearchStatementParser.cs](../../../src/Hyperbee.Migrations.Providers.OpenSearch/Internal/Grammar/OpenSearchStatementParser.cs)); covers `CREATE INDEX WITH BODY`, `MIGRATE INDEX`, `ALIAS SWAP`, `CREATE TEMPLATE`, `CREATE COMPONENT`, `CREATE POLICY`, `APPLY POLICY`, `REFRESH`, `WAIT FOR HEALTH`, `REINDEX FROM ... TO ...`.
-- **2.4 `OpenSearchSnapshotCanonicalizer`** -- the work product of Task 2.0 spike:
+- **2.4 `OpenSearchSnapshotCanonicalizer`** -- shape locked by Task 2.0 spike:
   - Capture via REST: `_index_template/*`, `_component_template/*`, `_index/<n>/_mapping`, `_index/<n>/_settings`, `_alias`, `_ism/policies` (or `_opendistro/_ism/policies` per `IsmEndpointCapability`), `_ingest/pipeline`
-  - Strip ephemeral fields: `creation_date`, `uuid`, `version`, ISM `policy_version` / `last_updated_time`
-  - Sort indexes + templates + policies deterministically
-  - Painless: apply the spike conclusion (byte-stable normalize OR PreservePainlessVerbatim fallback)
+  - Strip ephemeral fields per Phase 0 Appendix C: `creation_date`, `uuid`, `version`, ISM `policy_version`, `last_updated_time`
+  - Recursively sort JSON object keys at every nesting level via ordinal string comparison
+  - Normalize JSON whitespace (compact form for canonical-state-hashing; pretty form for sidecar diffs only)
+  - **Painless: opaque-string preservation.** Painless source bytes ride through the canonicalizer verbatim as embedded JSON string values. No painless parser. No operator annotation. The spike (Task 2.0) found this is the only correct rule -- normalization would change semantics in string literals, add a painless-grammar dependency, and serve no use case that C12 byte-stability actually cares about.
   - Emit script form: `CREATE TEMPLATE`, `CREATE COMPONENT`, `CREATE INDEX ... WITH BODY @body.json`, `CREATE POLICY ...`, `BODIES { ... }` header for inline bodies
 - **2.5 `RestStateDiffStrategy : ISquashStrategy`** orchestrates capture + diff.
 - **2.6 `OpenSearchSquashVerifier`** runs on a single-node cluster (multi-node verification is `[TestCategory("LocalOnly")]` per existing convention).
