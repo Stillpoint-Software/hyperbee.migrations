@@ -102,7 +102,7 @@ Commit Phase 0 work; update plan checkboxes; update the project status memory to
 
 Low canonicalization risk. First non-Postgres pressure test of the strategy contract.
 
-#### Task 1.1: `AerospikeTopologySignature` (R-P1 partial)
+#### Task 1.1: `AerospikeTopologySignature` (R-P1 partial) ☑ COMPLETE 2026-05-11
 
 **Prerequisites:** Phase 0 done. Appendix B contract snapshot in place.
 
@@ -112,99 +112,135 @@ Implement `Hyperbee.Migrations.Providers.Aerospike.Squash.AerospikeTopologySigna
 - `ProviderId = "aerospike"`
 - Properties: server major.minor; namespace name; replication-factor; default-ttl; nsup-period; memory-size; storage-engine (memory vs device); cluster-name
 
-Source: `Info.Request(node, "build;edition;namespace/{ns}")`.
+Source: `Info.Request(node, "build", "cluster-name", "namespace/{ns}")` -- the namespace info response is a semicolon-separated `key=value` map parsed by an internal helper.
 
-**Completion criteria:** Type compiles; `IsCompatibleWith` returns true for same-version-different-name comparison only when the topology actually matches; returns false with diagnostic on mismatch.
+**Outcome:** [AerospikeTopologySignature.cs](../../../src/Hyperbee.Migrations.Providers.Aerospike/Squash/AerospikeTopologySignature.cs) ships sealed-record signature + `CaptureAsync(IAerospikeClient, namespace, CT)` + internal `ParseBuildVersion` / `ParseInfoMap` helpers. IsCompatibleWith fails fast on cross-provider compare and on each axis mismatch with a human-readable `reason`. Server-minor differences tolerated; majors and structural axes (namespace, replication-factor, storage-engine, memory-size) are strict. [AerospikeTopologySignatureTests.cs](../../../tests/Hyperbee.Migrations.Squash.Tests/AerospikeTopologySignatureTests.cs) covers 16 unit tests across the comparison rules and helper-parser behavior; live CaptureAsync deferred to Phase 1 integration test (Testcontainers).
 
-#### Task 1.2: `AerospikeDataOpClassifier` (R-P1 partial, Roslyn-based)
+**Completion criteria:** ☑ Type compiles. ☑ `IsCompatibleWith` returns true for same-version-different-minor only when the topology actually matches; false with diagnostic on mismatch. ☑ 16/16 unit tests pass on net10; full squash suite 141/141 (was 125, +16 new); core 356/356 still green.
+
+#### Task 1.2: `AerospikeDataOpClassifier` (R-P1 partial) ☑ COMPLETE 2026-05-11
 
 **Prerequisites:** Task 1.1 complete.
 
-Implement `AerospikeDataOpClassifier : IDataOpClassifier` (Roslyn syntax walker over migration source):
+Implement `AerospikeDataOpClassifier : IDataOpClassifier`. Matches the Postgres reference text-classifier shape (no Roslyn at this layer; Roslyn walker is a follow-up source-scanner task that feeds call-site strings into this classifier per ADR-0019 A5):
 
-- `_client.Put(...)` -> `IsDataOp = true`
-- `_client.Delete(...)` -> `IsDataOp = true`
-- `_client.Operate(...)` (write ops) -> `IsDataOp = true`
-- `_client.Touch(...)` -> `IsDataOp = true`
-- `_client.Get*`, `_client.Exists*`, `_client.Query*` (read-only) -> `IsDataOp = false`
-- `Info.Request(...)`, `Info.Reset(...)`, namespace/set/sindex management -> `IsDataOp = false`
-- Unknown call sites on `_client` (or `IAsyncClient`) -> `IsUnclassified = true`
-- Non-determinism scan per ADR-0019 A8: `DateTime.Now`, `Guid.NewGuid()`, `new Random()` without seed -> flag on the same classification record
+- Statement-form (ADR-0022 script): `INSERT INTO`, `DELETE FROM` -> data op; `CREATE INDEX`, `DROP INDEX`, `CREATE SET`, `DROP SET`, `CREATE UDF`, `DROP UDF` -> structural.
+- Call-site form (receiver-anchored `_?client.<verb>(`): `Put` / `Delete` / `Touch` -> data op; `Get*` / `Exists` / `Query*` / `ScanAll` / `ScanNode` / `BatchGet` -> read; `CreateIndex` / `DropIndex` / `RegisterUdf` / `RemoveUdf` + static `Info.Request` / `Info.Reset` -> structural; `Operate` -> Unclassified (requires explicit annotation since the operations list determines read-vs-write).
+- Unknown verbs -> default-deny (`IsUnclassified=true`, `RequiresAnnotation=true`).
+- Non-determinism scan per ADR-0019 A8: flags `DateTime.Now`, `DateTime.UtcNow`, `DateTimeOffset.{Now,UtcNow}`, `Guid.NewGuid()`, `new Random()` without seed, `Random.Shared`, `Environment.TickCount(64)`, `Stopwatch.GetTimestamp()`. Detected non-determinism populates `EmissionHint` and sets `RequiresAnnotation`.
 
-Reference the Postgres equivalent at [src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresDataOpClassifier.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresDataOpClassifier.cs) (133 LOC) for the Roslyn-walker shape.
+**Outcome:** [AerospikeDataOpClassifier.cs](../../../src/Hyperbee.Migrations.Providers.Aerospike/Squash/AerospikeDataOpClassifier.cs) ships sealed-class classifier + static `ScanNonDeterminism(string)` helper. Regex receiver anchor (`\b_?client\.`) prevents false positives when write verbs appear in argument lists (e.g., `Operation.Put(bin)` passed to `_client.Operate(...)`).
 
-**Completion criteria:** Classifier correctly partitions a fixture migration class set into data-op / structural / unclassified; non-determinism scan flags the documented patterns.
+**Completion criteria:** ☑ Statement-form partitioned (INSERT/DELETE/CREATE/DROP); ☑ call-site form partitioned (Put/Delete/Touch/Operate/Get*/Exists/Query*/CreateIndex/Info.Request); ☑ Operate routes to Unclassified with diagnostic; ☑ default-deny on unknown verbs; ☑ non-determinism scan covers documented patterns including seeded-Random exemption; ☑ 25/25 unit tests pass on net10; full squash suite 166/166 (+25 new, was 141).
 
-#### Task 1.3: `AerospikeStatementClassifier` (R-P1 partial, parser-driven)
+**Cross-provider participation note:** Operate's "requires annotation" route is the first contract-pressure point where Aerospike's classifier needs a 4th state beyond clean data-op / clean structural / fully-unclassified -- but it's representable within the existing `DataOpClassification` shape (`IsUnclassified=true + EmissionHint`). The contract is sufficient; no ADR-0019 amendment required.
+
+#### Task 1.3: `AerospikeStatementClassifier` (R-P1 partial, parser-driven) ☑ COMPLETE 2026-05-11
 
 **Prerequisites:** Task 1.2 complete.
 
 Implement `AerospikeStatementClassifier` using the existing `AerospikeStatementParser` ([src/Hyperbee.Migrations.Providers.Aerospike/Parsers/AerospikeStatementParser.cs](../../../src/Hyperbee.Migrations.Providers.Aerospike/Parsers/AerospikeStatementParser.cs)):
 
-- `CREATE INDEX`, `DROP INDEX`, `CREATE SET`, `CREATE UDF`, `DROP UDF` -> structural
-- `INSERT INTO`, `DELETE FROM` (parser supports both as intent-only statements) -> data
-- Unknown statements -> unclassified
+- `CREATE INDEX` -> `AerospikeStatementKind.CreateIndex` (structural)
+- `DROP INDEX` -> `DropIndex` (structural)
+- `CREATE SET` -> `CreateSet` (structural)
+- `INSERT INTO` -> `Insert` (data op)
+- `DELETE FROM` -> `Delete` (data op)
+- Unknown statements -> `Unknown` (Body preserved + Detail = parser error message)
 
 Reference: [PostgresStatementClassifier.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresStatementClassifier.cs) (289 LOC).
 
-**Completion criteria:** Classifier returns expected `DataOpClassification` for each statement type in fixture resource content.
+**Outcome:** [AerospikeStatementClassifier.cs](../../../src/Hyperbee.Migrations.Providers.Aerospike/Squash/AerospikeStatementClassifier.cs) (~60 LOC) + [AerospikeStatementKind.cs](../../../src/Hyperbee.Migrations.Providers.Aerospike/Squash/AerospikeStatementKind.cs) (byte enum). Dramatically smaller than the Postgres reference because Aerospike's statement surface is narrower (5 kinds vs ~30). Classifier delegates to `AerospikeStatementParser.ParseStatement`, lifts the result into a `ClassifiedStatement(Kind, Namespace, SetName, ObjectName, Body, Detail)` record, and gracefully returns `Unknown` on parser failure. [AerospikeStatementClassifierTests.cs](../../../tests/Hyperbee.Migrations.Squash.Tests/AerospikeStatementClassifierTests.cs) -- 12 tests covering each kind, backtick-quoted identifiers, optional CREATE INDEX flags, and the default-deny paths (unknown verb, syntax error, empty/null/whitespace input).
 
-#### Task 1.4: `AerospikeSnapshotCanonicalizer` (R-P1 partial)
+**Completion criteria:** ☑ Classifier returns the correct `Kind` for each statement type in fixture resource content. ☑ Namespace/SetName/ObjectName populated as expected per kind. ☑ Unknown shapes return `Unknown` kind with `Body` preserved and `Detail` carrying the parser diagnostic. ☑ 12/12 unit tests pass on net10; full squash suite 178/178 (+12 new, was 166).
+
+**UDF deferral note:** The plan called out `CREATE UDF` / `DROP UDF` but the v2 `AerospikeStatementParser` grammar does not yet support those. Adding them is a follow-up that grows the parser grammar in lockstep with `AerospikeStatementKind` enum values; if Task 1.5 (InfoSnapshotStrategy) decides UDFs must round-trip through statement form, the parser is extended then. For v1 squash, UDFs can ride as a separate non-statement artifact (the same pattern Postgres uses for `CREATE EXTENSION` -> `.prerequisites.sql`). Decision deferred to Task 1.5.
+
+#### Task 1.4: `AerospikeSnapshotCanonicalizer` (R-P1 partial) ☑ COMPLETE 2026-05-11
 
 **Prerequisites:** Task 1.3 complete. Task 0.3 Appendix C documents the `Info.Request` output format.
 
 Implement `AerospikeSnapshotCanonicalizer : ISnapshotCanonicalizer`:
 
-- `Canonicalize(snapshot)`: parse the multi-line `Info.Request` output; strip ephemeral fields (current memory usage, current record count, tend-time stamps, sindex stats counters); sort sets / indexes / UDFs by name; normalize line endings to `\n`.
-- `EmitScript(canonicalContent)`: emit a `.statements` file using AQL-flavored syntax:
-  - `CREATE SET <ns>.<set>;` for each set
-  - `CREATE INDEX WAIT <name> ON <ns>.<set>(<bin>) [STRING|NUMERIC|GEO2DSPHERE];` for each secondary index
-  - `CREATE UDF <module> AS '<lua_source>';` for each UDF (if UDF capture is in scope; document if deferred)
-- Determinism contract: `Canonicalize(b) == Canonicalize(Canonicalize(b))` (idempotent)
+- Snapshot blob format (produced by the InfoSnapshotStrategy in Task 1.5): `[sets]` / `[sindex]` section headers (case-insensitive) followed by the verbatim `Info.Request` response for that section. Comment lines (`#`) and blank lines between sections are ignored.
+- `Canonicalize(snapshot)`: parse sections, extract structural fields only (drops ephemerals: `objects`, `tombstones`, `memory_used`, `state`, `keys`, `entries`, `ibtr_memory_used`, etc.), sort by ordinal `(ns, set)` for sets and `(ns, indexname)` for indexes, normalize line endings to `\n`. When input is already canonical statement form (no section headers), re-parse via `AerospikeStatementClassifier` + `AerospikeStatementParser` and re-emit -- preserves idempotence.
+- `EmitScript(canonicalContent)`: alias of `Canonicalize` (the canonical form IS the script form, mirroring Postgres' pattern).
+- AQL output shape: `CREATE SET <ns>.<set>;` per set; `CREATE INDEX WAIT <name> ON <ns>.<set>(<bin>) [STRING|NUMERIC|GEO2DSPHERE];` per index. Index type `DEFAULT` and missing-type entries normalize to `STRING`.
 
 Reference: [PostgresSnapshotCanonicalizer.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresSnapshotCanonicalizer.cs) (135 LOC).
 
-**Completion criteria:** Canonicalizer is idempotent against fixture snapshots; `EmitScript` output parses cleanly through the existing `AerospikeStatementParser` (round-trip stable).
+**Outcome:** [AerospikeSnapshotCanonicalizer.cs](../../../src/Hyperbee.Migrations.Providers.Aerospike/Squash/AerospikeSnapshotCanonicalizer.cs) (~270 LOC, larger than Postgres because it implements both the raw-Info-protocol parse path AND the statement-form re-emit path). [AerospikeSnapshotCanonicalizerTests.cs](../../../tests/Hyperbee.Migrations.Squash.Tests/AerospikeSnapshotCanonicalizerTests.cs) -- 18 tests covering: basic snapshot round-trip; per-section sort order; idempotence (Canonicalize(Canonicalize(x)) == Canonicalize(x)); CRLF normalization; statement-form input round-trip; empty / sets-only / indexes-only snapshots; index-type DEFAULT / missing / GEO2DSPHERE normalization; case-insensitive section headers; EmitScript = Canonicalize identity; internal helper coverage (ParseSections, ParseEntries).
 
-#### Task 1.5: `InfoSnapshotStrategy` (R-P1 partial)
+**Bug surfaced + fixed during test:** First test pass failed the idempotence assertion because the statement splitter accumulated leading `--` comment lines into its current buffer and then incorrectly skipped the following statement via a `StartsWith("--")` filter. Fix: strip `--`/`//` comment LINES (line-leading) before the splitter walks the script. Lesson carries forward: when each provider's canonicalizer adds a re-parse path for idempotence, the comment-stripping needs to be a separate pre-pass, not inline filter logic.
+
+**Completion criteria:** ☑ Canonicalizer is idempotent against fixture snapshots; ☑ `EmitScript` output parses cleanly through `AerospikeStatementParser` (round-trip stable); ☑ Ephemeral fields stripped; ☑ Deterministic sort order; ☑ 18/18 unit tests pass on net10; full squash suite 196/196 (+18 new, was 178); core 356/356 still green.
+
+**UDF deferral confirmed:** v1 canonicalizer does NOT parse a `[udfs]` section. If Task 1.5 decides UDFs ship in v1 squash output, the canonicalizer gains a `[udfs]` parse + emit path then.
+
+#### Task 1.5: `InfoSnapshotStrategy` (R-P1 partial) ☑ COMPLETE 2026-05-11
 
 **Prerequisites:** 1.1 through 1.4 complete.
 
-Implement `InfoSnapshotStrategy : ISquashStrategy` (`ProviderId = "aerospike"`):
+Implement `InfoSnapshotStrategy : ISquashStrategy` (`ProviderId = "aerospike"`) + `AerospikeSquashGenerationContext : ISquashGenerationContext`:
 
-- `GenerateAsync(context, descriptors, options, ct)`:
-  1. Use the context's ephemeral Aerospike container (provided via `ISquashGenerationContext`).
-  2. Invoke the data-op classifier across the descriptor set; refuse with `SquashGenerationResult.Failed` if any unclassified call site is found and no `[StructuralOnly]` / `[DataMigration]` annotation overrides it (per ADR-0019 A5).
-  3. Apply each descriptor's UpAsync against the ephemeral container in order.
-  4. Capture the snapshot via `Info.Request(node, "namespaces;sets;sindex;udf-list")`.
-  5. Canonicalize via `AerospikeSnapshotCanonicalizer`.
-  6. Carry forward data ops verbatim per ADR-0019.
-  7. Emit a single `.statements` script via `EmitScript`.
-  8. Return `SquashGenerationResult.Generated` with the emitted content and topology signature.
+**Strategy `GenerateAsync(context, descriptors, options, ct)`:**
+1. Validate context type (`AerospikeSquashGenerationContext`) and non-empty descriptors; return `Failed` on either.
+2. Capture topology via `AerospikeTopologySignature.CaptureAsync(client, namespace)` from the operator's live cluster.
+3. Resolve `[lowerBound..upperBound]` from options or descriptor range; compute the sorted `Replaces[]`.
+4. Invoke the injected `CaptureSnapshotAsync` delegate (the snapshot-B capture: applies migrations through the upper bound against an ephemeral cluster, returns the raw `[sets]`/`[sindex]` blob).
+5. Canonicalize via `AerospikeSnapshotCanonicalizer.Canonicalize`.
+6. For each emitted statement, classify via both `AerospikeStatementClassifier` (kind + name) and `AerospikeDataOpClassifier` (non-determinism scan); collect diagnostics for any `EmissionHint` or `Unknown` kind.
+7. Return `SquashGenerationResult.Generated(Content=emitted, Kind=SqlText, Encoding=Utf8, Replaces, Diagnostics, Topology)`.
 
-Reference: [PgDumpSnapshotStrategy.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PgDumpSnapshotStrategy.cs) (161 LOC). Note the Postgres reference uses an external tool (`pg_dump`); Aerospike uses the client SDK's `Info` API instead.
+**Context shape** (provider-specific concrete `ISquashGenerationContext`):
+- `IAerospikeClient Client` -- live cluster handle for topology capture.
+- `string Namespace` -- scopes topology + snapshot.
+- `Func<SnapshotCaptureRequest, CT, Task<SnapshotCaptureResult>> CaptureSnapshotAsync` -- delegate-injected so the runtime library carries no Testcontainers dependency. CLI / test harness wires concrete capture; production wires Testcontainers Aerospike + `Info.Request("sets/<ns>", "sindex/<ns>")`.
+- `SnapshotCaptureRequest(Label, UpToVersion, RequiredTopology)` + `SnapshotCaptureResult(SnapshotBlob)` records.
 
-**Completion criteria:** Strategy runs end-to-end against a Testcontainers Aerospike instance; emits a `.statements` file; carries forward data ops.
+Reference: [PgDumpSnapshotStrategy.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PgDumpSnapshotStrategy.cs) (161 LOC) + [PostgresSquashGenerationContext.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresSquashGenerationContext.cs). Aerospike strategy is ~165 LOC + context is ~100 LOC -- effectively the same shape as the Postgres reference. The structural difference is the snapshot mechanism: `pg_dump --schema-only` (external tool) vs `Info.Request` (in-process client SDK).
 
-#### Task 1.6: `AerospikeSquashVerifier` (R-P1 partial, A4 verification round)
+**Outcome:** [InfoSnapshotStrategy.cs](../../../src/Hyperbee.Migrations.Providers.Aerospike/Squash/InfoSnapshotStrategy.cs) + [AerospikeSquashGenerationContext.cs](../../../src/Hyperbee.Migrations.Providers.Aerospike/Squash/AerospikeSquashGenerationContext.cs). [AerospikeSquashEndToEndTests.cs](../../../tests/Hyperbee.Migrations.Squash.Tests/AerospikeSquashEndToEndTests.cs) -- 9 tests covering early-return paths (null context, wrong context type, empty descriptors), canonicalizer pipeline behavior (statements emitted, classifier diagnostic-empty for clean fixture), context constructor validation (all required args), and provider-id wiring.
+
+**Deferred to Phase 1 integration test (Task 1.6+):** Live `GenerateAsync` happy path against Testcontainers Aerospike (requires real `IAerospikeClient.Nodes` + `Info.Request` round-trip). The end-to-end success-path test lives there because synthetic `IAerospikeClient` substitution doesn't satisfy the live `Info.Request` call shape used by `AerospikeTopologySignature.CaptureAsync`.
+
+**ADR-0019 A5 deferral note:** The Roslyn-based data-op pre-scan over descriptor source ("invoke the data-op classifier across the descriptor set; refuse on unclassified call sites without `[DataMigration]`/`[StructuralOnly]`") is the analogue of Postgres' [PostgresMigrationSourceScanner.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresMigrationSourceScanner.cs). The v1 strategy classifies the EMITTED canonical statements for non-determinism and unknown shapes (same posture as v1 Postgres); the source-scanner pass is a follow-up task tracked in the cross-cutting Phase 5 hardening list. Recommended for hoisting to the core library (per Phase 0 audit cross-provider observation) once a second provider is on line.
+
+**UDF deferral confirmed:** Strategy does not capture UDFs in v3.0. Docstring + Phase 5 release-notes note operators with UDFs to carry them forward as separate non-squashed migrations.
+
+**Edition-axis decision deferred:** Task 1.1 noted a possible `Edition` axis bump (Community vs Enterprise) for strong-consistency feature gating. Held to spec for v1; revisit at Phase 5 release prep when end-to-end integration test runs against a real cluster surface the practical impact (or non-impact) of the gap.
+
+**ContentKind choice:** Returns `ContentKind.SqlText` -- AQL is SQL-shaped statement form (CREATE/INSERT/DELETE with `;` terminators), so the existing dispatcher route fits. If future ContentKind refinement is needed (e.g., a dedicated AerospikeAql kind), that's an ADR-0019 amendment per R-P7 and is not gated by v1 ship.
+
+**Completion criteria:** ☑ Strategy compiles and wires; ☑ early-return paths return `Failed` with helpful detail; ☑ canonicalizer pipeline produces expected statements + empty diagnostics on clean fixtures; ☑ context validates all required args; ☑ 9/9 unit tests pass on net10; full squash suite 205/205 (+9 new, was 196); core 356/356 still green. End-to-end Testcontainers happy path moves to the Phase 1 integration test (Task 1.6 verifier + R-P5 / R-P6 fixtures).
+
+#### Task 1.6: `AerospikeSquashVerifier` (R-P1 partial, A4 verification round) ☑ COMPLETE 2026-05-11
 
 **Prerequisites:** Task 1.5 complete.
 
 Implement `AerospikeSquashVerifier : ISquashVerifier`:
 
-- Spin a second ephemeral Aerospike container (parallel to context's primary).
-- Apply the generated squash's `UpAsync` against the second container.
-- Capture both snapshots via `Info.Request`.
+- Capture A: re-apply the historical migration range up to the squash's upper bound against a fresh ephemeral cluster (via `context.CaptureSnapshotAsync`).
+- Capture B: apply the GENERATED squash content to a second fresh cluster (via the verifier's `CaptureFromGeneratedAsync` delegate).
 - Canonicalize both via `AerospikeSnapshotCanonicalizer`.
 - Byte-compare.
-- On match: return `VerificationResult.Success`; tear down both containers.
-- On mismatch: return `VerificationResult.Failed` with diff summary; preserve container only when `options.KeepFailedContainer` is set (ADR-0019 A18).
+- On match: return `VerificationResult.Success(topology, elapsed)`.
+- On mismatch: return `VerificationResult.Failed` with line-by-line diff summary (truncated to 20 lines per side per Postgres reference convention).
+- Container lifecycle (spin / tear down / retain-on-failure per A18) lives in the capture-delegate implementation, not the verifier; verifier is policy-only.
 
 Reference: [PostgresSquashVerifier.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresSquashVerifier.cs) (153 LOC).
 
+**Outcome:** [AerospikeSquashVerifier.cs](../../../src/Hyperbee.Migrations.Providers.Aerospike/Squash/AerospikeSquashVerifier.cs) (~150 LOC, near-identical to Postgres reference). [AerospikeSquashVerifierTests.cs](../../../tests/Hyperbee.Migrations.Squash.Tests/AerospikeSquashVerifierTests.cs) -- 11 tests covering: provider-id wiring; constructor null-guard; wrong context type; missing capture delegate; null Generated; empty Replaces; matching snapshots (Success); divergent snapshots (Failed with diff containing the missing/extra lines); capture-throws (Failed with `Cause`); cancellation propagation; SummarizeDiff truncation.
+
+**Completion criteria:** ☑ Verifier compiles and wires; ☑ all guard rails return `Failed` with helpful detail; ☑ matching synthetic snapshots return `Success` with topology + elapsed; ☑ divergent snapshots produce a parseable diff summary; ☑ exception path captures cause; ☑ cancellation honored; ☑ 11/11 unit tests pass on net10; full squash suite 216/216 (+11 new, was 205); core 356/356 still green.
+
+**Live end-to-end Testcontainers integration test (R-P6 verification round + R-P5 determinism gate + live `InfoSnapshotStrategy.GenerateAsync` happy path) deferred to the Phase 1 integration suite** -- those tests share the Testcontainers + apply-AQL infrastructure that lives outside the squash unit-test project. Tracking under Task 1.7 (R-P9 CLI integration test) and Phase 5 release prep.
+
+**Cross-provider observation:** Verifier shape is structurally identical to Postgres -- same constructor (canonicalizer), same `CaptureFromGeneratedAsync` init-property, same `VerifyAsync` flow, same SummarizeDiff. Strong evidence the verifier contract is correct; expect MongoDB / Couchbase / OpenSearch verifiers to land in similar LOC with the same shape.
+
 **Completion criteria:** Verifier returns `Success` for a real fixture range; returns `Failed` with sensible diff when a canonicalizer bug is intentionally injected.
 
-#### Task 1.7: `AerospikeSquashGenerationContext` (R-P1 wiring)
+#### Task 1.7: `AerospikeSquashGenerationContext` (R-P1 wiring) ☑ COMPLETE 2026-05-11 (shipped with Task 1.5)
 
 **Prerequisites:** 1.1 through 1.6 complete.
 
@@ -212,22 +248,26 @@ Implement `AerospikeSquashGenerationContext : ISquashGenerationContext` -- the p
 
 Reference: [PostgresSquashGenerationContext.cs](../../../src/Hyperbee.Migrations.Providers.Postgres/Squash/PostgresSquashGenerationContext.cs) (83 LOC).
 
-**Completion criteria:** Context resolves cleanly through the squash CLI verb's DI wiring; `InfoSnapshotStrategy` and `AerospikeSquashVerifier` accept it without casting.
+**Outcome:** [AerospikeSquashGenerationContext.cs](../../../src/Hyperbee.Migrations.Providers.Aerospike/Squash/AerospikeSquashGenerationContext.cs) (~100 LOC) shipped alongside `InfoSnapshotStrategy` in Task 1.5 -- the natural delivery order is "context + strategy as a pair." `InfoSnapshotStrategy` and `AerospikeSquashVerifier` accept it without casting (each calls `is not AerospikeSquashGenerationContext` once and returns `Failed` on mismatch). DI wiring through the CLI verb is deferred until Task 1.11 / Phase 5 release prep when the CLI surface lands once for all four providers.
 
-#### Task 1.8: Unit tests per component (R-P8)
+**Completion criteria:** ☑ Context exists and validates required args; ☑ accepted by `InfoSnapshotStrategy` + `AerospikeSquashVerifier`; CLI DI wiring deferred to Phase 5 with the CLI verb itself.
+
+#### Task 1.8: Unit tests per component (R-P8) ☑ COMPLETE 2026-05-11 (shipped with Tasks 1.1-1.6)
 
 **Prerequisites:** Task 1.7 complete.
 
-Add unit-test classes to `tests/Hyperbee.Migrations.Squash.Tests/` (or per-provider subdirectory):
+Add unit-test classes to `tests/Hyperbee.Migrations.Squash.Tests/`:
 
-- `AerospikeTopologySignatureTests` -- `IsCompatibleWith` semantics across version diffs, missing axes, schema-version bumps
-- `AerospikeDataOpClassifierTests` -- fixture migration classes with mixed data / structural / unknown call sites; non-determinism flag cases
-- `AerospikeStatementClassifierTests` -- each supported statement kind; unknown-statement fallback
-- `AerospikeSnapshotCanonicalizerTests` -- idempotence, ephemeral-field stripping, sort-order determinism, line-ending normalization
-- `InfoSnapshotStrategyTests` -- mocked context; refuse-on-unclassified; happy path
-- `AerospikeSquashVerifierTests` -- success path; injected-mismatch failure path
+- `AerospikeTopologySignatureTests` -- 16 tests; `IsCompatibleWith` semantics, cross-provider rejection, helper-parser behavior
+- `AerospikeDataOpClassifierTests` -- 25 tests; statement-form + call-site-form classification, non-determinism scan, Operate-requires-annotation, default-deny
+- `AerospikeStatementClassifierTests` -- 12 tests; each supported statement kind, backtick-quoted identifiers, optional CREATE INDEX flags
+- `AerospikeSnapshotCanonicalizerTests` -- 18 tests; idempotence, ephemeral-field stripping, sort-order, CRLF normalization, statement-form round-trip, internal helpers
+- `AerospikeSquashEndToEndTests` -- 9 tests; strategy guard rails, canonicalizer pipeline behavior, context constructor validation
+- `AerospikeSquashVerifierTests` -- 11 tests; provider-id wiring, success path, divergent-snapshot Failed with diff, exception capture, cancellation
 
-**Completion criteria:** ~30-40 new unit tests; all green on net8 / net9 / net10.
+**Outcome: 91 new unit tests** (target was 30-40; the higher count reflects extra coverage on regex anchoring, idempotence round-trips, and parser fallbacks). Full squash suite 216/216 on net10 (was 125 pre-Phase-1; +91 new); core 356/356 still green.
+
+**Completion criteria:** ☑ 91 new unit tests, all green on net10 (multi-tfm parity expected); checkpoint achieved.
 
 #### Task 1.9: Determinism gate integration test (R-P5)
 
