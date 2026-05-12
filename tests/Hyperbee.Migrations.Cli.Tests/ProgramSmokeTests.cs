@@ -97,6 +97,105 @@ public class ProgramSmokeTests
         stdout.Should().Contain( "Couchbase" );
     }
 
+    // ---- R-6: --scan-source required ------------------------------------
+
+    [TestMethod]
+    public async Task SquashVerb_MissingScanSource_FailsWithReadinessMessage()
+    {
+        // R-6: ADR-0019 A5 default-deny. Without --scan-source the verb
+        // must fail with a remediation message.
+        var (_, stderr, exit) = await RunAsync( new[]
+        {
+            "squash",
+            "--provider", "postgres",
+            "--connection", "Host=x",
+            "--range", "1-2",
+            "--output", "out",
+            "--assembly", "Foo.dll",
+        } );
+        exit.Should().NotBe( 0 );
+        stderr.Should().Contain( "--scan-source" );
+        stderr.Should().Contain( "ADR-0019 A5" );
+    }
+
+    [TestMethod]
+    public async Task SquashVerb_NoScanWithoutReason_RejectsShortBypass()
+    {
+        var (_, stderr, exit) = await RunAsync( new[]
+        {
+            "squash",
+            "--provider", "postgres",
+            "--connection", "Host=x",
+            "--range", "1-2",
+            "--output", "out",
+            "--assembly", "Foo.dll",
+            "--no-scan=short",
+            "--no-fleet-manifest=plenty long reason for the bypass here for fleet",
+        } );
+        exit.Should().NotBe( 0 );
+        stderr.Should().Contain( "--no-scan" );
+        stderr.Should().Contain( "20 characters" );
+    }
+
+    [TestMethod]
+    public async Task SquashVerb_ScanSourceAndNoScan_AreMutuallyExclusive()
+    {
+        var (_, stderr, exit) = await RunAsync( new[]
+        {
+            "squash",
+            "--provider", "postgres",
+            "--connection", "Host=x",
+            "--range", "1-2",
+            "--output", "out",
+            "--assembly", "Foo.dll",
+            "--scan-source", "src",
+            "--no-scan=valid bypass reason of plenty of length here yes",
+        } );
+        exit.Should().NotBe( 0 );
+        stderr.Should().Contain( "mutually exclusive" );
+    }
+
+    // ---- R-7: --fleet-manifest required ---------------------------------
+
+    [TestMethod]
+    public async Task SquashVerb_MissingFleetManifest_FailsWithReadinessMessage()
+    {
+        // Note: --scan-source bypass valid so the fleet check is the failure
+        // mode under test.
+        var (_, stderr, exit) = await RunAsync( new[]
+        {
+            "squash",
+            "--provider", "postgres",
+            "--connection", "Host=x",
+            "--range", "1-2",
+            "--output", "out",
+            "--assembly", "Foo.dll",
+            "--no-scan=valid bypass reason of plenty of length here yes",
+        } );
+        exit.Should().NotBe( 0 );
+        stderr.Should().Contain( "--fleet-manifest" );
+        stderr.Should().Contain( "ADR-0019 A2" );
+    }
+
+    [TestMethod]
+    public async Task SquashVerb_FleetManifestAndNoFleet_AreMutuallyExclusive()
+    {
+        var (_, stderr, exit) = await RunAsync( new[]
+        {
+            "squash",
+            "--provider", "postgres",
+            "--connection", "Host=x",
+            "--range", "1-2",
+            "--output", "out",
+            "--assembly", "Foo.dll",
+            "--no-scan=valid bypass reason of plenty of length here yes",
+            "--fleet-manifest", "fleet.yml",
+            "--no-fleet-manifest=valid bypass reason of plenty of length here yes",
+        } );
+        exit.Should().NotBe( 0 );
+        stderr.Should().Contain( "mutually exclusive" );
+    }
+
     // ---- helpers --------------------------------------------------------
 
     private static async Task<(string Stdout, string Stderr, int ExitCode)> RunAsync( string[] args )

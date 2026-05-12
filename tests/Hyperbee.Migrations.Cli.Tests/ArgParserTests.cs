@@ -135,4 +135,111 @@ public class ArgParserTests
         from.Should().Be( 1000 );
         to.Should().Be( 1000 );
     }
+
+    // ---- R-12: schema whitelist + did-you-mean ------------------------
+
+    private static readonly ArgSchema Schema = ArgSchema.Of(
+        knownFlags: new[] { "provider", "connection", "range", "output", "remove-originals", "regenerate" },
+        booleanFlags: new[] { "remove-originals", "regenerate" } );
+
+    [TestMethod]
+    public void SchemaParse_KnownFlags_AreAccepted()
+    {
+        var p = ArgParser.Parse( new[] { "--provider", "postgres", "--connection", "postgres://x" }, Schema );
+        p.Required( "provider" ).Should().Be( "postgres" );
+        p.Required( "connection" ).Should().Be( "postgres://x" );
+    }
+
+    [TestMethod]
+    public void SchemaParse_UnknownFlag_ThrowsWithDidYouMean()
+    {
+        // R-12: --conneciton (typo of --connection) must reject with a
+        // did-you-mean suggestion against the closest known flag.
+        Action act = () => ArgParser.Parse(
+            new[] { "--conneciton", "x" }, Schema );
+
+        act.Should().Throw<ArgumentException>()
+            .WithMessage( "*unknown flag --conneciton*" )
+            .WithMessage( "*Did you mean --connection?*" );
+    }
+
+    [TestMethod]
+    public void SchemaParse_UnknownFlag_ListsKnownFlags()
+    {
+        Action act = () => ArgParser.Parse(
+            new[] { "--totally-unrelated", "x" }, Schema );
+
+        act.Should().Throw<ArgumentException>()
+            .WithMessage( "*unknown flag --totally-unrelated*" )
+            .WithMessage( "*Known flags: *--provider*" );
+    }
+
+    [TestMethod]
+    public void SchemaParse_NonBooleanFlagFollowedByFlag_Throws()
+    {
+        // R-12: previously `--connection --range 1-2` silently parsed
+        // connection="true". Now it must error.
+        Action act = () => ArgParser.Parse(
+            new[] { "--connection", "--range", "1-2" }, Schema );
+
+        act.Should().Throw<ArgumentException>()
+            .WithMessage( "*--connection requires a value*" );
+    }
+
+    [TestMethod]
+    public void SchemaParse_NonBooleanFlagAtEnd_Throws()
+    {
+        Action act = () => ArgParser.Parse(
+            new[] { "--connection" }, Schema );
+
+        act.Should().Throw<ArgumentException>()
+            .WithMessage( "*--connection requires a value*" );
+    }
+
+    [TestMethod]
+    public void SchemaParse_BooleanFlagFollowedByFlag_IsTrue()
+    {
+        // Boolean flags retain their value-less form.
+        var p = ArgParser.Parse(
+            new[] { "--remove-originals", "--connection", "x" }, Schema );
+
+        p.HasFlag( "remove-originals" ).Should().BeTrue();
+        p.Required( "connection" ).Should().Be( "x" );
+    }
+
+    [TestMethod]
+    public void SchemaParse_BooleanFlagDoesNotConsumePositional()
+    {
+        // `--remove-originals positional --connection x` -> positional captured,
+        // --remove-originals stays boolean.
+        var p = ArgParser.Parse(
+            new[] { "--remove-originals", "leftover", "--connection", "x" }, Schema );
+
+        p.HasFlag( "remove-originals" ).Should().BeTrue();
+        p.Positional.Should().BeEquivalentTo( new[] { "leftover" } );
+        p.Required( "connection" ).Should().Be( "x" );
+    }
+
+    [TestMethod]
+    public void SchemaParse_InlineEqualsValue_AcceptedForKnownFlag()
+    {
+        var p = ArgParser.Parse(
+            new[] { "--provider=postgres", "--connection=postgres://x" }, Schema );
+        p.Required( "provider" ).Should().Be( "postgres" );
+        p.Required( "connection" ).Should().Be( "postgres://x" );
+    }
+
+    [TestMethod]
+    public void SchemaParse_UnrecognizedFlag_NoCloseMatch_OmitsDidYouMean()
+    {
+        // When no candidate is within the edit-distance threshold, the
+        // error message lists the known flags but omits the "did you mean"
+        // suggestion so we don't propose an unrelated flag.
+        Action act = () => ArgParser.Parse(
+            new[] { "--xyz", "v" }, Schema );
+
+        act.Should().Throw<ArgumentException>()
+            .WithMessage( "*unknown flag --xyz*" )
+            .Where( e => !e.Message.Contains( "Did you mean", StringComparison.OrdinalIgnoreCase ) );
+    }
 }

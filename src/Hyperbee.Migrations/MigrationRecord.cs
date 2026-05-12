@@ -52,6 +52,14 @@ public class MigrationRecord : IMigrationRecord
             case MigrationRecordKind.Migration when replacesCount > 0:
                 throw new MigrationLedgerIntegrityException(
                     $"Ledger row '{Id}' has Kind=Migration but a non-empty Replaces set ({replacesCount} entries).", Id );
+            case MigrationRecordKind.Recovery when replacesCount == 0:
+                throw new MigrationLedgerIntegrityException(
+                    $"Ledger row '{Id}' has Kind=Recovery but an empty Replaces set " +
+                    "(the missing-versions list is required for token re-verification).", Id );
+            case MigrationRecordKind.Recovery when string.IsNullOrWhiteSpace( Checksum ):
+                throw new MigrationLedgerIntegrityException(
+                    $"Ledger row '{Id}' has Kind=Recovery but no Checksum " +
+                    "(the deterministic acknowledgement token is required).", Id );
         }
     }
 }

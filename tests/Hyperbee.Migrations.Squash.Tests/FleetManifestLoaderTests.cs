@@ -237,6 +237,78 @@ public class FleetManifestLoaderTests
         } );
     }
 
+    // ---- R-13: schema whitelist (unknown keys reject) ----
+
+    [TestMethod]
+    public void Loader_UnknownTopLevelKey_RaisesError()
+    {
+        // R-13: an unknown top-level key (a typo of a real one, an obsolete
+        // option, or a misplaced section) must fail loudly with the offending
+        // key in the message rather than silently being ignored.
+        WithEnv( ("TEST_FM_UNKNOWN_TOP", "x") ).Run( () =>
+        {
+            var yaml = """
+                fleet:
+                  - name: prod
+                    connection: ${TEST_FM_UNKNOWN_TOP}
+                squash-overides: # <-- typo of squash-overrides
+                  accept-stranding: []
+                """;
+
+            var act = () => FleetManifestLoader.LoadFromString( yaml );
+            act.Should().Throw<MigrationException>()
+                .WithMessage( "*malformed*" )
+                .Where( e => e.Message.Contains( "squash-overides", StringComparison.OrdinalIgnoreCase ) );
+        } );
+    }
+
+    [TestMethod]
+    public void Loader_UnknownEnvironmentKey_RaisesError()
+    {
+        // Typo of `connection` on a fleet entry must reject -- previously the
+        // entry deserialized with an empty Connection and the validator caught
+        // the empty-connection case, masking the actual cause.
+        var yaml = """
+            fleet:
+              - name: prod
+                conenction: oops # <-- typo of `connection`
+            """;
+
+        var act = () => FleetManifestLoader.LoadFromString( yaml );
+        act.Should().Throw<MigrationException>()
+            .WithMessage( "*malformed*" )
+            .Where( e => e.Message.Contains( "conenction", StringComparison.OrdinalIgnoreCase ) );
+    }
+
+    [TestMethod]
+    public void Loader_UnknownStrandingEntryKey_RaisesError()
+    {
+        // Typo of `expires` inside an accept-stranding entry must reject.
+        // Previously this silently parsed, the validator never saw the
+        // expiry, and the default 30-day window was applied -- giving the
+        // operator the illusion that their manifest was honored.
+        WithEnv( ("TEST_FM_UNKNOWN_STRAND", "x") ).Run( () =>
+        {
+            var yaml = """
+                fleet:
+                  - name: prod
+                    connection: ${TEST_FM_UNKNOWN_STRAND}
+                squash-overrides:
+                  accept-stranding:
+                    - environment: prod
+                      ticket-id: FLEET-1
+                      owner: ops@example.com
+                      reason: "Reason that is at least twenty characters long here."
+                      expries: 2026-06-01 # <-- typo of `expires`
+                """;
+
+            var act = () => FleetManifestLoader.LoadFromString( yaml );
+            act.Should().Throw<MigrationException>()
+                .WithMessage( "*malformed*" )
+                .Where( e => e.Message.Contains( "expries", StringComparison.OrdinalIgnoreCase ) );
+        } );
+    }
+
     // ---------------- helper ----------------
 
     private static EnvScope WithEnv( params (string Name, string Value)[] vars ) => new( vars );

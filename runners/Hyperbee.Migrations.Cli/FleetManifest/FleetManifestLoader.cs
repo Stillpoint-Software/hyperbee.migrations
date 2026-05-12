@@ -42,9 +42,16 @@ public static class FleetManifestLoader
         if ( string.IsNullOrWhiteSpace( yaml ) )
             throw new ArgumentException( "fleet manifest yaml is empty.", nameof( yaml ) );
 
+        // R-13: do NOT call IgnoreUnmatchedProperties() -- the previous
+        // behavior silently swallowed YAML typos (`expries: ...` parsed cleanly
+        // and the validator never saw the field). Without IgnoreUnmatched,
+        // YamlDotNet throws YamlException on unknown keys with the offending
+        // line/column; we rewrap as MigrationException so callers can catch
+        // the load failure uniformly. The model intentionally exposes every
+        // expected key as a settable property, so the known schema continues
+        // to deserialize.
         var deserializer = new DeserializerBuilder()
             .WithNamingConvention( HyphenatedNamingConvention.Instance )
-            .IgnoreUnmatchedProperties()
             .Build();
 
         FleetManifestModel? model;

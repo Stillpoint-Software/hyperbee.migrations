@@ -15,12 +15,41 @@ namespace Hyperbee.Migrations.Cli.Verbs;
 /// </summary>
 internal static class SquashVerb
 {
+    // R-12: per-verb flag whitelist. Adding a new flag requires updating this
+    // set; the parser then rejects typos with a did-you-mean suggestion.
+    private static readonly ArgSchema Schema = ArgSchema.Of(
+        knownFlags: new[]
+        {
+            "provider",
+            "connection",
+            "range",
+            "output",
+            "name",
+            "assembly",
+            "fleet-manifest",
+            "no-fleet-manifest",
+            "scan-source",
+            "no-scan",
+            "accept-stranding",
+            "reason-stranding",
+            "strand-ticket-id",
+            "strand-owner",
+            "remove-originals",
+            "migrations-root",
+            "regenerate",
+        },
+        booleanFlags: new[]
+        {
+            "remove-originals",
+            "regenerate",
+        } );
+
     public static async Task<int> RunAsync( string[] args )
     {
         ArgParser parsed;
         try
         {
-            parsed = ArgParser.Parse( args );
+            parsed = ArgParser.Parse( args, Schema );
         }
         catch ( ArgumentException ex )
         {
@@ -61,6 +90,50 @@ internal static class SquashVerb
             return 4;
         }
 
+        // R-6 + R-7: validate the default-deny safety-gate flags BEFORE any
+        // I/O (assembly load, container provisioning, cluster probe). The
+        // operator's intent must be fully specified before we touch the
+        // filesystem or the database; failing fast on missing gates avoids
+        // partial side-effects (output directory created, ephemeral container
+        // started) when a later policy check would have rejected anyway.
+        var scanSource = parsed.Optional( "scan-source" );
+        var noScanReason = parsed.Optional( "no-scan" );
+        if ( string.IsNullOrWhiteSpace( scanSource ) && string.IsNullOrWhiteSpace( noScanReason ) )
+        {
+            return Fail(
+                "--scan-source <path-to-migrations-source> is required (ADR-0019 A5 default-deny). " +
+                "To bypass deliberately, pass --no-scan=\"<reason>\" (>= 20 chars). " +
+                "The scanner enforces [DataMigration] / [StructuralOnly] annotations; " +
+                "skipping it allows data ops to silently disappear into a squash." );
+        }
+        if ( !string.IsNullOrWhiteSpace( scanSource ) && !string.IsNullOrWhiteSpace( noScanReason ) )
+        {
+            return Fail( "--scan-source and --no-scan are mutually exclusive. Pick one." );
+        }
+        if ( !string.IsNullOrWhiteSpace( noScanReason ) && noScanReason!.Trim().Length < 20 )
+        {
+            return Fail( "--no-scan requires a reason of at least 20 characters." );
+        }
+
+        var noFleetReason = parsed.Optional( "no-fleet-manifest" );
+        if ( string.IsNullOrWhiteSpace( fleetManifestPath ) && string.IsNullOrWhiteSpace( noFleetReason ) )
+        {
+            return Fail(
+                "--fleet-manifest <fleet.yml> is required (ADR-0019 A2 default-deny). " +
+                "To bypass deliberately (e.g. solo-environment squash), pass " +
+                "--no-fleet-manifest=\"<reason>\" (>= 20 chars). " +
+                "Without the manifest the two-phase fleet readiness gate degrades " +
+                "to a zero-phase no-op and mid-range fleet members are not detected." );
+        }
+        if ( !string.IsNullOrWhiteSpace( fleetManifestPath ) && !string.IsNullOrWhiteSpace( noFleetReason ) )
+        {
+            return Fail( "--fleet-manifest and --no-fleet-manifest are mutually exclusive. Pick one." );
+        }
+        if ( !string.IsNullOrWhiteSpace( noFleetReason ) && noFleetReason!.Trim().Length < 20 )
+        {
+            return Fail( "--no-fleet-manifest requires a reason of at least 20 characters." );
+        }
+
         Directory.CreateDirectory( output );
 
         Console.WriteLine( $"[squash] provider={provider} range={fromVersion}-{toVersion} name={name}" );
@@ -85,13 +158,15 @@ internal static class SquashVerb
 
         Console.WriteLine( $"[squash] subsumed migrations ({descriptors.Count}): {string.Join( ", ", descriptors.Select( d => d.Attribute.Version ) )}" );
 
-        // Optional: Roslyn-based migration source scanner enforces the
-        // [DataMigration] / [StructuralOnly] annotation requirement per
-        // ADR-0019 amendment A5. Operator supplies --scan-source <dir>
-        // pointing at the migrations source folder; the scanner refuses
-        // generation if any subsumed class looks like a data op AND lacks
-        // both annotations.
-        var scanSource = parsed.Optional( "scan-source" );
+        if ( !string.IsNullOrWhiteSpace( noScanReason ) )
+        {
+            Console.WriteLine();
+            Console.WriteLine(
+                $"[squash] WARNING: --no-scan bypass in effect (reason: \"{noScanReason!.Trim()}\"). " +
+                "ADR-0019 A5 source scanning is SKIPPED; any data ops in the subsumed migrations " +
+                "will be elided into the squash. Operator owns the consequences." );
+            Console.WriteLine();
+        }
         if ( !string.IsNullOrWhiteSpace( scanSource ) )
         {
             Console.WriteLine( $"[squash] scanning migration source for [DataMigration] enforcement: {scanSource}" );
@@ -133,7 +208,17 @@ internal static class SquashVerb
             Console.WriteLine( $"[squash] source scan ok ({verdicts.Count} class(es) scanned)" );
         }
 
-        // Optional fleet manifest. When supplied, drive the pre-generation
+        if ( !string.IsNullOrWhiteSpace( noFleetReason ) )
+        {
+            Console.WriteLine();
+            Console.WriteLine(
+                $"[squash] WARNING: --no-fleet-manifest bypass in effect (reason: \"{noFleetReason!.Trim()}\"). " +
+                "ADR-0019 A2 fleet-readiness gate is SKIPPED; mid-range fleet members will not be detected. " +
+                "Operator owns the consequences." );
+            Console.WriteLine();
+        }
+
+        // Fleet manifest path. When supplied, drive the pre-generation
         // readiness check: refuses if any registered fleet member is mid-range
         // (per ADR-0019 A2). The probed last-applied versions feed into
         // SquashMetadata.ExpectedFleetVersions for the deploy-time gate.
@@ -498,11 +583,20 @@ internal static class SquashVerb
             "         --range <fromVersion>-<toVersion> \\\n" +
             "         --output <directory> \\\n" +
             "         --assembly <path-to-MyApp.Migrations.dll> \\\n" +
+            "         (--scan-source <path-to-migrations-source> | --no-scan=\"<reason>\") \\\n" +
+            "         (--fleet-manifest <fleet.yml>  | --no-fleet-manifest=\"<reason>\") \\\n" +
             "         [--name Squash_<toVersion>] \\\n" +
-            "         [--fleet-manifest <fleet.yml>] \\\n" +
             "         [--accept-stranding name1,name2 --reason-stranding name1=\"...\" --reason-stranding name2=\"...\"] \\\n" +
             "         [--strand-ticket-id FLEET-1234 --strand-owner ops@example.com] \\\n" +
-            "         [--remove-originals [--regenerate]]" );
+            "         [--remove-originals [--regenerate]]\n" +
+            "\n" +
+            "  --scan-source / --no-scan       ADR-0019 A5 default-deny: source scanning enforces\n" +
+            "                                  [DataMigration]/[StructuralOnly] annotations. The\n" +
+            "                                  bypass requires an audit reason (>= 20 chars).\n" +
+            "  --fleet-manifest / --no-fleet-manifest\n" +
+            "                                  ADR-0019 A2 default-deny: two-phase fleet readiness\n" +
+            "                                  gate prevents mid-range members from missing the\n" +
+            "                                  squash. The bypass requires an audit reason." );
     }
 }
 

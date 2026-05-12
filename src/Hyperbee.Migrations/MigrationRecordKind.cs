@@ -27,5 +27,18 @@ public enum MigrationRecordKind : byte
     /// A baseline marker installed when adopting Hyperbee.Migrations against
     /// an existing database. Reserved for future use.
     /// </summary>
-    Baseline = 2
+    Baseline = 2,
+
+    /// <summary>
+    /// A pre-staged mid-range squash recovery acknowledgement (per ADR-0019 A3 +
+    /// ADR-0024 audit follow-up RB-2). Written by
+    /// <c>hyperbee-migrations recover from-mid-range</c>; consumed by the
+    /// runner on next invocation to force-mark a mid-range squash without
+    /// running its body. The row's <c>Replaces</c> set MUST be the
+    /// missing-versions list and the <c>Checksum</c> field carries the
+    /// deterministic acknowledgement token. The row is deleted by the runner
+    /// once the squash is auto-marked, so a stale acknowledgement cannot
+    /// force-mark a second time.
+    /// </summary>
+    Recovery = 3
 }

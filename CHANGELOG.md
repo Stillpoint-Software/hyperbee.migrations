@@ -140,6 +140,50 @@ unchanged.
 
 ### Changed (back-compat preserved)
 
+- **`recover from-mid-range` persists the acknowledgement to the ledger** so
+  the runner picks it up on the next invocation, force-marks the mid-range
+  squash without running its body, and deletes the recovery row. Previously
+  the verb only validated the token and printed an audit summary -- the
+  operator had no automated path from "token validated" to "fleet member
+  unblocked"; the persisted recovery shipping in v3.0 closes that loop.
+  Introduces `MigrationRecordKind.Recovery` (value 3); `RecoveryRecord` helper
+  derives the deterministic row id from `(env, squashVersion)` and the
+  payload from `(env, squashVersion, missing-versions)`; the runner
+  re-verifies the token before consuming the row, so a stale acknowledgement
+  from a previous incident with a different missing-set is rejected. v3.0
+  CLI persists via Postgres only; the remaining four providers wire through
+  the Week 2 `IMigrationHost` discovery contract. Per ADR-0024 audit
+  follow-up (RB-2 option a).
+- **README quick-start uses the typed `PostgresMigrationRunner` instead of the
+  base `MigrationRunner`.** The base type works in single-provider hosts but
+  throws in multi-provider hosts (per ADR-0023); the typed runner is the
+  documented entry point either way. The README also flags the multi-provider
+  pattern with a cross-link to the operator guide. Per ADR-0024 audit
+  follow-up (R-11).
+- **`squash --scan-source` is required by default; explicit bypass requires
+  `--no-scan="<reason>"`** (>= 20 chars). ADR-0019 A5 source scanning is the
+  default-deny annotation gate; making it opt-in let operators ship squashes
+  that silently elided data ops. The bypass form preserves operator
+  autonomy (e.g. cluster-only scenarios with no source) while keeping the
+  choice auditable. Per ADR-0024 audit follow-up (R-6).
+- **`squash --fleet-manifest` is required by default; explicit bypass requires
+  `--no-fleet-manifest="<reason>"`** (>= 20 chars). ADR-0019 A2 two-phase
+  fleet readiness gate degraded to a zero-phase no-op when the manifest was
+  omitted, hiding mid-range fleet members. The bypass is for solo-environment
+  squashes only. Per ADR-0024 audit follow-up (R-7).
+- **CLI `ArgParser` whitelists flags per verb** and rejects unknown long-options
+  with a did-you-mean suggestion (Damerau-Levenshtein-lite over the
+  per-verb known-flag set). A non-boolean flag missing its value
+  (e.g. `--connection --range 1-2`) now throws "flag --connection requires
+  a value" instead of being silently treated as the string `"true"`.
+  Boolean flags (`--remove-originals`, `--regenerate`) retain value-less
+  semantics. Per ADR-0024 audit follow-up (R-12).
+- **Fleet manifest YAML loader rejects unknown keys** instead of silently
+  swallowing them. The previous `IgnoreUnmatchedProperties()` call let typos
+  through (`squash-overides` parsed cleanly, `expries: 2026-06-01` produced
+  the default 30-day window) -- giving the operator the illusion that the
+  manifest was honored. v3.0 throws `MigrationException` wrapping the
+  YamlDotNet line/column on any unknown key. Per ADR-0024 audit follow-up (R-13).
 - **`RegisterBaseAliases` removes only helper-owned descriptors when a second
   provider registers.** Previously the second-provider flip called
   `RemoveAll<MigrationOptions>` / `RemoveAll<IMigrationRecordStore>` /

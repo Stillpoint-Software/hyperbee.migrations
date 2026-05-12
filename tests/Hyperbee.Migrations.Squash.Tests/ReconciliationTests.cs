@@ -179,7 +179,7 @@ public class ReconciliationTests
             [2003L] = "record.2003.gone"
         };
 
-        var (mode, autoMark) = await MigrationRunner.ClassifySquashAsync(
+        var (mode, autoMark, recoveryRowToDelete) = await MigrationRunner.ClassifySquashAsync(
             store,
             squashVersion: 2099L,
             resolvedReplaces: new[] { 2001L, 2002L, 2003L },
@@ -188,6 +188,7 @@ public class ReconciliationTests
 
         mode.Should().Be( MigrationApplyMode.Fresh );
         autoMark.Should().BeFalse( "Fresh classification means run UpAsync as a baseline; do not auto-mark" );
+        recoveryRowToDelete.Should().BeNull();
     }
 
     [TestMethod]
@@ -225,6 +226,101 @@ public class ReconciliationTests
         ex.RecoveryToken.Should().HaveLength( 12 );
         ex.Message.Should().Contain( ex.RecoveryToken );
         ex.Message.Should().Contain( "EnvironmentName was not set" );
+    }
+
+    // ---- RB-2: persisted recovery row force-marks the squash ------------
+
+    [TestMethod]
+    public async Task RB2_ValidRecoveryRow_AutoMarksWithoutThrowing()
+    {
+        // Same mid-range setup as the throwing test, but a valid recovery row
+        // is pre-populated. The runner force-marks the squash and returns the
+        // recovery row id for deletion -- no exception.
+        var store = new FakeStore();
+        store.Rows["record.2001.x"] = new MigrationRecord { Id = "record.2001.x", Checksum = "h-2001" };
+        store.Rows["record.2002.x"] = new MigrationRecord { Id = "record.2002.x", Checksum = "h-2002" };
+
+        // 2003 missing -> mid-range. Pre-populate the recovery row.
+        var recoveryRow = RecoveryRecord.Build( 2099L, "prod-eu-1", new[] { 2003L } );
+        store.Rows[recoveryRow.Id] = recoveryRow;
+
+        var recordIds = new Dictionary<long, string>
+        {
+            [2001L] = "record.2001.x",
+            [2002L] = "record.2002.x",
+            [2003L] = "record.2003.x"
+        };
+
+        var (mode, autoMark, recoveryRowToDelete) = await MigrationRunner.ClassifySquashAsync(
+            store,
+            squashVersion: 2099L,
+            resolvedReplaces: new[] { 2001L, 2002L, 2003L },
+            recordIdByVersion: recordIds,
+            cancellationToken: default,
+            environmentName: "prod-eu-1" );
+
+        mode.Should().Be( MigrationApplyMode.PartialCatchUp );
+        autoMark.Should().BeTrue();
+        recoveryRowToDelete.Should().Be( recoveryRow.Id );
+    }
+
+    [TestMethod]
+    public async Task RB2_StaleRecoveryRow_FallsThroughToException()
+    {
+        // Recovery row from a previous incident is still present, but the
+        // current missing-set is different (one more version is missing).
+        // The persisted token does not match a fresh recompute, so the row
+        // is rejected and the runner throws the usual MidRangeSquashException.
+        var store = new FakeStore();
+        store.Rows["record.2001.x"] = new MigrationRecord { Id = "record.2001.x", Checksum = "h-2001" };
+        // 2002 + 2003 both missing this run
+
+        var staleRow = RecoveryRecord.Build( 2099L, "prod-eu-1", new[] { 2003L } ); // old: only 2003 was missing
+        store.Rows[staleRow.Id] = staleRow;
+
+        var recordIds = new Dictionary<long, string>
+        {
+            [2001L] = "record.2001.x",
+            [2002L] = "record.2002.x",
+            [2003L] = "record.2003.x"
+        };
+
+        var act = async () => await MigrationRunner.ClassifySquashAsync(
+            store,
+            squashVersion: 2099L,
+            resolvedReplaces: new[] { 2001L, 2002L, 2003L },
+            recordIdByVersion: recordIds,
+            cancellationToken: default,
+            environmentName: "prod-eu-1" );
+
+        await act.Should().ThrowAsync<MidRangeSquashException>();
+        // Stale row was NOT consumed.
+        store.Rows.Should().ContainKey( staleRow.Id );
+    }
+
+    [TestMethod]
+    public async Task RB2_NoEnvironmentName_RecoveryProbeSkipped()
+    {
+        // Without an EnvironmentName the runner cannot derive the recovery
+        // row id, so it never probes -- the mid-range exception is the only
+        // outcome.
+        var store = new FakeStore();
+        store.Rows["record.2001.x"] = new MigrationRecord { Id = "record.2001.x", Checksum = "h-2001" };
+
+        var recordIds = new Dictionary<long, string>
+        {
+            [2001L] = "record.2001.x",
+            [2002L] = "record.2002.x",
+        };
+
+        var act = async () => await MigrationRunner.ClassifySquashAsync(
+            store,
+            squashVersion: 2099L,
+            resolvedReplaces: new[] { 2001L, 2002L },
+            recordIdByVersion: recordIds,
+            cancellationToken: default );
+
+        await act.Should().ThrowAsync<MidRangeSquashException>();
     }
 
     [TestMethod]

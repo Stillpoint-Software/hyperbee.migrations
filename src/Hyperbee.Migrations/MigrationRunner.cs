@@ -149,16 +149,54 @@ public class MigrationRunner
             // → MidRangeSquashException with recovery hints.
             if ( direction == Direction.Up && isSquash )
             {
-                var (squashApplyMode, autoMark) = await ClassifySquashAsync(
+                var (squashApplyMode, autoMark, recoveryRowToDelete) = await ClassifySquashAsync(
                     descriptor, recordIdByVersion, cancellationToken ).ConfigureAwait( false );
 
                 if ( autoMark )
                 {
-                    _logger.LogInformation(
-                        "[{version}] {name}: squash auto-marked (mature env; {count} replaced versions all satisfied)",
-                        version, name, resolvedReplaces.Count );
+                    if ( recoveryRowToDelete != null )
+                    {
+                        _logger.LogWarning(
+                            "[{version}] {name}: squash AUTO-MARKED via persisted recovery acknowledgement (RB-2). " +
+                            "Replaced versions ({count}) treated as satisfied without running the squash body. " +
+                            "This path is only safe when the live data state already matches the squashed schema; " +
+                            "the operator who ran `hyperbee-migrations recover from-mid-range` owns that verification.",
+                            version, name, resolvedReplaces.Count );
+                    }
+                    else
+                    {
+                        _logger.LogInformation(
+                            "[{version}] {name}: squash auto-marked (mature env; {count} replaced versions all satisfied)",
+                            version, name, resolvedReplaces.Count );
+                    }
+
                     await WriteSquashJournalAsync( migration, attribute, recordId, resolvedReplaces, cancellationToken )
                         .ConfigureAwait( false );
+
+                    // RB-2: delete the persisted recovery acknowledgement AFTER the
+                    // squash journal write commits, so a crash between the two leaves
+                    // the recovery row consumable by the next runner pass rather than
+                    // losing the operator's acknowledgement. Best-effort: a stale
+                    // recovery row left behind is harmless because the next pass
+                    // finds a fully-applied squash and skips classification.
+                    if ( recoveryRowToDelete != null )
+                    {
+                        try
+                        {
+                            await _recordStore.DeleteAsync( recoveryRowToDelete ).ConfigureAwait( false );
+                            _logger.LogInformation(
+                                "[{version}] {name}: consumed recovery acknowledgement row `{recoveryId}`",
+                                version, name, recoveryRowToDelete );
+                        }
+                        catch ( Exception ex )
+                        {
+                            _logger.LogWarning( ex,
+                                "[{version}] {name}: squash journal written but recovery row `{recoveryId}` " +
+                                "could not be deleted; harmless (next runner pass will skip classification)",
+                                version, name, recoveryRowToDelete );
+                        }
+                    }
+
                     runCount++;
                     if ( version == _options.ToVersion ) break;
                     continue;
@@ -248,7 +286,11 @@ public class MigrationRunner
     // Visible to the test assembly via InternalsVisibleTo so the three branches
     // (mature/fresh/midrange) can be exercised without weaving through full
     // RunAsync — Phase 2 discovery would reject some constructions otherwise.
-    internal static async Task<(MigrationApplyMode mode, bool autoMark)> ClassifySquashAsync(
+    // The third tuple element carries a recovery acknowledgement row id when
+    // RB-2 force-mark fired; non-null tells the caller to delete that row
+    // after the squash journal write succeeds. Defaults to null in every
+    // path except RB-2 auto-mark.
+    internal static async Task<(MigrationApplyMode mode, bool autoMark, string recoveryRowToDelete)> ClassifySquashAsync(
         IMigrationRecordStore store,
         long squashVersion,
         IReadOnlyList<long> resolvedReplaces,
@@ -275,12 +317,52 @@ public class MigrationRunner
         }
 
         if ( satisfied.Count == resolvedReplaces.Count )
-            return (MigrationApplyMode.PartialCatchUp, autoMark: true);
+            return (MigrationApplyMode.PartialCatchUp, autoMark: true, recoveryRowToDelete: null);
 
         if ( satisfied.Count == 0 )
-            return (MigrationApplyMode.Fresh, autoMark: false);
+            return (MigrationApplyMode.Fresh, autoMark: false, recoveryRowToDelete: null);
 
         var missing = resolvedReplaces.Where( v => !satisfied.Contains( v ) ).ToArray();
+
+        // RB-2: before failing the runner, look for a persisted recovery
+        // acknowledgement at the deterministic row id. The CLI verb
+        // `recover from-mid-range` writes this row after the operator
+        // externally verifies that the live data state already matches the
+        // squashed schema. If we find a valid row (token matches a fresh
+        // recompute AND the persisted missing-set matches what we just
+        // classified), the squash auto-marks WITHOUT running its body and
+        // the recovery row is deleted -- so a stale acknowledgement cannot
+        // force-mark a second time.
+        if ( !string.IsNullOrWhiteSpace( environmentName ) )
+        {
+            var recoveryId = Squash.RecoveryRecord.IdFor( squashVersion, environmentName );
+            MigrationRecord recoveryRow = null;
+            try
+            {
+                recoveryRow = await store.ReadAsync( recoveryId ).ConfigureAwait( false );
+            }
+            catch
+            {
+                // ReadAsync surface varies by provider; tolerate any failure
+                // (treat as no recovery row). The MidRangeSquashException
+                // below still surfaces with the actionable token.
+            }
+
+            if ( recoveryRow != null
+                 && Squash.RecoveryRecord.IsValidFor( recoveryRow, squashVersion, environmentName, missing ) )
+            {
+                // Auto-mark + clean up recovery row. The recovery row id is
+                // returned so RunAsync can delete it AFTER the squash journal
+                // write commits: that ordering means a crash between the two
+                // leaves the recovery row consumable by a retry rather than
+                // losing the operator's acknowledgement. The delete is
+                // best-effort; a stale recovery row left behind is harmless
+                // because the next runner pass finds a fully-applied squash
+                // and skips classification entirely.
+                return (MigrationApplyMode.PartialCatchUp, autoMark: true, recoveryRowToDelete: recoveryId);
+            }
+        }
+
         // R-10: surface the recovery acknowledgement token in the exception
         // message so the operator has it during incident response. Token is
         // deterministic per (env, squash, missing-versions); see
@@ -292,7 +374,7 @@ public class MigrationRunner
             environmentName );
     }
 
-    private Task<(MigrationApplyMode mode, bool autoMark)> ClassifySquashAsync(
+    private Task<(MigrationApplyMode mode, bool autoMark, string recoveryRowToDelete)> ClassifySquashAsync(
         MigrationDescriptor squash,
         IReadOnlyDictionary<long, string> recordIdByVersion,
         CancellationToken cancellationToken )

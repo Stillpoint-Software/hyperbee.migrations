@@ -46,20 +46,36 @@ builder.Services.AddNpgsqlDataSource( builder.Configuration.GetConnectionString(
 
 builder.Services.AddPostgresMigrations( opts =>
 {
-    opts.SchemaName     = "migration";  // ledger schema (default: "migration")
-    opts.LockingEnabled = true;
+    opts.SchemaName = "migration";  // ledger schema (default: "migration")
+    // LockingEnabled defaults to true in v3.0 (production-safe). Set false
+    // explicitly only for dev/test fixtures that intentionally race.
 } );
 
 var app = builder.Build();
 
 using ( var scope = app.Services.CreateScope() )
 {
-    var runner = scope.ServiceProvider.GetRequiredService<MigrationRunner>();
+    // Single-provider host: resolve the typed runner. Resolving the base
+    // MigrationRunner also works in single-provider hosts, but the typed
+    // runner is the documented entry point and the only one that works in
+    // multi-provider hosts (per ADR-0023 a multi-provider host throws on
+    // GetRequiredService<MigrationRunner>() to prevent silently routing to
+    // the wrong provider).
+    var runner = scope.ServiceProvider.GetRequiredService<PostgresMigrationRunner>();
     await runner.RunAsync( app.Lifetime.ApplicationStopping );
 }
 
 app.Run();
 ```
+
+> **Multi-provider hosts.** When you call more than one `Add{Provider}Migrations`
+> on the same service collection (e.g. one app applies Postgres + MongoDB
+> migrations), `GetRequiredService<MigrationRunner>()` throws to prevent
+> silently routing to the wrong provider. Resolve the typed runner directly:
+> `PostgresMigrationRunner`, `MongoDBMigrationRunner`, `CouchbaseMigrationRunner`,
+> `OpenSearchMigrationRunner`, `AerospikeMigrationRunner`. See
+> [multi-provider hosts](https://stillpoint-software.github.io/hyperbee.migrations/multi-provider-hosts.html)
+> for the full pattern.
 
 A migration is a class:
 
