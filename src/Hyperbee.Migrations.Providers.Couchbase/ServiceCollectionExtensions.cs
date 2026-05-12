@@ -2,8 +2,12 @@
 using System.Runtime.Loader;
 using Hyperbee.Migrations.Providers.Couchbase.Resources;
 using Hyperbee.Migrations.Providers.Couchbase.Services;
+using Hyperbee.Migrations.Providers.Couchbase.Squash;
+using Hyperbee.Migrations.Squash;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Providers.Couchbase;
 
@@ -67,6 +71,30 @@ public static class ServiceCollectionExtensions
             .AddHttpMessageHandler<CouchbaseAuthenticationHandler>();
 
         services.AddTransient<ICouchbaseBootstrapper, CouchbaseBootstrapper>();
+
+        // Squash codegen wiring (per ADR-0019). Components are stateless and
+        // idempotent; safe singletons.
+        services.TryAddSingleton<CouchbaseSnapshotCanonicalizer>();
+        services.TryAddSingleton<CouchbaseDataOpClassifier>();
+        services.TryAddSingleton( provider => new HybridStrategy(
+            provider.GetRequiredService<CouchbaseSnapshotCanonicalizer>(),
+            provider.GetRequiredService<CouchbaseDataOpClassifier>(),
+            provider.GetService<ILogger<HybridStrategy>>() ) );
+        services.TryAddSingleton<CouchbaseSquashVerifier>();
+        services.TryAddSingleton( provider =>
+        {
+            // Default topology instance for descriptor composition; live
+            // CaptureAsync overrides at runtime.
+            ITopologySignature topology = new CouchbaseTopologySignature();
+            var descriptor = new SquashStrategyDescriptor(
+                TopologySignature: topology,
+                DataOpClassifier: provider.GetRequiredService<CouchbaseDataOpClassifier>(),
+                Generator: provider.GetRequiredService<HybridStrategy>(),
+                Verifier: provider.GetRequiredService<CouchbaseSquashVerifier>(),
+                Canonicalizer: provider.GetRequiredService<CouchbaseSnapshotCanonicalizer>() );
+            descriptor.EnsureValid();
+            return descriptor;
+        } );
 
         return services;
     }
