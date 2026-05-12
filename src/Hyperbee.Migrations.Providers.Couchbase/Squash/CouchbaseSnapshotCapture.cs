@@ -199,13 +199,27 @@ public static class CouchbaseSnapshotCapture
             .Parameter( "bucket", bucketName )
             .CancellationToken( cancellationToken );
 
-        var result = await cluster.QueryAsync<JsonObject>( statement, options ).ConfigureAwait( false );
+        // Couchbase SDK serializes rows via Newtonsoft.Json by default; it
+        // cannot construct System.Text.Json.Nodes.JsonObject directly.
+        // We query as dynamic (returns Newtonsoft.JObject row), round-trip
+        // through the dynamic object's JSON string, and re-parse via
+        // System.Text.Json so the canonicalizer downstream stays on one
+        // JSON DOM library.
+        var result = await cluster.QueryAsync<dynamic>( statement, options ).ConfigureAwait( false );
 
         var rows = new List<JsonNode>();
         await foreach ( var row in result.ConfigureAwait( false ) )
         {
-            if ( row != null )
-                rows.Add( row );
+            if ( row == null )
+                continue;
+
+            var rowJson = row.ToString() as string;
+            if ( string.IsNullOrWhiteSpace( rowJson ) )
+                continue;
+
+            var node = JsonNode.Parse( rowJson );
+            if ( node != null )
+                rows.Add( node );
         }
         return rows;
     }

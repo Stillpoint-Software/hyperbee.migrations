@@ -21,24 +21,16 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // runtime stats, server-assigned node placement, vBucketServerMap, etc.) at
 // every nesting level and JSON key orderings are sorted away.
 //
-// [TestCategory("LocalOnly")]: the Couchbase SDK bootstraps via port 11210
-// (KV) and learns about the n1ql / index / fts services from the cluster
-// map. Testcontainers Couchbase exposes ports on localhost, but the cluster
-// map returned by /pools/default carries container-internal hostnames (per
-// RenameNodeRequest in CouchbaseTestContainer) which are NOT resolvable
-// from a host-side .NET process. A proper fix requires configuring
-// alternate addresses on each cluster node (`/node/controller/setupAlternateAddresses`)
-// and connecting with `?network=external`; that work is tracked separately.
-// Until then, this suite is local-only: developers running it on a
-// workstation with manual port-forwarding + alt-address config can
-// validate squash determinism end-to-end. The squash correctness contract
-// itself is byte-tested by 192 Couchbase unit tests in the
-// Hyperbee.Migrations.Squash.Tests project (idempotence, divergent-input
-// canonical equality, ephemeral strip, deferred-state preservation).
+// Host-side cluster connection: Couchbase SDK bootstraps via port 11210
+// (KV) and learns about n1ql / index / fts services from the cluster map.
+// Testcontainers Couchbase binds those ports to localhost; we configure
+// alternate ("external") addresses on each node during container setup
+// so the SDK -- connecting via `couchbase://localhost?network=external`
+// -- routes through the localhost-bound ports instead of the container's
+// internal IP. See SetupAlternateAddressesRequest in CouchbaseTestContainer.
 
 [TestClass]
 [DoNotParallelize]
-[TestCategory( "LocalOnly" )]
 public class CouchbaseSquashDeterminismTests
 {
     private ICluster _cluster;
@@ -54,7 +46,7 @@ public class CouchbaseSquashDeterminismTests
 
         var options = new ClusterOptions
         {
-            ConnectionString = "couchbase://localhost",
+            ConnectionString = "couchbase://localhost?network=external",
             UserName = "Administrator",
             Password = "password"
         };
