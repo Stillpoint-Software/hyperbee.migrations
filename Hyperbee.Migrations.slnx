@@ -47,8 +47,10 @@
   <Project Path="src/Hyperbee.Migrations.Providers.Aerospike.SquashCli/Hyperbee.Migrations.Providers.Aerospike.SquashCli.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.Couchbase/Hyperbee.Migrations.Providers.Couchbase.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.OpenSearch/Hyperbee.Migrations.Providers.OpenSearch.csproj" />
+  <Project Path="src/Hyperbee.Migrations.Providers.OpenSearch.SquashCli/Hyperbee.Migrations.Providers.OpenSearch.SquashCli.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.OpenSearch.Aws/Hyperbee.Migrations.Providers.OpenSearch.Aws.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.MongoDB/Hyperbee.Migrations.Providers.MongoDB.csproj" />
+  <Project Path="src/Hyperbee.Migrations.Providers.MongoDB.SquashCli/Hyperbee.Migrations.Providers.MongoDB.SquashCli.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.Postgres/Hyperbee.Migrations.Providers.Postgres.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.Postgres.SquashCli/Hyperbee.Migrations.Providers.Postgres.SquashCli.csproj" />
   <Project Path="src/Hyperbee.Migrations/Hyperbee.Migrations.csproj" />

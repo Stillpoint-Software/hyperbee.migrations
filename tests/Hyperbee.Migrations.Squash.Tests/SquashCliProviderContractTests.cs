@@ -1,5 +1,7 @@
 using FluentAssertions;
 using Hyperbee.Migrations.Providers.Aerospike.SquashCli;
+using Hyperbee.Migrations.Providers.MongoDB.SquashCli;
+using Hyperbee.Migrations.Providers.OpenSearch.SquashCli;
 using Hyperbee.Migrations.Providers.Postgres.SquashCli;
 using Hyperbee.Migrations.Squash.Cli;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -31,6 +33,26 @@ public class SquashCliProviderContractTests
     {
         var provider = new AerospikeSquashCliProvider();
         provider.ProviderId.Should().Be( "aerospike" );
+        provider.SquashFileExtension.Should().Be( ".statements" );
+        provider.ScanSource( null! ).Should().BeEmpty();
+        provider.ScanSource( "" ).Should().BeEmpty();
+    }
+
+    [TestMethod]
+    public void OpenSearchProvider_ContractValues()
+    {
+        var provider = new OpenSearchSquashCliProvider();
+        provider.ProviderId.Should().Be( "opensearch" );
+        provider.SquashFileExtension.Should().Be( ".statements" );
+        provider.ScanSource( null! ).Should().BeEmpty();
+        provider.ScanSource( "" ).Should().BeEmpty();
+    }
+
+    [TestMethod]
+    public void MongoDBProvider_ContractValues()
+    {
+        var provider = new MongoDBSquashCliProvider();
+        provider.ProviderId.Should().Be( "mongodb" );
         provider.SquashFileExtension.Should().Be( ".statements" );
         provider.ScanSource( null! ).Should().BeEmpty();
         provider.ScanSource( "" ).Should().BeEmpty();

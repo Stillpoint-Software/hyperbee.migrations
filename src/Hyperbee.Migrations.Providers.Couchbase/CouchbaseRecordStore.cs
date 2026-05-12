@@ -272,28 +272,35 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         if ( ids.Length == 0 )
             return found;
 
-        var collection = await GetCollectionAsync().ConfigureAwait( false );
+        // R-16: single N1QL `USE KEYS [...]` round-trip instead of N parallel
+        // ExistsAsync fan-out. Fan-out scaled candidate-set size linearly with
+        // open KV ops -- a 500-migration squash auto-mark opened 500 concurrent
+        // KV connections, risking throttle/retry storms on smaller clusters.
+        // USE KEYS is a primary-key index hit at the cluster, so the query
+        // engine returns only the subset of ids that resolve in the keyspace
+        // -- semantically identical, one round-trip, no fan-out.
+        var cluster = await _clusterProvider.GetClusterAsync().ConfigureAwait( false );
 
-        // Realtime KV reads per ADR-0019 Phase 3. ExistsAsync is a single round-trip
-        // realtime probe (no view/index involvement); fanned out concurrently so
-        // candidate-set size scales with throughput, not latency. Squash auto-mark
-        // typically queries 10-100 ids; the parallel fan-out keeps tail-latency low.
-        var probes = ids.Select( id => ProbeAsync( collection, id, cancellationToken ) ).ToArray();
-        await Task.WhenAll( probes ).ConfigureAwait( false );
+        var (bucketName, scopeName, collectionName) = _options;
+        var keyspace = $"`{bucketName}`.`{scopeName}`.`{collectionName}`";
 
-        for ( var i = 0; i < probes.Length; i++ )
+        var queryOptions = new QueryOptions()
+            .Parameter( "ids", ids )
+            .CancellationToken( cancellationToken );
+
+        var statement =
+            $"SELECT RAW META(d).id FROM {keyspace} d USE KEYS $ids";
+
+        var result = await cluster.QueryAsync<string>( statement, queryOptions )
+            .ConfigureAwait( false );
+
+        await foreach ( var hit in result.WithCancellation( cancellationToken ).ConfigureAwait( false ) )
         {
-            if ( probes[i].Result )
-                found.Add( ids[i] );
+            if ( !string.IsNullOrEmpty( hit ) )
+                found.Add( hit );
         }
+
         return found;
-
-        static async Task<bool> ProbeAsync( ICouchbaseCollection coll, string id, CancellationToken ct )
-        {
-            var check = await coll.ExistsAsync( id, options => options.CancellationToken( ct ) )
-                .ConfigureAwait( false );
-            return check.Exists;
-        }
     }
 
     public async Task<IReadOnlySet<long>> IntersectWithSquashedAsync(

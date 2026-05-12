@@ -140,6 +140,24 @@ unchanged.
 
 ### Changed (back-compat preserved)
 
+- **`CouchbaseRecordStore.IntersectWithAppliedAsync` rewritten to single N1QL
+  `USE KEYS` round-trip.** Previously fanned out N parallel `ExistsAsync`
+  KV probes -- a 500-migration squash auto-mark opened 500 concurrent
+  KV connections, risking throttle / retry storms on smaller clusters.
+  The new path issues `SELECT RAW META(d).id FROM <keyspace> d USE KEYS $ids`
+  for a primary-key index hit; semantically identical, one round-trip,
+  no fan-out. Per ADR-0024 audit follow-up (R-16).
+- **MongoDB + OpenSearch SquashCli provider packages** ship as part of the
+  five-provider CLI extensibility cascade. `MongoDBSquashCliProvider`
+  spins ephemeral `mongo:7` containers via `Testcontainers.MongoDb`;
+  `OpenSearchSquashCliProvider` spins ephemeral
+  `opensearchproject/opensearch:2.18.0` containers via the generic
+  `Testcontainers` package. Both route migration apply through the
+  discovered `IMigrationHost` and emit `.statements` script form per
+  ADR-0022. RB-3 per-provider readiness probes ship in both (Mongo:
+  N1QL-style aggregation over the migration ledger collection;
+  OpenSearch: `_search` against the ledger index extracting the max
+  version from record_id).
 - **CLI is a thin dispatch shell over `ISquashCliProvider`** (per ADR-0024
   Week 2). The CLI assembly references zero provider packages; per-provider
   CLI implementations are discovered via the migration assembly's reference
