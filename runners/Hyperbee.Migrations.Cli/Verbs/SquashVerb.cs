@@ -1,22 +1,22 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Text.Json;
+using Hyperbee.Migrations;
 using Hyperbee.Migrations.Cli.FleetManifest;
-using Hyperbee.Migrations.Cli.Postgres;
-using Hyperbee.Migrations.Providers.Postgres.Squash;
 using Hyperbee.Migrations.Squash;
-using Npgsql;
+using Hyperbee.Migrations.Squash.Cli;
 
 namespace Hyperbee.Migrations.Cli.Verbs;
 
 /// <summary>
-/// <c>hyperbee-migrations squash</c> — generates a destructive squash
-/// migration per ADR-0019. v1 only ships Postgres codegen; other providers
-/// surface a roadmap-pointing refusal via <see cref="NullSquashStrategy"/>.
+/// <c>hyperbee-migrations squash</c> -- generates a destructive squash
+/// migration per ADR-0019. Thin dispatch shell over the
+/// <see cref="ISquashCliProvider"/> contract (per ADR-0024): the CLI
+/// assembly references no provider packages; per-provider implementations
+/// are discovered via the migration assembly's reference closure.
 /// </summary>
 internal static class SquashVerb
 {
-    // R-12: per-verb flag whitelist. Adding a new flag requires updating this
-    // set; the parser then rejects typos with a did-you-mean suggestion.
+    // R-12: per-verb flag whitelist.
     private static readonly ArgSchema Schema = ArgSchema.Of(
         knownFlags: new[]
         {
@@ -37,11 +37,14 @@ internal static class SquashVerb
             "remove-originals",
             "migrations-root",
             "regenerate",
+            "confirm-delete",
+            "provider-option",
         },
         booleanFlags: new[]
         {
             "remove-originals",
             "regenerate",
+            "confirm-delete",
         } );
 
     public static async Task<int> RunAsync( string[] args )
@@ -75,27 +78,8 @@ internal static class SquashVerb
             return Fail( ex.Message );
         }
 
-        if ( provider != "postgres" )
-        {
-            // Per A11: NullSquashStrategy returns Failed naming the roadmap phase.
-            var roadmap = provider switch
-            {
-                "mongodb" or "couchbase" => "v1.1",
-                "aerospike" or "opensearch" => "v1.2",
-                _ => "a future release"
-            };
-            Console.Error.WriteLine(
-                $"hyperbee-migrations squash: codegen for `{provider}` ships in {roadmap}; see release roadmap. " +
-                "Current options: continue applying migrations individually." );
-            return 4;
-        }
-
         // R-6 + R-7: validate the default-deny safety-gate flags BEFORE any
-        // I/O (assembly load, container provisioning, cluster probe). The
-        // operator's intent must be fully specified before we touch the
-        // filesystem or the database; failing fast on missing gates avoids
-        // partial side-effects (output directory created, ephemeral container
-        // started) when a later policy check would have rejected anyway.
+        // I/O. Both gates require explicit bypass with an audit reason.
         var scanSource = parsed.Optional( "scan-source" );
         var noScanReason = parsed.Optional( "no-scan" );
         if ( string.IsNullOrWhiteSpace( scanSource ) && string.IsNullOrWhiteSpace( noScanReason ) )
@@ -149,9 +133,48 @@ internal static class SquashVerb
             return Fail( $"could not load --assembly '{assemblyPath}': {ex.Message}" );
         }
 
-        // Build descriptors from the assembly's [Migration] types in the
-        // requested range. We don't need ResolvedReplaces here — Phase 6
-        // strategy uses the raw range to bound capture.
+        // Discover ISquashCliProvider implementations from the migration
+        // assembly's reference closure (per ADR-0024). NuGet package presence
+        // IS the registration: the migration project references e.g.
+        // Hyperbee.Migrations.Providers.Postgres.SquashCli, which contains
+        // PostgresSquashCliProvider, and we find it transitively.
+        IReadOnlyDictionary<string, ISquashCliProvider> providers;
+        try
+        {
+            providers = CliProviderRegistry.Discover( migrationAssembly );
+        }
+        catch ( Exception ex )
+        {
+            return Fail( $"ISquashCliProvider discovery failed: {ex.Message}" );
+        }
+
+        if ( !providers.TryGetValue( provider, out var cliProvider ) )
+        {
+            var known = providers.Count == 0
+                ? "<none>"
+                : string.Join( ", ", providers.Keys.OrderBy( k => k, StringComparer.OrdinalIgnoreCase ) );
+            Console.Error.WriteLine(
+                $"hyperbee-migrations squash: provider `{provider}` has no ISquashCliProvider registered " +
+                $"in the migration assembly's reference closure. Discovered providers: {known}. " +
+                $"Add a package reference to Hyperbee.Migrations.Providers.{Capitalize( provider )}.SquashCli " +
+                $"(or the equivalent for your provider) to the migration project." );
+            return 4;
+        }
+
+        // Discover the IMigrationHost (per ADR-0024). The host wires the
+        // operator's existing Add{Provider}Migrations setup; the CLI does
+        // not need to know anything about the project's DI shape.
+        IMigrationHost host;
+        try
+        {
+            host = MigrationHostDiscovery.Discover( migrationAssembly );
+        }
+        catch ( Exception ex )
+        {
+            return Fail( $"IMigrationHost discovery failed: {ex.Message}" );
+        }
+        Console.WriteLine( $"[squash] migration host: {host.GetType().FullName}" );
+
         var descriptors = MigrationDescriptors.FromAssemblyInRange( migrationAssembly, fromVersion, toVersion );
         if ( descriptors.Count == 0 )
             return Fail( $"no [Migration] types found in {migrationAssembly.GetName().Name} for range {fromVersion}-{toVersion}." );
@@ -169,12 +192,21 @@ internal static class SquashVerb
         }
         if ( !string.IsNullOrWhiteSpace( scanSource ) )
         {
+            // R-8: per-provider scanner dispatch via the ISquashCliProvider
+            // contract. Postgres uses the existing Roslyn scanner; other
+            // providers may have different heuristics (Aerospike's
+            // call-site form, OpenSearch's REST-call patterns, etc.).
             Console.WriteLine( $"[squash] scanning migration source for [DataMigration] enforcement: {scanSource}" );
-            var verdicts = PostgresMigrationSourceScanner.Scan( scanSource );
+            IReadOnlyList<MigrationSourceVerdict> verdicts;
+            try
+            {
+                verdicts = cliProvider.ScanSource( scanSource! );
+            }
+            catch ( Exception ex )
+            {
+                return Fail( $"source scan failed: {ex.Message}" );
+            }
 
-            // Restrict to the version range we're squashing (best-effort —
-            // the scanner doesn't know versions, so we cross-reference by
-            // class name against the descriptors).
             var classNamesInRange = descriptors
                 .Select( d => d.Type.Name )
                 .ToHashSet( StringComparer.Ordinal );
@@ -208,6 +240,11 @@ internal static class SquashVerb
             Console.WriteLine( $"[squash] source scan ok ({verdicts.Count} class(es) scanned)" );
         }
 
+        // Build the per-provider options dictionary from --provider-option
+        // key=value entries. Same shape feeds the fleet probe (RB-3) and the
+        // provider's generation context.
+        var providerOptions = ParseProviderOptions( parsed );
+
         if ( !string.IsNullOrWhiteSpace( noFleetReason ) )
         {
             Console.WriteLine();
@@ -218,10 +255,6 @@ internal static class SquashVerb
             Console.WriteLine();
         }
 
-        // Fleet manifest path. When supplied, drive the pre-generation
-        // readiness check: refuses if any registered fleet member is mid-range
-        // (per ADR-0019 A2). The probed last-applied versions feed into
-        // SquashMetadata.ExpectedFleetVersions for the deploy-time gate.
         FleetManifestModel? manifest = null;
         IReadOnlyDictionary<string, long> expectedFleetVersions = new Dictionary<string, long>();
         IReadOnlyList<SquashOverrideEntry> overrideEntries = Array.Empty<SquashOverrideEntry>();
@@ -240,8 +273,8 @@ internal static class SquashVerb
             try
             {
                 Console.WriteLine( "[squash] running fleet readiness check ..." );
-                expectedFleetVersions = await FleetReadinessCheck.EnsureGenerableAsync(
-                    manifest, fromVersion, toVersion, CancellationToken.None ).ConfigureAwait( false );
+                expectedFleetVersions = await FleetReadinessProbe.EnsureGenerableAsync(
+                    cliProvider, manifest, fromVersion, toVersion, CancellationToken.None ).ConfigureAwait( false );
                 foreach ( var (env, ver) in expectedFleetVersions.OrderBy( kv => kv.Key ) )
                     Console.WriteLine( $"  {env}: last-applied={ver}" );
             }
@@ -258,12 +291,7 @@ internal static class SquashVerb
             overrideEntries = FleetManifestLoader.BuildOverrideEntries( manifest, DateTimeOffset.UtcNow );
         }
 
-        // CLI flags can ALSO supply stranding entries for ad-hoc squashes
-        // without a manifest (or to extend the manifest's set). Per A11:
-        // each name supplied via --accept-stranding requires a paired
-        // --reason-stranding name="..." (>= 20 chars) entry. ticket-id +
-        // owner are taken from --strand-ticket-id and --strand-owner
-        // (defaults to git config user.email when omitted).
+        // CLI flags can supply stranding entries for ad-hoc squashes.
         IReadOnlyList<SquashOverrideEntry> flagOverrides;
         try
         {
@@ -290,53 +318,33 @@ internal static class SquashVerb
             Console.WriteLine( $"[squash] {flagOverrides.Count} stranding entry(ies) supplied via CLI flags." );
         }
 
-        await using var dataSource = NpgsqlDataSource.Create( connection );
-
-        // Concrete snapshot capture: ephemeral postgres:N-alpine container
-        // (per A10 server-version-matched). Caller-supplied applyMigrations
-        // delegate is a TODO for v1.0 — the operator's project shape varies.
-        // For v1 the CLI applies the captured migrations via dotnet ef-style
-        // reflection IF the assembly exposes a static "ApplyAsync" entry,
-        // otherwise the operator must wire their own capture. We surface this
-        // as a clear error message naming the path forward.
-        var capture = new PostgresEphemeralCapture( async ( ds, upTo, ct ) =>
+        var cliCtx = new SquashCliContext
         {
-            var applyEntry = migrationAssembly
-                .GetTypes()
-                .Select( t => t.GetMethod( "ApplyToDataSourceAsync",
-                    BindingFlags.Public | BindingFlags.Static,
-                    new[] { typeof( NpgsqlDataSource ), typeof( long ), typeof( CancellationToken ) } ) )
-                .FirstOrDefault( m => m != null );
-
-            if ( applyEntry == null )
+            SquashName = name,
+            FromVersion = fromVersion,
+            ToVersion = toVersion,
+            ConnectionString = connection,
+            Descriptors = descriptors,
+            MigrationHost = host,
+            Options = new SquashGenerationOptions
             {
-                throw new NotSupportedException(
-                    "v1 squash CLI requires the migration assembly to expose a static method " +
-                    "`Task ApplyToDataSourceAsync(NpgsqlDataSource ds, long upTo, CancellationToken ct)` " +
-                    "that applies the discovered migrations through `upTo`. This is a v1 transitional " +
-                    "shim; v1.0.x will replace it with a generic MigrationRunner-driven path." );
-            }
-
-            await (Task) applyEntry.Invoke( null, new object[] { ds, upTo, ct } )!;
-        } );
-
-        var ctx = new PostgresSquashGenerationContext(
-            squashName: name,
-            squashVersion: toVersion,
-            dataSource: dataSource,
-            captureSnapshotAsync: capture.CaptureAsync );
-
-        var canonicalizer = new PostgresSnapshotCanonicalizer();
-        var dataOpClassifier = new PostgresDataOpClassifier();
-        var strategy = new PgDumpSnapshotStrategy( canonicalizer, dataOpClassifier );
+                LowerBound = fromVersion,
+                UpperBound = toVersion
+            },
+            ProviderOptions = providerOptions
+        };
 
         Console.WriteLine( "[squash] generating ..." );
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        var result = await strategy.GenerateAsync( ctx, descriptors, new SquashGenerationOptions
+        SquashGenerationResult result;
+        try
         {
-            LowerBound = fromVersion,
-            UpperBound = toVersion
-        } );
+            result = await cliProvider.GenerateAsync( cliCtx, CancellationToken.None ).ConfigureAwait( false );
+        }
+        catch ( Exception ex )
+        {
+            return Fail( $"GenerateAsync threw: {ex.Message}" );
+        }
         stopwatch.Stop();
 
         switch ( result )
@@ -349,12 +357,11 @@ internal static class SquashVerb
 
             case SquashGenerationResult.Generated generated:
                 await EmitArtifactsAsync(
-                    output, name, generated, fromVersion, toVersion, ctx, stopwatch.Elapsed,
-                    expectedFleetVersions, overrideEntries );
+                    output, name, cliProvider, generated, fromVersion, toVersion,
+                    stopwatch.Elapsed, expectedFleetVersions, overrideEntries );
 
-                // Per Phase 7 Task 7.7 — optional source-file removal after
-                // successful generation. Idempotent: refuses if originals
-                // already gone unless --regenerate is also supplied.
+                // R-4: --remove-originals defaults to dry-run; actual deletion
+                // requires --confirm-delete.
                 if ( parsed.HasFlag( "remove-originals" ) )
                 {
                     var migrationsRoot = parsed.Optional( "migrations-root" );
@@ -365,9 +372,10 @@ internal static class SquashVerb
                         return 7;
                     }
 
-                    var rc = RemoveOriginalSources(
-                        migrationsRoot,
+                    var rc = HandleRemoveOriginals(
+                        migrationsRoot!,
                         descriptors.Select( d => d.Attribute.Version ).ToArray(),
+                        confirmDelete: parsed.HasFlag( "confirm-delete" ),
                         regenerate: parsed.HasFlag( "regenerate" ) );
                     if ( rc != 0 )
                         return rc;
@@ -382,30 +390,31 @@ internal static class SquashVerb
     private static async Task EmitArtifactsAsync(
         string output,
         string name,
+        ISquashCliProvider provider,
         SquashGenerationResult.Generated gen,
         long fromVersion,
         long toVersion,
-        PostgresSquashGenerationContext ctx,
         TimeSpan elapsed,
         IReadOnlyDictionary<string, long> expectedFleetVersions,
         IReadOnlyList<SquashOverrideEntry> overrideEntries )
     {
-        var sqlPath = Path.Combine( output, $"{name}.sql" );
+        // R-5: file extension is provider-declared. Postgres -> .sql,
+        // the four NoSQL providers -> .statements (per ADR-0022).
+        var contentPath = Path.Combine( output, name + provider.SquashFileExtension );
         var metadataPath = Path.Combine( output, $"{name}.metadata.json" );
         var summaryPath = Path.Combine( output, $"{name}.summary.md" );
 
-        await File.WriteAllTextAsync( sqlPath, gen.Content );
+        await File.WriteAllTextAsync( contentPath, gen.Content );
 
-        var topology = (PostgresTopologySignature) gen.Topology;
         var toolVersion = typeof( SquashVerb ).Assembly.GetName().Version?.ToString( 3 ) ?? "1.0.0";
 
         var metadata = new SquashMetadata
         {
             ReplacesFromVersion = fromVersion,
             ReplacesToVersion = toVersion,
-            ProviderId = "postgres",
-            Topology = topology.Properties,
-            CanonicalizerVersion = "postgres/1.0.0",
+            ProviderId = provider.ProviderId,
+            Topology = gen.Topology.Properties,
+            CanonicalizerVersion = $"{provider.ProviderId}/1.0.0",
             ExpectedFleetVersions = expectedFleetVersions.ToDictionary( kv => kv.Key, kv => kv.Value ),
             SquashOverrides = overrideEntries.ToArray(),
             CodegenToolVersion = $"hyperbee-migrations/{toolVersion}",
@@ -414,12 +423,13 @@ internal static class SquashVerb
 
         await File.WriteAllTextAsync( metadataPath, JsonSerializer.Serialize( metadata, new JsonSerializerOptions { WriteIndented = true } ) );
 
+        var topologyLine = string.Join( ", ", gen.Topology.Properties.OrderBy( kv => kv.Key ).Select( kv => $"{kv.Key}={kv.Value}" ) );
         var summary =
             $"# Squash {fromVersion}..{toVersion}\n\n" +
+            $"- Provider: {provider.ProviderId}\n" +
             $"- Generated: {metadata.GeneratedAt:O}\n" +
             $"- Tool: {metadata.CodegenToolVersion}\n" +
-            $"- Topology: server_major={topology.ServerMajor}, encoding={topology.ServerEncoding}, " +
-            $"extensions=[{string.Join( ", ", topology.Extensions )}]\n" +
+            $"- Topology: {topologyLine}\n" +
             $"- Replaces ({gen.Replaces.Count} versions): {string.Join( ", ", gen.Replaces )}\n" +
             $"- Elapsed: {elapsed.TotalSeconds:F2}s\n\n" +
             $"## Diagnostics\n\n" +
@@ -428,13 +438,13 @@ internal static class SquashVerb
 
         Console.WriteLine();
         Console.WriteLine( $"[squash] OK: emitted {gen.Replaces.Count} replaced versions; elapsed {elapsed.TotalSeconds:F2}s" );
-        Console.WriteLine( $"  {sqlPath}" );
+        Console.WriteLine( $"  {contentPath}" );
         Console.WriteLine( $"  {metadataPath}" );
         Console.WriteLine( $"  {summaryPath}" );
         if ( gen.Diagnostics.Count > 0 )
         {
             Console.WriteLine();
-            Console.WriteLine( $"[squash] {gen.Diagnostics.Count} diagnostic(s) — review {summaryPath} before applying." );
+            Console.WriteLine( $"[squash] {gen.Diagnostics.Count} diagnostic(s) -- review {summaryPath} before applying." );
         }
     }
 
@@ -446,15 +456,14 @@ internal static class SquashVerb
         return 2;
     }
 
-    /// <summary>
-    /// Phase 7 Task 7.7 — remove the original migration source files for
-    /// versions subsumed by the squash. Idempotent: refuses (returns code 7)
-    /// when the files are already gone unless <paramref name="regenerate"/>
-    /// is true. Searches by filename pattern <c>*&lt;version&gt;*</c> in
-    /// <paramref name="migrationsRoot"/> recursively.
-    /// </summary>
-    private static int RemoveOriginalSources( string migrationsRoot, long[] versions, bool regenerate )
+    private static int HandleRemoveOriginals( string migrationsRoot, long[] versions, bool confirmDelete, bool regenerate )
     {
+        // R-4: default behavior is now dry-run. Matched files are listed but
+        // not deleted unless --confirm-delete is also supplied. The version-
+        // delimited regex prevents false-positive matches against names that
+        // contain the version as a substring (e.g. squashing 1000 must not
+        // match `User_1000_Backup.cs` -- the digits 1000 must be flanked by
+        // non-digit boundaries).
         if ( !Directory.Exists( migrationsRoot ) )
         {
             Console.Error.WriteLine( $"[squash] --migrations-root `{migrationsRoot}` does not exist." );
@@ -464,9 +473,6 @@ internal static class SquashVerb
         var foundByVersion = new Dictionary<long, List<string>>();
         foreach ( var version in versions )
         {
-            // Match common naming conventions: <version>-<name>.cs,
-            // <version>_<name>.cs, Migration_<version>.cs, etc. We anchor on
-            // the version's digits being delimited so 1000 doesn't match 10000.
             var versionStr = version.ToString( System.Globalization.CultureInfo.InvariantCulture );
             var matches = Directory.GetFiles( migrationsRoot, "*.cs", SearchOption.AllDirectories )
                 .Where( f =>
@@ -498,6 +504,24 @@ internal static class SquashVerb
         }
 
         Console.WriteLine();
+        if ( !confirmDelete )
+        {
+            // Dry-run: list matched files and exit without modifying disk.
+            Console.WriteLine(
+                "[squash] --remove-originals (DRY-RUN; pass --confirm-delete to actually remove):" );
+            foreach ( var (version, files) in foundByVersion.OrderBy( kv => kv.Key ) )
+            {
+                foreach ( var file in files )
+                {
+                    Console.WriteLine( $"  v{version}: {Path.GetRelativePath( migrationsRoot, file )}" );
+                }
+            }
+            Console.WriteLine();
+            Console.WriteLine(
+                "[squash] DRY-RUN: review the file list above, then re-run with --confirm-delete to remove." );
+            return 0;
+        }
+
         Console.WriteLine( "[squash] --remove-originals removing:" );
         foreach ( var (version, files) in foundByVersion.OrderBy( kv => kv.Key ) )
         {
@@ -531,8 +555,6 @@ internal static class SquashVerb
         if ( names.Length == 0 )
             return Array.Empty<SquashOverrideEntry>();
 
-        // Per-name reasons: --reason-stranding "name=text" (>= 20 chars).
-        // Each name listed in --accept-stranding must have a reason.
         var reasons = parsed.Many( "reason-stranding" )
             .Select( raw =>
             {
@@ -574,38 +596,59 @@ internal static class SquashVerb
             .ToArray();
     }
 
+    private static IReadOnlyDictionary<string, string> ParseProviderOptions( ArgParser parsed )
+    {
+        var result = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
+        foreach ( var raw in parsed.Many( "provider-option" ) )
+        {
+            var eq = raw.IndexOf( '=' );
+            if ( eq <= 0 )
+                throw new ArgumentException( $"--provider-option `{raw}`: expected format key=value." );
+            var key = raw.Substring( 0, eq ).Trim();
+            var value = raw.Substring( eq + 1 ).Trim();
+            if ( string.IsNullOrEmpty( key ) )
+                throw new ArgumentException( $"--provider-option `{raw}`: empty key." );
+            result[key] = value;
+        }
+        return result;
+    }
+
+    private static string Capitalize( string s )
+        => string.IsNullOrEmpty( s ) ? s : char.ToUpperInvariant( s[0] ) + s.Substring( 1 );
+
     private static void PrintHelp()
     {
         Console.WriteLine(
             "Usage: hyperbee-migrations squash \\\n" +
-            "         --provider postgres \\\n" +
-            "         --connection \"Host=...;Database=...;Username=...;Password=...\" \\\n" +
+            "         --provider <postgres|aerospike|mongodb|couchbase|opensearch> \\\n" +
+            "         --connection \"<provider-specific-connection-string>\" \\\n" +
             "         --range <fromVersion>-<toVersion> \\\n" +
             "         --output <directory> \\\n" +
             "         --assembly <path-to-MyApp.Migrations.dll> \\\n" +
             "         (--scan-source <path-to-migrations-source> | --no-scan=\"<reason>\") \\\n" +
-            "         (--fleet-manifest <fleet.yml>  | --no-fleet-manifest=\"<reason>\") \\\n" +
+            "         (--fleet-manifest <fleet.yml>             | --no-fleet-manifest=\"<reason>\") \\\n" +
             "         [--name Squash_<toVersion>] \\\n" +
+            "         [--provider-option key=value [--provider-option key=value ...]] \\\n" +
             "         [--accept-stranding name1,name2 --reason-stranding name1=\"...\" --reason-stranding name2=\"...\"] \\\n" +
             "         [--strand-ticket-id FLEET-1234 --strand-owner ops@example.com] \\\n" +
-            "         [--remove-originals [--regenerate]]\n" +
+            "         [--remove-originals [--confirm-delete] [--regenerate]]\n" +
             "\n" +
-            "  --scan-source / --no-scan       ADR-0019 A5 default-deny: source scanning enforces\n" +
-            "                                  [DataMigration]/[StructuralOnly] annotations. The\n" +
-            "                                  bypass requires an audit reason (>= 20 chars).\n" +
-            "  --fleet-manifest / --no-fleet-manifest\n" +
-            "                                  ADR-0019 A2 default-deny: two-phase fleet readiness\n" +
-            "                                  gate prevents mid-range members from missing the\n" +
-            "                                  squash. The bypass requires an audit reason." );
+            "  The CLI dispatches to the ISquashCliProvider registered in the\n" +
+            "  migration assembly's reference closure. Add the relevant SquashCli\n" +
+            "  package to the migration project (e.g.\n" +
+            "  `Hyperbee.Migrations.Providers.Postgres.SquashCli`) to enable\n" +
+            "  per-provider codegen. v3.0 ships all 5 providers; no provider is\n" +
+            "  hardcoded in the CLI.\n" +
+            "\n" +
+            "  --remove-originals defaults to dry-run; pass --confirm-delete to\n" +
+            "  actually delete matched files (R-4)." );
     }
 }
 
 /// <summary>
 /// Loads <see cref="MigrationDescriptor"/>s directly from an assembly's
 /// reflected <see cref="MigrationAttribute"/> annotations, filtered by an
-/// inclusive version range. CLI-specific helper: the runtime
-/// <see cref="MigrationRunner"/> uses its own discovery; the squash CLI
-/// only needs the projection.
+/// inclusive version range.
 /// </summary>
 internal static class MigrationDescriptors
 {

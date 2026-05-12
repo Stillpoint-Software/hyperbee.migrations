@@ -11,13 +11,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!--
+      Per ADR-0024 / Path A: the CLI references zero provider packages.
+      Per-provider ISquashCliProvider implementations are discovered at
+      runtime via the migration assembly's reference closure.
+    -->
     <ProjectReference Include="..\..\src\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
-    <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Postgres\Hyperbee.Migrations.Providers.Postgres.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Npgsql" />
-    <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 

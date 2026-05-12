@@ -1,19 +1,18 @@
-﻿using Hyperbee.Migrations;
-using Hyperbee.Migrations.Providers.Postgres;
+using System.Reflection;
+using Hyperbee.Migrations;
 using Hyperbee.Migrations.Squash;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using Npgsql;
 
 namespace Hyperbee.Migrations.Cli.Verbs;
 
 /// <summary>
-/// <c>hyperbee-migrations recover from-mid-range</c> — last-resort recovery
-/// from a mid-range squash state per ADR-0019 A3. Verifies the deterministic
-/// acknowledgement token and (in v1) prints the audit-ready record. Actual
-/// ledger mutation hooks ship with the runner integration.
+/// <c>hyperbee-migrations recover from-mid-range</c> -- persists a recovery
+/// acknowledgement row into the migration ledger so the runner force-marks
+/// the mid-range squash on next invocation (per ADR-0019 A3 + RB-2).
+/// Routes through the discovered <see cref="IMigrationHost"/> so the CLI
+/// references no provider packages -- the migration project's existing
+/// <c>Add{Provider}Migrations</c> wiring is the single source of truth
+/// for which provider to write against.
 /// </summary>
 internal static class RecoverVerb
 {
@@ -27,12 +26,8 @@ internal static class RecoverVerb
             "token",
             "ticket-id",
             "reason",
-            // RB-2: connection details for persisting the recovery acknowledgement.
-            // Provider-coupled today; Week 2 IMigrationHost discovery generalizes
-            // across all 5 providers.
-            "provider",
             "connection",
-            "schema-name",
+            "assembly",
         },
         booleanFlags: Array.Empty<string>() );
 
@@ -58,21 +53,19 @@ internal static class RecoverVerb
             PrintHelp();
             return 2;
         }
-        string env, ticketId, reason, suppliedToken;
+
+        string env, ticketId, reason, suppliedToken, connection, assemblyPath;
         long squashVersion;
         long[] missingVersions;
 
-        string provider, connection;
-        string schemaName;
         try
         {
             env = parsed.Required( "env" );
             ticketId = parsed.Required( "ticket-id" );
             reason = parsed.Required( "reason" );
             suppliedToken = parsed.Required( "token" );
-            provider = parsed.Required( "provider" ).ToLowerInvariant();
             connection = parsed.Required( "connection" );
-            schemaName = parsed.Optional( "schema-name", "migration" )!;
+            assemblyPath = parsed.Required( "assembly" );
 
             if ( !long.TryParse( parsed.Required( "squash-version" ), out squashVersion ) )
                 throw new ArgumentException( "--squash-version must be an integer." );
@@ -83,8 +76,6 @@ internal static class RecoverVerb
             if ( reason.Trim().Length < 20 )
                 throw new ArgumentException( "--reason must be at least 20 characters." );
 
-            // Loose ticket-id validation: alphanumeric + dashes/underscores,
-            // 3-64 chars. Matches common ticket schemas (JIRA-1234, INC-001).
             if ( !System.Text.RegularExpressions.Regex.IsMatch( ticketId, @"^[A-Za-z0-9_\-]{3,64}$" ) )
                 throw new ArgumentException( "--ticket-id must be 3-64 alphanumeric / dash / underscore characters." );
         }
@@ -106,34 +97,44 @@ internal static class RecoverVerb
             return 3;
         }
 
-        // RB-2: persist the acknowledgement row so the runner can read it on
-        // the next invocation and force-mark the squash without running its
-        // body. v3.0 CLI persistence is provider-coupled (Postgres only
-        // today); Week 2 IMigrationHost discovery generalizes this across
-        // all 5 providers via the migration project's host class.
-        if ( provider != "postgres" )
+        // Load the migration assembly and discover its IMigrationHost
+        // (per ADR-0024). The host provides the configured IServiceProvider
+        // -- whichever provider the migration project uses, we resolve its
+        // IMigrationRecordStore and write the recovery row.
+        Assembly migrationAssembly;
+        try
         {
-            Console.Error.WriteLine(
-                $"hyperbee-migrations recover: v3.0 CLI persists recovery acknowledgements via " +
-                $"Postgres only; --provider `{provider}` will be supported once IMigrationHost " +
-                $"discovery lands (Week 2 of the v3.0 release cascade)." );
-            return 4;
+            migrationAssembly = Assembly.LoadFrom( Path.GetFullPath( assemblyPath ) );
+        }
+        catch ( Exception ex )
+        {
+            Console.Error.WriteLine( $"hyperbee-migrations recover: could not load --assembly '{assemblyPath}': {ex.Message}" );
+            return 2;
+        }
+
+        IMigrationHost host;
+        try
+        {
+            host = MigrationHostDiscovery.Discover( migrationAssembly );
+        }
+        catch ( Exception ex )
+        {
+            Console.Error.WriteLine( $"hyperbee-migrations recover: IMigrationHost discovery failed: {ex.Message}" );
+            return 2;
         }
 
         var recoveryRow = RecoveryRecord.Build( squashVersion, env, missingVersions );
 
         try
         {
-            await PersistPostgresRecoveryAsync( connection, schemaName, recoveryRow );
+            await PersistViaHostAsync( host, connection, recoveryRow );
         }
         catch ( Exception ex )
         {
-            Console.Error.WriteLine(
-                $"hyperbee-migrations recover: persistence failed: {ex.Message}" );
+            Console.Error.WriteLine( $"hyperbee-migrations recover: persistence failed: {ex.Message}" );
             return 5;
         }
 
-        // Audit-ready summary alongside the persistence confirmation.
         Console.WriteLine( "[recover from-mid-range] acknowledgement valid and PERSISTED." );
         Console.WriteLine( $"  env             : {env}" );
         Console.WriteLine( $"  squash-version  : {squashVersion}" );
@@ -153,51 +154,44 @@ internal static class RecoverVerb
         return 0;
     }
 
-    private static async Task PersistPostgresRecoveryAsync( string connection, string schemaName, MigrationRecord row )
+    private static async Task PersistViaHostAsync( IMigrationHost host, string connection, MigrationRecord row )
     {
-        // Build a minimal DI graph mirroring what AddPostgresMigrations
-        // would wire at runtime, scoped just to what PostgresRecordStore
-        // needs. The migration assembly is irrelevant to recovery row
-        // persistence (we're writing to the ledger, not scanning for
-        // migrations).
-        var services = new ServiceCollection();
-        services.AddSingleton<IConfiguration>( new ConfigurationBuilder().Build() );
-        services.AddLogging( b => b.AddProvider( NullLoggerProvider.Instance ) );
-
-        var dataSourceBuilder = new NpgsqlDataSourceBuilder( connection );
-        await using var dataSource = dataSourceBuilder.Build();
-        services.AddSingleton( dataSource );
-        services.AddPostgresMigrations( opts =>
+        var ctx = new MigrationHostContext( connection )
         {
-            opts.SchemaName = schemaName;
-            opts.LockingEnabled = false; // recovery write does not race with itself
-        } );
+            OverrideOptions = opts =>
+            {
+                // RB-2 persist itself doesn't race with the runner (operator
+                // runs recover as a manual one-off); disable locking to
+                // skip the bootstrap-acquire overhead.
+                opts.LockingEnabled = false;
+            }
+        };
 
-        await using var sp = services.BuildServiceProvider();
-        // PostgresRecordStore is internal; resolve via the public
-        // IMigrationRecordStore alias that AddPostgresMigrations installs.
-        var store = sp.GetRequiredService<IMigrationRecordStore>();
-
-        // InitializeAsync is idempotent + IF NOT EXISTS-shaped; safe even when
-        // the ledger already exists. Without it the first recover-on-fresh-db
-        // would fail with "table does not exist".
-        await store.InitializeAsync( CancellationToken.None );
-
-        var outcome = await store.WriteAsync( row, WritePrecondition.MustNotExist );
-        if ( outcome == WriteOutcome.AlreadyExistsBenign )
+        var serviceProvider = await host.ConfigureAsync( ctx, CancellationToken.None ).ConfigureAwait( false );
+        try
         {
-            // Operator already wrote this acknowledgement (identical row).
-            // Idempotent. Report and return.
-            Console.WriteLine(
-                "[recover from-mid-range] NOTE: a recovery row with this id already exists; " +
-                "row contents are identical -- treating as idempotent success." );
+            var store = serviceProvider.GetRequiredService<IMigrationRecordStore>();
+            await store.InitializeAsync( CancellationToken.None ).ConfigureAwait( false );
+
+            var outcome = await store.WriteAsync( row, WritePrecondition.MustNotExist ).ConfigureAwait( false );
+            if ( outcome == WriteOutcome.AlreadyExistsBenign )
+            {
+                Console.WriteLine(
+                    "[recover from-mid-range] NOTE: a recovery row with this id already exists; " +
+                    "row contents are identical -- treating as idempotent success." );
+            }
+            else if ( outcome == WriteOutcome.PreconditionFailed )
+            {
+                throw new InvalidOperationException(
+                    "recovery row id collision: a different acknowledgement already exists at " +
+                    $"id `{row.Id}`. Delete the stale row manually and retry, or rerun recover " +
+                    "for the (env, squash) pair that the stale row actually targets." );
+            }
         }
-        else if ( outcome == WriteOutcome.PreconditionFailed )
+        finally
         {
-            throw new InvalidOperationException(
-                "recovery row id collision: a different acknowledgement already exists at " +
-                $"id `{row.Id}`. Delete the stale row manually and retry, or rerun recover " +
-                "for the (env, squash) pair that the stale row actually targets." );
+            if ( serviceProvider is IAsyncDisposable iad ) await iad.DisposeAsync().ConfigureAwait( false );
+            else if ( serviceProvider is IDisposable d ) d.Dispose();
         }
     }
 
@@ -220,20 +214,20 @@ internal static class RecoverVerb
     {
         Console.WriteLine(
             "Usage: hyperbee-migrations recover from-mid-range \\\n" +
-            "         --provider postgres \\\n" +
-            "         --connection \"Host=...;Database=...;Username=...;Password=...\" \\\n" +
+            "         --connection \"<provider-specific-connection-string>\" \\\n" +
+            "         --assembly <path-to-MyApp.Migrations.dll> \\\n" +
             "         --env <env-name> \\\n" +
             "         --squash-version <version> \\\n" +
             "         --missing-versions <v1,v2,...> \\\n" +
             "         --token <12-hex-acknowledgement> \\\n" +
             "         --ticket-id <FLEET-1234> \\\n" +
-            "         --reason \"... at least 20 characters ...\" \\\n" +
-            "         [--schema-name migration]\n" +
+            "         --reason \"... at least 20 characters ...\"\n" +
             "\n" +
             "  Persists a recovery acknowledgement row into the migration ledger so the\n" +
             "  next runner invocation force-marks the mid-range squash without running\n" +
-            "  its body. Per ADR-0019 A3 / RB-2: last resort, DBA-supervised, post-\n" +
-            "  incident only -- the live data state MUST already match the squashed\n" +
-            "  schema." );
+            "  its body. Routes through the IMigrationHost discovered in --assembly's\n" +
+            "  reference closure (per ADR-0024). Per ADR-0019 A3 / RB-2: last resort,\n" +
+            "  DBA-supervised, post-incident only -- the live data state MUST already\n" +
+            "  match the squashed schema." );
     }
 }

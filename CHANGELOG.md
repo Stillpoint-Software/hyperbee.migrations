@@ -140,6 +140,43 @@ unchanged.
 
 ### Changed (back-compat preserved)
 
+- **CLI is a thin dispatch shell over `ISquashCliProvider`** (per ADR-0024
+  Week 2). The CLI assembly references zero provider packages; per-provider
+  CLI implementations are discovered via the migration assembly's reference
+  closure. NuGet package presence IS the registration: a migration project
+  adds `Hyperbee.Migrations.Providers.{Provider}.SquashCli` to enable
+  `hyperbee-migrations squash --provider {provider}` codegen. v3.0 ships
+  `PostgresSquashCliProvider` and `AerospikeSquashCliProvider` (Week 2);
+  MongoDB / OpenSearch / Couchbase follow in Week 3-4.
+- **RB-4 (apply-path reflection) closed.** Provider CLI implementations
+  route migration apply through the discovered `IMigrationHost`
+  (ADR-0024) -- no more `ApplyToDataSourceAsync` static-method
+  reflection convention. The host class is the single supported
+  integration point.
+- **R-5 (output file extension)**: emitted squash artifact filename uses
+  `ISquashCliProvider.SquashFileExtension` instead of a hardcoded `.sql`.
+  Postgres -> `.sql`; the four NoSQL providers -> `.statements` (per
+  ADR-0022 script form).
+- **R-8 (per-provider source scanner dispatch)**: scanner dispatch routes
+  through `ISquashCliProvider.ScanSource` instead of hardcoding
+  `PostgresMigrationSourceScanner.Scan`. Each provider's package exposes
+  its own Roslyn scanner with provider-specific data-op heuristics.
+- **R-4 (`--remove-originals` default to dry-run)**: the flag now LISTS
+  matched files without deleting; actual deletion requires
+  `--confirm-delete`. The version-delimited regex prevents false-positive
+  matches against names that contain the version as a substring
+  (`Squash_1000.cs` does not match when squashing version 100).
+- **RB-3 (fleet readiness probe per-provider)**: `FleetReadinessProbe`
+  (replaces v1's Postgres-only `FleetReadinessCheck`) dispatches to
+  `ISquashCliProvider.ProbeLastAppliedVersionAsync`. Each provider's
+  implementation reads schema / table / namespace / set / index names
+  from the fleet manifest's `topology:` overrides; no more hardcoded
+  `public.migrations`.
+- **`recover from-mid-range` routes through `IMigrationHost`** (no longer
+  Postgres-coupled at the CLI tier). Reads `--connection` + `--assembly`,
+  activates the discovered host, persists the recovery row via the
+  host's `IMigrationRecordStore`. Closes the Week 1 RB-2 "Postgres-only"
+  caveat; all 5 providers participate via the host contract.
 - **`recover from-mid-range` persists the acknowledgement to the ledger** so
   the runner picks it up on the next invocation, force-marks the mid-range
   squash without running its body, and deletes the recovery row. Previously
