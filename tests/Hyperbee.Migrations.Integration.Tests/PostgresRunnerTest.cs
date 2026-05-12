@@ -5,7 +5,11 @@ using Hyperbee.Migrations.Integration.Tests.Container.Postgres;
 namespace Hyperbee.Migrations.Integration.Tests;
 
 #if INTEGRATIONS
+// Methods in this class build a Docker image and race on the per-provider
+// tar archive in the user's temp dir if run concurrently — see the comment
+// on AerospikeRunnerTest for the rationale.
 [TestClass]
+[DoNotParallelize]
 public class PostgresRunnerTest
 {
     public IDbConnection Connection;

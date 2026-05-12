@@ -7,7 +7,13 @@ namespace Hyperbee.Migrations.Integration.Tests.Container.Aerospike;
 
 public class AerospikeMigrationContainer
 {
-    public static async Task<IFutureDockerImage> BuildMigrationImageAsync()
+    // Sharing a single IFutureDockerImage across multiple ContainerBuilder()s and
+    // then calling StartAsync on them in parallel races inside Testcontainers'
+    // resource-materialization machinery (DockerContainer.StartAsync line 333,
+    // NRE in the Task.WhenAll over the resource futures). Materialize the image
+    // once up front and hand each container the image's full reference string so
+    // every container has its own resource graph.
+    public static async Task<string> BuildMigrationImageAsync()
     {
         var location = CommonDirectoryPath.GetSolutionDirectory( "../../" );
         var image = new ImageFromDockerfileBuilder()
@@ -21,17 +27,17 @@ public class AerospikeMigrationContainer
         await image.CreateAsync( CancellationToken.None )
             .ConfigureAwait( false );
 
-        return image;
+        return image.FullName;
     }
 
-    public static async Task<IContainer> BuildMigrationsAsync( INetwork network, IFutureDockerImage image = null )
+    public static async Task<IContainer> BuildMigrationsAsync( INetwork network, string imageName = null )
     {
-        image ??= await BuildMigrationImageAsync();
+        imageName ??= await BuildMigrationImageAsync();
 
         return new ContainerBuilder()
             .WithCleanUp( true )
             .WithNetwork( network )
-            .WithImage( image )
+            .WithImage( imageName )
             .WithEnvironment( "Aerospike__ConnectionString", "db:3000" )
             .WithEnvironment( "Migrations__FromPaths__0", "./Hyperbee.Migrations.Aerospike.Samples.dll" )
             .WithEnvironment( "Migrations__Lock__Enabled", "true" )

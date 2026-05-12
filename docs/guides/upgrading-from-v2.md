@@ -43,15 +43,15 @@ read clean.
 
 ```csharp
 Task<WriteOutcome> WriteAsync(MigrationRecord record, WritePrecondition precondition = None, CancellationToken ct = default);
-Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(IEnumerable<string> candidateIds, CancellationToken ct = default);
-Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(IEnumerable<long> versions, CancellationToken ct = default);
+Task<IReadOnlySet<string>> IntersectWithAppliedAsync(IEnumerable<string> candidateIds, CancellationToken ct = default);
+Task<IReadOnlySet<long>> IntersectWithSquashedAsync(IEnumerable<long> versions, CancellationToken ct = default);
 ```
 
 All three ship with DIM defaults so v2 record-store implementations compile
 unchanged. The defaults are degraded — the new `WriteAsync` overload
 delegates to legacy `WriteAsync(string)` (so `Checksum`/`Kind` are dropped on
-custom stores until they override); `LoadAppliedVersionsAsync` falls back to
-a per-id `ExistsAsync` loop; `LoadSatisfyingRowsAsync` returns an empty set.
+custom stores until they override); `IntersectWithAppliedAsync` falls back to
+a per-id `ExistsAsync` loop; `IntersectWithSquashedAsync` returns an empty set.
 
 **You only need to override these if you ship a custom
 `IMigrationRecordStore`.** All five shipped providers (Aerospike, Couchbase,
@@ -69,13 +69,18 @@ public sealed class MyRecordStore : IMigrationRecordStore
         WritePrecondition precondition,
         CancellationToken cancellationToken)
     {
-        record.EnsureLedgerIntegrity();              // refuses inconsistent Kind/Replaces
+        record.EnsureLedgerIntegrity(); // refuse inconsistent Kind/Replaces
+
         // your insert logic, persisting Checksum / Kind / Replaces
         // observe precondition.MustNotExist for concurrent-runner idempotency
         // return WriteOutcome.Created or AlreadyExistsBenign or PreconditionFailed
     }
 
-    public async Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(
+    // Bulk "which of these candidates exist?" probe. Replaces N ExistsAsync
+    // round trips with one. Input: the IDs your reflection scan discovered.
+    // Output: the subset already in the ledger. The runner subtracts the
+    // result from the candidate set to get "what still needs to run."
+    public async Task<IReadOnlySet<string>> IntersectWithAppliedAsync(
         IEnumerable<string> candidateIds,
         CancellationToken cancellationToken)
     {
@@ -85,7 +90,19 @@ public sealed class MyRecordStore : IMigrationRecordStore
         // etc.
     }
 
-    public async Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(
+    // Bulk "which of these versions are already covered by an applied
+    // squash?" probe. After a squash applies (one row with
+    // Kind=Squash, Replaces=[1000..2999]), a fresh installer's reflection
+    // scan still finds the original Migration(1000) / Migration(1001) /
+    // ... classes in the assembly - they have to: existing fleet members
+    // applied them individually and the ledger rows are still there for
+    // forensic history. This method answers "of these old versions, which
+    // are satisfied transitively by some applied squash's Replaces array?"
+    // so the fresh installer can skip them and only run the squash itself.
+    // Transitive because squashes can stack: 18000 replaces [9000, 3000..]
+    // and 9000 replaces [1000..2999] - version 1500 is covered through the
+    // chain, not directly. Implementations walk the squash graph.
+    public async Task<IReadOnlySet<long>> IntersectWithSquashedAsync(
         IEnumerable<long> versions,
         CancellationToken cancellationToken)
     {
@@ -94,6 +111,16 @@ public sealed class MyRecordStore : IMigrationRecordStore
     }
 }
 ```
+
+**Together, these two methods give the runner an `O(1)`-round-trip view of
+"what still needs to run":**
+
+```
+to_run = discovered − IntersectWithAppliedAsync(discovered) − IntersectWithSquashedAsync(remaining)
+```
+
+Without them the equivalent computation costs `O(discovered)` round trips,
+which dominates bootstrap latency on fleets with hundreds of migrations.
 
 ### 2. Provider record-store schemas gained `Checksum` + `Kind` (+ `Replaces` for Postgres)
 
@@ -171,15 +198,15 @@ today for tooling and runbooks.
 
 ## Compatibility matrix
 
-| Concern | v2 → v3 behavior |
-|---|---|
-| Existing `[Migration(v)]` declarations | Work unchanged |
-| Existing `*.statements.json` resources | Work unchanged (legacy loader) |
-| Existing custom `IMigrationRecordStore` | Compiles and runs unchanged via DIM defaults; degraded squash support until overridden |
-| Existing ledger rows | Read clean (`Checksum=null, Kind=Migration`) |
-| `MigrationRecord` consumers reading `Checksum` / `Kind` / `Replaces` | New properties exist; null-safe defaults apply |
-| Mixed v2/v3 fleet against same ledger | **Unsupported** — deploy v3 everywhere first |
-| Squash → rollback to v2 | **Unsupported** — backup-restore is the recovery |
+| Concern                                                              | v2 → v3 behavior                                                                       |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Existing `[Migration(v)]` declarations                               | Work unchanged                                                                         |
+| Existing `*.statements.json` resources                               | Work unchanged (legacy loader)                                                         |
+| Existing custom `IMigrationRecordStore`                              | Compiles and runs unchanged via DIM defaults; degraded squash support until overridden |
+| Existing ledger rows                                                 | Read clean (`Checksum=null, Kind=Migration`)                                           |
+| `MigrationRecord` consumers reading `Checksum` / `Kind` / `Replaces` | New properties exist; null-safe defaults apply                                         |
+| Mixed v2/v3 fleet against same ledger                                | **Unsupported** — deploy v3 everywhere first                                           |
+| Squash → rollback to v2                                              | **Unsupported** — backup-restore is the recovery                                       |
 
 ## See also
 

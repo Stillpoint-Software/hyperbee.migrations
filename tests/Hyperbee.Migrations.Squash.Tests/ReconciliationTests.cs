@@ -31,7 +31,7 @@ public class ReconciliationTests
     }
 
     // FakeStore: in-memory IMigrationRecordStore that honors the v3 contract
-    // (record-bearing WriteAsync, LoadAppliedVersionsAsync, LoadSatisfyingRowsAsync).
+    // (record-bearing WriteAsync, IntersectWithAppliedAsync, IntersectWithSquashedAsync).
     // Mirrors realtime semantics — every write is immediately visible.
     private sealed class FakeStore : IMigrationRecordStore
     {
@@ -78,7 +78,7 @@ public class ReconciliationTests
             return Task.FromResult( WriteOutcome.Created );
         }
 
-        public Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(
+        public Task<IReadOnlySet<string>> IntersectWithAppliedAsync(
             IEnumerable<string> candidateIds,
             CancellationToken cancellationToken = default )
         {
@@ -88,7 +88,7 @@ public class ReconciliationTests
             return Task.FromResult<IReadOnlySet<string>>( found );
         }
 
-        public Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(
+        public Task<IReadOnlySet<long>> IntersectWithSquashedAsync(
             IEnumerable<long> versions,
             CancellationToken cancellationToken = default )
         {

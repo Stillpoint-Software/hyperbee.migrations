@@ -6,6 +6,7 @@ using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
 using Couchbase.Management.Buckets;
+using Couchbase.Query;
 using Hyperbee.Migrations.Providers.Couchbase.Services;
 using Hyperbee.Migrations.Wait;
 using Microsoft.Extensions.Logging;
@@ -259,7 +260,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             .ConfigureAwait( false );
     }
 
-    public async Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(
+    public async Task<IReadOnlySet<string>> IntersectWithAppliedAsync(
         IEnumerable<string> candidateIds,
         CancellationToken cancellationToken = default )
     {
@@ -295,7 +296,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         }
     }
 
-    public async Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(
+    public async Task<IReadOnlySet<long>> IntersectWithSquashedAsync(
         IEnumerable<long> versions,
         CancellationToken cancellationToken = default )
     {
@@ -321,9 +322,9 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             $"SELECT DISTINCT v FROM {keyspace} AS m UNNEST m.replaces AS v " +
             "WHERE m.kind = 1 AND v IN $versions";
 
-        var options = new global::Couchbase.Query.QueryOptions()
+        var options = new QueryOptions()
             .Parameter( "versions", inputs )
-            .ScanConsistency( global::Couchbase.Query.QueryScanConsistency.RequestPlus )
+            .ScanConsistency( QueryScanConsistency.RequestPlus )
             .CancellationToken( cancellationToken );
 
         var result = await cluster.QueryAsync<long>( query, options ).ConfigureAwait( false );

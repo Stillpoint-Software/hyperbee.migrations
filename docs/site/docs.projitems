@@ -15,6 +15,7 @@
     <None Include="$(MSBuildThisFileDirectory)migration-runner.md" />
     <None Include="$(MSBuildThisFileDirectory)postgresql.md" />
     <None Include="$(MSBuildThisFileDirectory)mongodb.md" />
+    <None Include="$(MSBuildThisFileDirectory)multi-provider-hosts.md" />
     <None Include="$(MSBuildThisFileDirectory)_config.yml" />
   </ItemGroup>
   <ItemGroup>

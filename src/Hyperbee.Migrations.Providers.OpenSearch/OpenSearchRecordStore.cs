@@ -5,6 +5,13 @@ using Microsoft.Extensions.Logging;
 using OpenSearch.Client;
 using OpenSearch.Net;
 
+// OpenSearch.Client and OpenSearch.Net both define types with the same simple
+// names (OpType, Refresh, OpenSearchClientException). Alias the Net versions
+// so call sites can drop the prior global:: disambiguation.
+using OpType = OpenSearch.Net.OpType;
+using Refresh = OpenSearch.Net.Refresh;
+using OpenSearchClientException = OpenSearch.Net.OpenSearchClientException;
+
 namespace Hyperbee.Migrations.Providers.OpenSearch;
 
 // IMigrationRecordStore implementation per ADR-0003 (5-method contract).
@@ -115,8 +122,8 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
             var indexResponse = await _client.IndexAsync( doc, idx => idx
                 .Index( _options.LockIndex )
                 .Id( _options.LockName )
-                .OpType( global::OpenSearch.Net.OpType.Create )
-                .Refresh( global::OpenSearch.Net.Refresh.WaitFor )
+                .OpType( OpType.Create )
+                .Refresh( Refresh.WaitFor )
             ).ConfigureAwait( false );
 
             if ( indexResponse.IsValid )
@@ -140,7 +147,7 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
                 $"Lock {_options.LockName} could not be acquired. {detail}",
                 indexResponse.OriginalException ?? new InvalidOperationException( detail ) );
         }
-        catch ( global::OpenSearch.Net.OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 409 )
+        catch ( OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 409 )
         {
             // Throwing 409: same takeover path as the non-throwing case.
             return await TryTakeOverAsync( doc, cancellationToken: default ).ConfigureAwait( false );
@@ -189,7 +196,7 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
                 .Id( _options.LockName )
                 .IfSequenceNumber( existing.SequenceNumber )
                 .IfPrimaryTerm( existing.PrimaryTerm )
-                .Refresh( global::OpenSearch.Net.Refresh.WaitFor )
+                .Refresh( Refresh.WaitFor )
             , cancellationToken ).ConfigureAwait( false );
 
             if ( takeoverResponse.IsValid )
@@ -207,7 +214,7 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
                 $"Lock {_options.LockName} takeover failed: another runner CAS-overwrote first.",
                 takeoverResponse.OriginalException ?? new InvalidOperationException( "CAS conflict during takeover" ) );
         }
-        catch ( global::OpenSearch.Net.OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 409 )
+        catch ( OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 409 )
         {
             throw new MigrationLockUnavailableException(
                 $"Lock {_options.LockName} takeover failed: another runner CAS-overwrote first.", ex );
@@ -278,7 +285,7 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
 
             return (renewResponse.SequenceNumber, renewResponse.PrimaryTerm);
         }
-        catch ( global::OpenSearch.Net.OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 409 )
+        catch ( OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 409 )
         {
             throw new MigrationLockUnavailableException(
                 $"Lock {lockId} renewal CAS conflict. Another runner has taken the lock.", ex );
@@ -322,12 +329,12 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
                 "Lock {lockId} release failed (status {status}); will rely on takeover/TTL.",
                 lockId, deleteResponse.ApiCall.HttpStatusCode );
         }
-        catch ( global::OpenSearch.Net.OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 409 )
+        catch ( OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 409 )
         {
             _logger.LogWarning( ex,
                 "Lock {lockId} release skipped: CAS mismatch (another runner now holds the lock).", lockId );
         }
-        catch ( global::OpenSearch.Net.OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 404 )
+        catch ( OpenSearchClientException ex ) when ( ex.Response?.HttpStatusCode == 404 )
         {
             _logger.LogDebug( "Lock {lockId} already gone at release time", lockId );
         }
@@ -442,7 +449,7 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
         var response = await _client.IndexAsync( record, idx => idx
             .Index( _options.LedgerIndex )
             .Id( record.Id )
-            .Refresh( global::OpenSearch.Net.Refresh.WaitFor )
+            .Refresh( Refresh.WaitFor )
         ).ConfigureAwait( false );
 
         if ( !response.IsValid )
@@ -456,7 +463,7 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
         }
     }
 
-    public async Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(
+    public async Task<IReadOnlySet<string>> IntersectWithAppliedAsync(
         IEnumerable<string> candidateIds,
         CancellationToken cancellationToken = default )
     {
@@ -497,7 +504,7 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
         return found;
     }
 
-    public async Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(
+    public async Task<IReadOnlySet<long>> IntersectWithSquashedAsync(
         IEnumerable<long> versions,
         CancellationToken cancellationToken = default )
     {
@@ -582,7 +589,7 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
             .Index( _options.LedgerIndex )
             .Id( lifted.Id )
             .OpType( precondition == WritePrecondition.MustNotExist ? OpType.Create : OpType.Index )
-            .Refresh( global::OpenSearch.Net.Refresh.WaitFor )
+            .Refresh( Refresh.WaitFor )
         ).ConfigureAwait( false );
 
         if ( response.IsValid )
@@ -612,7 +619,7 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
 
         var response = await _client.DeleteAsync<MigrationRecord>( recordId, d => d
             .Index( _options.LedgerIndex )
-            .Refresh( global::OpenSearch.Net.Refresh.WaitFor )
+            .Refresh( Refresh.WaitFor )
         ).ConfigureAwait( false );
 
         if ( !response.IsValid && response.ApiCall.HttpStatusCode != 404 )

@@ -2,6 +2,9 @@
 using Microsoft.Extensions.Logging;
 using OpenSearch.Net;
 
+// Disambiguate from System.Net.Http.HttpMethod (implicit-using).
+using HttpMethod = OpenSearch.Net.HttpMethod;
+
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Bootstrap.Steps;
 
 // R-21 #3 — Probes the cluster to determine which ISM endpoint prefix it
@@ -45,7 +48,7 @@ public sealed class IsmEndpointDetectStep : IBootstrapStep
 
         // Modern path first.
         var modernResp = await ll.DoRequestAsync<StringResponse>(
-            global::OpenSearch.Net.HttpMethod.GET,
+            HttpMethod.GET,
             $"{ModernPrefix}/policies",
             context.CancellationToken ).ConfigureAwait( false );
 
@@ -84,7 +87,7 @@ public sealed class IsmEndpointDetectStep : IBootstrapStep
             Name, ModernPrefix, LegacyPrefix );
 
         var legacyResp = await ll.DoRequestAsync<StringResponse>(
-            global::OpenSearch.Net.HttpMethod.GET,
+            HttpMethod.GET,
             $"{LegacyPrefix}/policies",
             context.CancellationToken ).ConfigureAwait( false );
 

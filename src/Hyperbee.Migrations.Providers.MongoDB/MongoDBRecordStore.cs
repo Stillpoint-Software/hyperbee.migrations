@@ -128,7 +128,7 @@ internal class MongoDBRecordStore : IMigrationRecordStore
         } );
     }
 
-    public async Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(
+    public async Task<IReadOnlySet<string>> IntersectWithAppliedAsync(
         IEnumerable<string> candidateIds,
         CancellationToken cancellationToken = default )
     {
@@ -168,7 +168,7 @@ internal class MongoDBRecordStore : IMigrationRecordStore
         return found;
     }
 
-    public async Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(
+    public async Task<IReadOnlySet<long>> IntersectWithSquashedAsync(
         IEnumerable<long> versions,
         CancellationToken cancellationToken = default )
     {

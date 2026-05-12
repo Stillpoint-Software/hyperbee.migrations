@@ -5,7 +5,14 @@ using Hyperbee.Migrations.Integration.Tests.Container.Aerospike;
 namespace Hyperbee.Migrations.Integration.Tests;
 
 #if INTEGRATIONS
+// Runner tests build a Docker image per test method; the Testcontainers tar
+// archive lives in the user's temp dir under a fixed name per provider, so
+// two methods in this class running concurrently race on the same tar file
+// and one fails with "file is being used by another process." Forcing
+// sequential method execution within this class avoids the race without
+// slowing other tests (the OpenSearch suite keeps parallel methods).
 [TestClass]
+[DoNotParallelize]
 public class AerospikeRunnerTest
 {
     public IAsyncClient AsyncClient;
@@ -31,19 +38,23 @@ public class AerospikeRunnerTest
 
         var (stdOut1, _) = await migrationContainer1.GetLogsAsync();
 
-        // Check that migrations ran
+        // Check that migrations ran. Sample assemblies have 3 migrations:
+        // 1000 CreateInitialSchema, 2000 AddSecondaryIndexes, 3000 SeedData.
         Assert.Contains( "[1000] CreateInitialSchema: Up migration started", stdOut1 );
         Assert.Contains( "[1000] CreateInitialSchema: Up migration completed", stdOut1 );
         Assert.Contains( "[2000] AddSecondaryIndexes: Up migration started", stdOut1 );
         Assert.Contains( "[2000] AddSecondaryIndexes: Up migration completed", stdOut1 );
-        Assert.Contains( "Executed 2 migrations", stdOut1 );
+        Assert.Contains( "[3000] SeedData: Up migration started", stdOut1 );
+        Assert.Contains( "[3000] SeedData: Up migration completed", stdOut1 );
+        Assert.Contains( "Executed 3 migrations", stdOut1 );
 
-        // Verify resource migrations: index creation with WAIT
-        Assert.Contains( "CREATE INDEX idx_users_email ON test.users (email) String", stdOut1 );
-        Assert.Contains( "CREATE INDEX idx_users_active ON test.users (active) Numeric", stdOut1 );
-        Assert.Contains( "CREATE INDEX idx_users_role ON test.users (role) String", stdOut1 );
-        Assert.Contains( "CREATE INDEX idx_products_category ON test.products (category) String", stdOut1 );
-        Assert.Contains( "CREATE INDEX idx_products_price ON test.products (price) Numeric", stdOut1 );
+        // Verify resource migrations: index creation. Aerospike emits index
+        // type as upper-case (STRING/NUMERIC) in the runner log line.
+        Assert.Contains( "CREATE INDEX idx_users_email ON test.users (email) STRING", stdOut1 );
+        Assert.Contains( "CREATE INDEX idx_users_active ON test.users (active) NUMERIC", stdOut1 );
+        Assert.Contains( "CREATE INDEX idx_users_role ON test.users (role) STRING", stdOut1 );
+        Assert.Contains( "CREATE INDEX idx_products_category ON test.products (category) STRING", stdOut1 );
+        Assert.Contains( "CREATE INDEX idx_products_price ON test.products (price) NUMERIC", stdOut1 );
 
         // Verify resource migrations: document seeding
         Assert.Contains( "UPSERT 'user-admin' TO test.users", stdOut1 );

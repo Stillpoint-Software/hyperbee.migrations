@@ -2,6 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-04-03
+**Amended by:** [ADR-0023](0023-multi-runner-not-meta-runner.md) (2026-05-08) — DI registration shape: `AddSingleton` for the base-type aliases (`MigrationOptions`, `IMigrationRecordStore`, `MigrationRunner`) becomes `TryAddSingleton`, and is replaced with throwing factories when a second `Add{Provider}Migrations` is detected. Per-provider `{Provider}MigrationRunner` subclasses replace the single base-`MigrationRunner` registration. Options inheritance hierarchy itself is unchanged.
 
 ## Context
 

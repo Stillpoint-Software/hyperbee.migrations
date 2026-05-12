@@ -14,6 +14,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using OpenSearch.Net;
 
+// Disambiguate from System.Net.Http.HttpMethod (implicit-using).
+using HttpMethod = OpenSearch.Net.HttpMethod;
+
 namespace Hyperbee.Migrations.Integration.Tests;
 
 #if INTEGRATIONS
@@ -203,7 +206,7 @@ public class OpenSearchR24cGapFillIntegrationTests
             // Verify the index is OPEN again (the dispatcher's close-update-
             // open dance must always reopen, even on settings failure).
             var statsResp = await ll.DoRequestAsync<StringResponse>(
-                global::OpenSearch.Net.HttpMethod.GET, $"_cat/indices/{index}", default );
+                HttpMethod.GET, $"_cat/indices/{index}", default );
             Assert.IsTrue( statsResp.Success );
             StringAssert.Contains( statsResp.Body!, "open",
                 "index must be reopened after the CLOSE-update-OPEN dance" );
@@ -378,8 +381,12 @@ public class OpenSearchR24cGapFillIntegrationTests
 }
 
 // ---- Multi-node R-24c scenarios (k, m) ----
+//
+// [TestCategory("LocalOnly")]: same rationale as OpenSearchMultiNodeIntegrationTests
+// — 3-JVM cluster does not fit GitHub-hosted runners. Run locally only.
 
 [TestClass]
+[TestCategory( "LocalOnly" )]
 public class OpenSearchR24cMultiNodeIntegrationTests
 {
     [ClassInitialize]
@@ -501,14 +508,15 @@ public class OpenSearchR24cMultiNodeIntegrationTests
     public async Task LedgerWrite_HundredMigrations_CompletesWithinBudget()
     {
         // R-24c (m) / PA-1 / R-07: ledger writes use refresh=wait_for so
-        // ExistsAsync after Write is reliable. The budget concern is that
-        // 100 sequential writes with wait_for don't accumulate
-        // pathologically due to per-write refresh stalls. Budget: 60s on a
-        // 3-node cluster with replicas:0 on the ledger. Generous enough to
-        // tolerate reasonable variance; tight enough that a refresh-storm
-        // regression breaks the test.
+        // ExistsAsync after Write is reliable. With OpenSearch's default
+        // refresh_interval (1s) and sequential writes, each write blocks
+        // until the next refresh cycle — so the floor is ~1s per write,
+        // and 100 sequential writes take ~100s by construction (not a
+        // regression). Budget set above the floor with headroom for variance
+        // on shared CI runners; a write-path regression that doubles the
+        // floor still breaks the test.
         const int migrationCount = 100;
-        const int budgetSeconds = 60;
+        const int budgetSeconds = 150;
 
         var options = new OpenSearchMigrationOptions
         {

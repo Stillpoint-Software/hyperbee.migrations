@@ -1,19 +1,9 @@
 {
   "statements": [
-    {
-      "statement": "db.getSiblingDB('sample').users.createIndex({ email: 1 }, { name: 'idx_users_email', unique: true })"
-    },
-    {
-      "statement": "db.getSiblingDB('sample').users.createIndex({ active: 1 }, { name: 'idx_users_active' })"
-    },
-    {
-      "statement": "db.getSiblingDB('sample').users.createIndex({ role: 1 }, { name: 'idx_users_role' })"
-    },
-    {
-      "statement": "db.getSiblingDB('sample').products.createIndex({ category: 1 }, { name: 'idx_products_category' })"
-    },
-    {
-      "statement": "db.getSiblingDB('sample').products.createIndex({ price: 1 }, { name: 'idx_products_price' })"
-    }
+    { "statement": "CREATE UNIQUE INDEX idx_users_email ON sample.users (email)" },
+    { "statement": "CREATE INDEX idx_users_active ON sample.users (active)" },
+    { "statement": "CREATE INDEX idx_users_role ON sample.users (role)" },
+    { "statement": "CREATE INDEX idx_products_category ON sample.products (category)" },
+    { "statement": "CREATE INDEX idx_products_price ON sample.products (price)" }
   ]
 }

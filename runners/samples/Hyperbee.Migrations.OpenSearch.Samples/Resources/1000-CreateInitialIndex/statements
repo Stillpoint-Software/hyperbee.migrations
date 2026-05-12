@@ -22,6 +22,6 @@ BODIES {
 
 CREATE INDEX sample_users IF NOT EXISTS WITH BODY $usersIndex;
 
--- Wait until the index reaches yellow before dispatching the next statement —
+-- Wait until the index reaches yellow before dispatching the next statement;
 -- avoids spurious "no shard available" errors on tight CI runners.
 WAIT FOR YELLOW ON sample_users TIMEOUT 30s;

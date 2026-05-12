@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Couchbase.Core.Exceptions;
 using Couchbase.Core.IO.Transcoders;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.KeyValue;
@@ -286,7 +287,25 @@ public class CouchbaseResourceRunner<TMigration>
     private async Task BuildIndexesAsync( ClusterHelper clusterHelper, StatementItem item )
     {
         _logger?.LogInformation( "BUILD INDEX ON {keyspace}", item.Keyspace );
-        await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
+
+        // BUILD INDEX races with the index service after a batch of CREATE
+        // INDEX calls — Couchbase may reply InternalServerFailureException
+        // with "Build index fails. Some index will be retried building in
+        // the background." That message explicitly states the indexes ARE
+        // building; the failure is informational, not fatal. Treat the
+        // specific server-message contract as success and let the index
+        // service finish in the background.
+        try
+        {
+            await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
+        }
+        catch ( InternalServerFailureException ex )
+            when ( ex.Message?.Contains( "retried building in the background", StringComparison.OrdinalIgnoreCase ) == true )
+        {
+            _logger?.LogInformation(
+                "{action} accepted by index service; some indexes will finish building in the background.",
+                nameof( BuildIndexesAsync ) );
+        }
     }
 
     private async Task CreateIndexAsync( ClusterHelper clusterHelper, StatementItem item )

@@ -1,4 +1,5 @@
 ﻿using Aerospike.Client;
+using Hyperbee.Migrations.Wait;
 using Microsoft.Extensions.Logging;
 
 namespace Hyperbee.Migrations.Providers.Aerospike;
@@ -50,35 +51,63 @@ internal class AerospikeRecordStore : IMigrationRecordStore
         var key = new Key( _options.Namespace, _options.MigrationSet, _options.LockName );
         var expireSeconds = (int) _options.LockExpireInterval.TotalSeconds;
 
+        // Atomic acquire. CREATE_ONLY rejects with KEY_EXISTS_ERROR if another runner
+        // already holds the lock — server-enforced, not racy. FORBIDDEN_OP (22) is
+        // a transient signal during cluster startup or partition rebalance ("operation
+        // not allowed at this time"); retry that briefly before giving up so a runner
+        // started a few seconds before the cluster is fully ready doesn't false-skip
+        // its migrations.
+        var policy = new WritePolicy
+        {
+            recordExistsAction = RecordExistsAction.CREATE_ONLY,
+            expiration = expireSeconds
+        };
+
+        AerospikeException lastTransient = null;
+        var acquired = false;
         try
         {
-            // Atomic acquire. CREATE_ONLY rejects with KEY_EXISTS_ERROR if another runner
-            // already holds the lock — server-enforced, not racy.
-
-            var policy = new WritePolicy
-            {
-                recordExistsAction = RecordExistsAction.CREATE_ONLY,
-                expiration = expireSeconds
-            };
-
-            await _client.Put(
-                policy,
-                CancellationToken.None,
-                key,
-                new Bin( "Name", _options.LockName ),
-                new Bin( "LockedOn", _timeProvider.GetUtcNow().ToUnixTimeSeconds() )
-            ).ConfigureAwait( false );
+            await WaitHelper.WaitUntilAsync(
+                async _ =>
+                {
+                    try
+                    {
+                        await _client.Put(
+                            policy,
+                            CancellationToken.None,
+                            key,
+                            new Bin( "Name", _options.LockName ),
+                            new Bin( "LockedOn", _timeProvider.GetUtcNow().ToUnixTimeSeconds() )
+                        ).ConfigureAwait( false );
+                        acquired = true;
+                        return true;
+                    }
+                    catch ( AerospikeException ex ) when ( IsTransientClusterError( ex ) )
+                    {
+                        lastTransient = ex;
+                        return false;
+                    }
+                },
+                timeout: TimeSpan.FromSeconds( 60 ) ).ConfigureAwait( false );
         }
-        catch ( AerospikeException ex ) when ( ex.Result == ResultCode.KEY_EXISTS_ERROR )
+        catch ( RetryTimeoutException )
+        {
+            _logger.LogError( lastTransient, "{action} unable to create lock after retries (last error: {result})", nameof( CreateLockAsync ), lastTransient?.Result );
+            throw new MigrationLockUnavailableException( $"The lock `{_options.LockName}` is unavailable.", lastTransient );
+        }
+        catch ( RetryStrategyException ex ) when ( ex.InnerException is AerospikeException ae && ae.Result == ResultCode.KEY_EXISTS_ERROR )
         {
             _logger.LogWarning( "{action} Lock already exists (key exists)", nameof( CreateLockAsync ) );
-            throw new MigrationLockUnavailableException( $"The lock `{_options.LockName}` is unavailable.", ex );
+            throw new MigrationLockUnavailableException( $"The lock `{_options.LockName}` is unavailable.", ae );
         }
-        catch ( Exception ex )
+        catch ( RetryStrategyException ex )
         {
-            _logger.LogError( ex, "{action} unable to create lock", nameof( CreateLockAsync ) );
-            throw new MigrationLockUnavailableException( $"The lock `{_options.LockName}` is unavailable.", ex );
+            _logger.LogError( ex.InnerException ?? ex, "{action} unable to create lock", nameof( CreateLockAsync ) );
+            throw new MigrationLockUnavailableException( $"The lock `{_options.LockName}` is unavailable.", ex.InnerException ?? ex );
         }
+
+        if ( !acquired )
+            throw new MigrationLockUnavailableException( $"The lock `{_options.LockName}` is unavailable." );
 
         // Start the auto-renew loop. Runs in the background and extends the lock TTL
         // until the disposable is disposed or LockMaxLifetime elapses (whichever comes first).
@@ -141,6 +170,30 @@ internal class AerospikeRecordStore : IMigrationRecordStore
             // Defensive: never let an unhandled exception escape a fire-and-forget task.
             _logger.LogError( ex, "{action} unexpected error in renewal loop", nameof( CreateLockAsync ) );
         }
+    }
+
+    // Cluster-startup churn surfaces in three transient ways:
+    //
+    //   22 (FORBIDDEN_OP / "Operation not allowed at this time") — the
+    //      partition isn't yet master-assigned for the lock set.
+    //   ResultCode.INVALID_NODE_ERROR — request routed to a node that
+    //      doesn't host the partition yet (partition map convergence).
+    //   ResultCode.SERVER_NOT_AVAILABLE — node is up but namespace is
+    //      still loading or in a transitional state.
+    //   ResultCode.CLUSTER_KEY_MISMATCH — client and server disagree on
+    //      cluster generation; resolves on the next info round.
+    //
+    // FORBIDDEN_OP isn't a named constant in Aerospike.Client 8.x; the raw
+    // value 22 is the canonical Aerospike error code documented for this
+    // condition.
+    private const int ForbiddenOp = 22;
+
+    private static bool IsTransientClusterError( AerospikeException ex )
+    {
+        return ex.Result == ForbiddenOp
+            || ex.Result == ResultCode.INVALID_NODE_ERROR
+            || ex.Result == ResultCode.SERVER_NOT_AVAILABLE
+            || ex.Result == ResultCode.CLUSTER_KEY_MISMATCH;
     }
 
     public async Task<bool> ExistsAsync( string recordId )
@@ -222,7 +275,7 @@ internal class AerospikeRecordStore : IMigrationRecordStore
         ).ConfigureAwait( false );
     }
 
-    public async Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(
+    public async Task<IReadOnlySet<string>> IntersectWithAppliedAsync(
         IEnumerable<string> candidateIds,
         CancellationToken cancellationToken = default )
     {
@@ -253,7 +306,7 @@ internal class AerospikeRecordStore : IMigrationRecordStore
         return found;
     }
 
-    public async Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(
+    public async Task<IReadOnlySet<long>> IntersectWithSquashedAsync(
         IEnumerable<long> versions,
         CancellationToken cancellationToken = default )
     {

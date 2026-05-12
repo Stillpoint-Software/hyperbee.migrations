@@ -158,13 +158,24 @@ public class MongoDBResourceRunner<TMigration>
 
         IEnumerable<DocumentItem> ReadResources()
         {
-            foreach ( var resourceName in resourcePaths )
+            foreach ( var resourcePath in resourcePaths )
             {
-                var resource = $"{migrationName}.{resourceName}";
-                _logger.LogInformation( " - Resource: [{resource}]", resource );
+                // Enumerate all embedded resources under <migrationName>/<resourcePath>/.
+                // The trailing '.' on the prefix prevents StartsWith from matching a sibling
+                // path that shares a leading substring (e.g. "users" vs "users_archive").
+                var resourcePrefix = ResourceHelper.GetResourceName<TMigration>( $"{migrationName}.{resourcePath}." );
+                var resourceNames = ResourceHelper
+                    .GetResourceNames<TMigration>()
+                    .Where( x => x.StartsWith( resourcePrefix, StringComparison.OrdinalIgnoreCase ) )
+                    .OrderBy( x => x, StringComparer.Ordinal );
 
-                var document = ResourceHelper.GetResource<TMigration>( resource );
-                yield return CreateDocumentItem( resourceName, document );
+                foreach ( var resourceName in resourceNames )
+                {
+                    _logger.LogInformation( " - Resource: [{resource}]", resourceName );
+
+                    var document = ResourceHelper.GetResource<TMigration>( resourceName, fullyQualified: true );
+                    yield return CreateDocumentItem( resourcePath, document );
+                }
             }
         }
     }

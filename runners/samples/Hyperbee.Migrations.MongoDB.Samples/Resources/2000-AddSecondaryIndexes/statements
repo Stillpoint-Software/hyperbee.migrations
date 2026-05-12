@@ -1,0 +1,15 @@
+-- Secondary indexes for the application's queries.
+-- Demonstrates the .statements script form per ADR-0022; the .statements.json
+-- companion is preserved for backward compatibility but the script form is
+-- the recommended shape for new migrations.
+
+-- Unique constraint on user email.
+CREATE UNIQUE INDEX idx_users_email ON sample.users (email);
+
+-- Common filters used by the application.
+CREATE INDEX idx_users_active ON sample.users (active);
+CREATE INDEX idx_users_role   ON sample.users (role);
+
+-- Product browse / filter.
+CREATE INDEX idx_products_category ON sample.products (category);
+CREATE INDEX idx_products_price    ON sample.products (price);

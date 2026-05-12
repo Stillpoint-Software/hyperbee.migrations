@@ -49,7 +49,7 @@ public interface IMigrationRecordStore
     /// The default falls back to a per-id <see cref="ExistsAsync(string)"/> loop.
     /// Reconciliation requires realtime semantics: see ADR-0019 Phase 3.
     /// </summary>
-    async Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(
+    async Task<IReadOnlySet<string>> IntersectWithAppliedAsync(
         IEnumerable<string> candidateIds,
         CancellationToken cancellationToken = default )
     {
@@ -76,7 +76,7 @@ public interface IMigrationRecordStore
     /// <c>MidRangeSquashException</c> against an outer squash unless the
     /// custom store overrides this method.
     /// </summary>
-    Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(
+    Task<IReadOnlySet<long>> IntersectWithSquashedAsync(
         IEnumerable<long> versions,
         CancellationToken cancellationToken = default )
     {

@@ -12,7 +12,6 @@ WORKDIR /
 COPY ["nuget.config", "/nuget.config"]
 COPY ["Directory.Packages.props", "/Directory.Packages.props"]
 COPY ["Directory.Build.props", "/Directory.Build.props"]
-COPY ["Directory.Build.targets", "/Directory.Build.targets"]
 
 WORKDIR /src
 COPY ["runners/Hyperbee.MigrationRunner.Couchbase/Hyperbee.MigrationRunner.Couchbase.csproj", "runners/Hyperbee.MigrationRunner.Couchbase/"]
@@ -27,19 +26,19 @@ RUN dotnet restore "./runners/samples/Hyperbee.Migrations.Couchbase.Samples/Hype
 COPY . .
 
 WORKDIR "/src/runners/Hyperbee.MigrationRunner.Couchbase"
-RUN dotnet build "./Hyperbee.MigrationRunner.Couchbase.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN dotnet build "./Hyperbee.MigrationRunner.Couchbase.csproj" -c $BUILD_CONFIGURATION -f net10.0 -o /app/build
 
 WORKDIR "/src/runners/samples/Hyperbee.Migrations.Couchbase.Samples"
-RUN dotnet build "./Hyperbee.Migrations.Couchbase.Samples.csproj" -c $BUILD_CONFIGURATION -o /app/sample_build
+RUN dotnet build "./Hyperbee.Migrations.Couchbase.Samples.csproj" -c $BUILD_CONFIGURATION -f net10.0 -o /app/sample_build
 
 
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
 
 WORKDIR "/src/runners/Hyperbee.MigrationRunner.Couchbase"
-RUN dotnet publish "./Hyperbee.MigrationRunner.Couchbase.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "./Hyperbee.MigrationRunner.Couchbase.csproj" -c $BUILD_CONFIGURATION -f net10.0 -o /app/publish /p:UseAppHost=false
 WORKDIR "/src/runners/samples/Hyperbee.Migrations.Couchbase.Samples"
-RUN dotnet publish "./Hyperbee.Migrations.Couchbase.Samples.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "./Hyperbee.Migrations.Couchbase.Samples.csproj" -c $BUILD_CONFIGURATION -f net10.0 -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app

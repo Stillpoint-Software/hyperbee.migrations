@@ -138,7 +138,7 @@ internal class PostgresRecordStore : IMigrationRecordStore
         await command.ExecuteNonQueryAsync();
     }
 
-    public async Task<IReadOnlySet<string>> LoadAppliedVersionsAsync(
+    public async Task<IReadOnlySet<string>> IntersectWithAppliedAsync(
         IEnumerable<string> candidateIds,
         CancellationToken cancellationToken = default )
     {
@@ -164,7 +164,7 @@ internal class PostgresRecordStore : IMigrationRecordStore
         return found;
     }
 
-    public async Task<IReadOnlySet<long>> LoadSatisfyingRowsAsync(
+    public async Task<IReadOnlySet<long>> IntersectWithSquashedAsync(
         IEnumerable<long> versions,
         CancellationToken cancellationToken = default )
     {

@@ -727,14 +727,14 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
     // InternalsVisibleTo) can drive the retry-WARN logging path with a
     // synthetic BulkAllResponse, satisfying R-24c (f) without standing
     // up a chaos provider.
-    internal sealed class BulkAllObserver : IObserver<global::OpenSearch.Client.BulkAllResponse>
+    internal sealed class BulkAllObserver : IObserver<BulkAllResponse>
     {
-        private readonly Action<global::OpenSearch.Client.BulkAllResponse> _onNext;
+        private readonly Action<BulkAllResponse> _onNext;
         private readonly Action<Exception> _onError;
         private readonly Action _onCompleted;
 
         public BulkAllObserver(
-            Action<global::OpenSearch.Client.BulkAllResponse> onNext,
+            Action<BulkAllResponse> onNext,
             Action<Exception> onError,
             Action onCompleted )
         {
@@ -743,7 +743,7 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
             _onCompleted = onCompleted;
         }
 
-        public void OnNext( global::OpenSearch.Client.BulkAllResponse value ) => _onNext( value );
+        public void OnNext( BulkAllResponse value ) => _onNext( value );
         public void OnError( Exception error ) => _onError( error );
         public void OnCompleted() => _onCompleted();
     }

@@ -2,6 +2,10 @@
 using Microsoft.Extensions.Logging;
 using OpenSearch.Client;
 
+// WaitForStatus lives in OpenSearch.Net; alias it directly so the inline
+// switch arms below stay readable.
+using WaitForStatus = OpenSearch.Net.WaitForStatus;
+
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Bootstrap.Steps;
 
 // Second step in the default pipeline (per ADR-0014). Polls cluster health
@@ -28,8 +32,8 @@ public sealed class ClusterHealthStep : IBootstrapStep
 
         var threshold = context.Options.ClusterHealthThreshold switch
         {
-            ClusterHealthThreshold.Green => global::OpenSearch.Net.WaitForStatus.Green,
-            _ => global::OpenSearch.Net.WaitForStatus.Yellow
+            ClusterHealthThreshold.Green => WaitForStatus.Green,
+            _ => WaitForStatus.Yellow
         };
 
         var timeout = context.Options.ImplicitWaitTimeout;

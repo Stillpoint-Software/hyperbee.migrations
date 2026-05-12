@@ -4,6 +4,9 @@ using DotNet.Testcontainers.Containers;
 using OpenSearch.Client;
 using OpenSearch.Net;
 
+// Disambiguate from System.Net.Http.HttpMethod (implicit-using).
+using HttpMethod = OpenSearch.Net.HttpMethod;
+
 namespace Hyperbee.Migrations.Integration.Tests.Container.OpenSearch;
 
 // R-28b — multi-node Testcontainers Compose harness.
@@ -197,7 +200,7 @@ public class MultiNodeOpenSearchTestContainer
             try
             {
                 var resp = await LowLevelClient.DoRequestAsync<StringResponse>(
-                    global::OpenSearch.Net.HttpMethod.GET, "_cluster/health", cancellationToken ).ConfigureAwait( false );
+                    HttpMethod.GET, "_cluster/health", cancellationToken ).ConfigureAwait( false );
 
                 if ( resp.Success && resp.Body is not null )
                 {

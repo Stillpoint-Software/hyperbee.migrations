@@ -3,6 +3,9 @@ using System.Text.Json.Nodes;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Ast;
 using OpenSearch.Net;
 
+// Disambiguate from System.Net.Http.HttpMethod (implicit-using).
+using HttpMethod = OpenSearch.Net.HttpMethod;
+
 namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Middleware;
 
 // Runtime middleware that resolves a TemplateBodyRef into the JSON body for a
@@ -63,7 +66,7 @@ public sealed class TemplateResolutionMiddleware
         ArgumentNullException.ThrowIfNull( templateRef );
 
         var response = await client.DoRequestAsync<StringResponse>(
-            global::OpenSearch.Net.HttpMethod.GET,
+            HttpMethod.GET,
             $"_index_template/{templateRef.TemplateName}",
             cancellationToken ).ConfigureAwait( false );
 
