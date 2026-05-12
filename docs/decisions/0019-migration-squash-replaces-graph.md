@@ -1,7 +1,7 @@
 # ADR-0019: Migration Squash via `Replaces` Graph + Destructive Codegen
 
-**Status:** Proposed (destructive-model reframe 2026-05-05; assessment 0007 amendments 2026-05-05; supersedes the additive framing in the original draft)
-**Date:** 2026-05-04 (original) / 2026-05-05 (reframe + assessment-0007 amendments)
+**Status:** Accepted (promoted 2026-05-11 after all 5 providers shipped without amendment across Phases 1-4; destructive-model reframe 2026-05-05; assessment 0007 amendments 2026-05-05; supersedes the additive framing in the original draft)
+**Date:** 2026-05-04 (original) / 2026-05-05 (reframe + assessment-0007 amendments) / 2026-05-11 (promoted to Accepted)
 **Related design:** [docs/design/migration-squashing.md](../design/migration-squashing.md)
 **Related ADRs:** ADR-0003 (Provider Record Store Contract), ADR-0004 (Reflection-Based Migration Discovery), ADR-0009 (Convention-Based Record IDs), ADR-0020 (Up-Only Squashes), ADR-0021 (Migration Record Checksum)
 

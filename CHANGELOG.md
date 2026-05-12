@@ -5,7 +5,7 @@ All notable changes to **Hyperbee.Migrations** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.0] — 2026-05-06 — Migration Squashing
+## [3.0.0] — 2026-05-11 — Migration Squashing (all 5 providers)
 
 This release ships the destructive-model migration squash feature
 (per [ADR-0019](docs/decisions/0019-migration-squash-replaces-graph.md)) plus
@@ -23,12 +23,18 @@ unchanged.
   `[Migration(version, ReplacesRange = "1000-1500")]`. The runner reconciles
   per environment: mature environments auto-mark the squash without running
   its body; fresh environments run the squash as a baseline.
-- **Postgres v1 squash codegen** — the
-  `PgDumpSnapshotStrategy` ships in v1 and emits a canonical
-  `Squash_M.sql` from `pg_dump --schema-only` output. Aerospike, Couchbase,
-  MongoDB, and OpenSearch ship `NullSquashStrategy` stubs in v1 (codegen
-  arrives in v1.1 / v1.2; see
-  [ADR-0019 amendment A11](docs/decisions/0019-migration-squash-replaces-graph.md)).
+- **Squash codegen for all five providers** — every provider ships its
+  own snapshot strategy in v1: Postgres `PgDumpSnapshotStrategy` (canonical
+  `.sql` from `pg_dump --schema-only`), Aerospike `InfoSnapshotStrategy`,
+  OpenSearch `RestStateDiffStrategy`, MongoDB `IntrospectionSnapshotStrategy`,
+  Couchbase `HybridStrategy`. Shipping all five together is deliberate per the
+  2026-05-09 scope retraction in
+  [ADR-0019 amendment A7](docs/decisions/0019-migration-squash-replaces-graph.md):
+  the strategy abstraction is only proven correct by being implemented
+  against the full provider matrix. **Outcome:** the contract held for all
+  five providers without amendment -- four consecutive provider
+  implementations after Postgres shipped without requiring an ADR-0019
+  amendment, confirming the 5-interface abstraction is correct.
 - **Universal `.statements` script form** — alongside the legacy
   `.statements.json` shape, all four NoSQL providers accept multi-statement
   script files with `--`/`//`/`/* */` comments and `;` terminators. Postgres
@@ -58,20 +64,56 @@ unchanged.
   (`Created`/`AlreadyExistsBenign`/`PreconditionFailed`).
 - `IMigrationRecordStore` gains
   `WriteAsync(MigrationRecord, WritePrecondition, CancellationToken) → WriteOutcome`,
-  `LoadAppliedVersionsAsync`, and `LoadSatisfyingRowsAsync` — all with safe
+  `IntersectWithAppliedAsync`, and `IntersectWithSquashedAsync` — all with safe
   default-interface-method implementations so v2 record stores compile and run
   unchanged.
 - `Hyperbee.Migrations.Squash` namespace with the strategy contract
   (`ISquashStrategy`, `SquashGenerationResult`, `ITopologySignature`,
   `IDataOpClassifier`, `ISnapshotCanonicalizer`, `ISquashVerifier`,
-  `SquashStrategyDescriptor`, `NullSquashStrategy`).
+  `SquashStrategyDescriptor`).
 - `Hyperbee.Migrations.Resources` namespace with `ResourceFormat`,
   `ResourceFormatDetector`, and `ScriptStatementSplitter` for the universal
   script form.
 - Postgres squash components (`PostgresTopologySignature`,
   `PostgresStatementClassifier` + `PostgresStatementSplitter`,
   `PostgresSnapshotCanonicalizer`, `PostgresDataOpClassifier`,
-  `PgDumpSnapshotStrategy`, `PostgresSquashVerifier`).
+  `PgDumpSnapshotStrategy`, `PostgresSquashVerifier`,
+  `PostgresMigrationSourceScanner`).
+- Aerospike squash components (`AerospikeTopologySignature`,
+  `AerospikeStatementClassifier` + `AerospikeStatementKind`,
+  `AerospikeSnapshotCanonicalizer`, `AerospikeDataOpClassifier`,
+  `InfoSnapshotStrategy` + `AerospikeSquashGenerationContext` +
+  `AerospikeSnapshotCapture`, `AerospikeSquashVerifier`,
+  `AerospikeMigrationSourceScanner`).
+- OpenSearch squash components (`OpenSearchTopologySignature`,
+  `OpenSearchStatementClassifier`,
+  `OpenSearchSnapshotCanonicalizer` -- JSON-section canonical form with
+  opaque painless preservation per the Task 2.0 spike,
+  `OpenSearchDataOpClassifier`,
+  `RestStateDiffStrategy` + `OpenSearchSquashGenerationContext` +
+  `OpenSearchSnapshotCapture`, `OpenSearchSquashVerifier`,
+  `OpenSearchMigrationSourceScanner`).
+- MongoDB squash components (`MongoDBTopologySignature`,
+  `MongoDBStatementClassifier` + `MongoDBStatementKind`,
+  `MongoDBSnapshotCanonicalizer` -- JSON-section canonical form with
+  ephemeral strip catalog (uuid/readOnly/v/ns),
+  `MongoDBDataOpClassifier`,
+  `IntrospectionSnapshotStrategy` + `MongoDBSquashGenerationContext` +
+  `MongoDBSnapshotCapture`, `MongoDBSquashVerifier`,
+  `MongoDBMigrationSourceScanner`).
+- Couchbase squash components (`CouchbaseTopologySignature`,
+  `CouchbaseStatementClassifier` + `CouchbaseStatementKind`,
+  `CouchbaseSnapshotCanonicalizer` -- JSON-section canonical form with
+  deferred-build GSI state preservation (R-P3 OQ resolution: `state=online`
+  dropped, `state=deferred` preserved, transient states throw at squash-time),
+  `CouchbaseDataOpClassifier` -- parameterized N1QL `QueryAsync` /
+  `AnalyticsQueryAsync` default-deny (R-P3 OQ resolution),
+  `HybridStrategy` + `CouchbaseSquashGenerationContext` +
+  `CouchbaseSnapshotCapture`, `CouchbaseSquashVerifier`,
+  `CouchbaseMigrationSourceScanner`).
+- `[DataMigration]` and `[StructuralOnly]` attributes (ADR-0019 A5) -- the
+  Roslyn-based source scanners refuse squash generation if a migration class
+  matches the data-op heuristic without an explicit annotation.
 - Two-phase fleet gate types: `SquashMetadata`, `SquashFleetGate`,
   `StaleFleetMemberException`, `UnregisteredEnvironmentException`,
   `MidRangeFleetException`.
@@ -80,12 +122,12 @@ unchanged.
 
 ### Changed (back-compat preserved)
 
-- All five provider record stores override `LoadAppliedVersionsAsync` with a
+- All five provider record stores override `IntersectWithAppliedAsync` with a
   single-round-trip realtime read (Postgres `WHERE = ANY`, MongoDB
   `find _id $in` with majority+primary, Couchbase parallel `ExistsAsync`,
   Aerospike `BatchGet`, OpenSearch `_mget realtime=true`).
 - Postgres / MongoDB / Couchbase / OpenSearch override
-  `LoadSatisfyingRowsAsync` for transitive squash satisfaction. Aerospike's
+  `IntersectWithSquashedAsync` for transitive squash satisfaction. Aerospike's
   transitive override is deferred to a follow-up; the DIM default returns an
   empty set, so direct auto-mark works but re-squash transitivity does not on
   Aerospike v1.
@@ -99,8 +141,8 @@ unchanged.
 
 1. **`IMigrationRecordStore` gains three methods.** Custom implementations
    compile and run unchanged via the DIM defaults (`WriteAsync(record, ...)`
-   delegates to legacy `WriteAsync(string)`; `LoadAppliedVersionsAsync` falls
-   back to a per-id `ExistsAsync` loop; `LoadSatisfyingRowsAsync` returns an
+   delegates to legacy `WriteAsync(string)`; `IntersectWithAppliedAsync` falls
+   back to a per-id `ExistsAsync` loop; `IntersectWithSquashedAsync` returns an
    empty set). Override these to opt into squash support.
 
 2. **Provider record-store schemas gain `Checksum` + `Kind` columns/fields.**
@@ -122,8 +164,8 @@ unchanged.
   simultaneously; deploy v3 to all environments before squashing. The
   two-phase fleet readiness gate is the safety net; see ADR-0019 A2.
 - **Aerospike re-squash transitivity** is unsupported in v1 — the
-  `LoadSatisfyingRowsAsync` override is a follow-up. Direct
-  `Migration_<v>` auto-mark works via `LoadAppliedVersionsAsync`.
+  `IntersectWithSquashedAsync` override is a follow-up. Direct
+  `Migration_<v>` auto-mark works via `IntersectWithAppliedAsync`.
 
 ### Documentation
 
