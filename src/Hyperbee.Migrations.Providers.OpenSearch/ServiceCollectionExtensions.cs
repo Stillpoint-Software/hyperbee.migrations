@@ -69,13 +69,29 @@ public static class ServiceCollectionExtensions
             return options;
         }
 
-        services.AddSingleton( OpenSearchMigrationOptionsFactory );
-        services.AddSingleton<MigrationOptions>( provider => provider.GetRequiredService<OpenSearchMigrationOptions>() );
-
-        services.AddSingleton<IMigrationRecordStore, OpenSearchRecordStore>();
-        services.AddSingleton<MigrationRunner>();
-
         services.TryAddSingleton( TimeProvider.System );
+
+        // Concrete provider-typed registrations (per ADR-0023). TryAddSingleton
+        // + factory delegate -- idempotent registration; record-store stays
+        // internal.
+        services.TryAddSingleton( OpenSearchMigrationOptionsFactory );
+        services.TryAddSingleton<OpenSearchRecordStore>( provider => new OpenSearchRecordStore(
+            provider.GetRequiredService<IOpenSearchClient>(),
+            provider.GetRequiredService<OpenSearchBootstrapper>(),
+            provider.GetRequiredService<OpenSearchMigrationOptions>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<ILogger<OpenSearchRecordStore>>() ) );
+        services.TryAddSingleton( provider => new OpenSearchMigrationRunner(
+            provider.GetRequiredService<OpenSearchRecordStore>(),
+            provider.GetRequiredService<OpenSearchMigrationOptions>(),
+            provider.GetRequiredService<ILoggerFactory>() ) );
+
+        // Legacy single-provider aliases (per ADR-0023 amendment F1).
+        services.RegisterBaseAliases(
+            "OpenSearch",
+            provider => provider.GetRequiredService<OpenSearchMigrationOptions>(),
+            provider => provider.GetRequiredService<OpenSearchRecordStore>(),
+            provider => provider.GetRequiredService<OpenSearchMigrationRunner>() );
 
         // Bootstrapper pipeline (ADR-0014). Default steps registered in execution order.
         // Consumers extend by registering additional IBootstrapStep implementations BEFORE

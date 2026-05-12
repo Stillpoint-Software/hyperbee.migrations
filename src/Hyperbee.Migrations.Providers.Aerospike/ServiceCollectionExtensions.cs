@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using IAsyncClient = Aerospike.Client.IAsyncClient;
 
 namespace Hyperbee.Migrations.Providers.Aerospike;
 
@@ -54,13 +55,30 @@ public static class ServiceCollectionExtensions
             return options;
         }
 
-        services.AddSingleton( AerospikeMigrationOptionsFactory );
-        services.AddSingleton<MigrationOptions>( provider => provider.GetRequiredService<AerospikeMigrationOptions>() );
-        services.AddSingleton<IMigrationRecordStore, AerospikeRecordStore>();
-        services.AddSingleton<MigrationRunner>();
-        services.AddTransient( typeof( AerospikeResourceRunner<> ) );
-
         services.TryAddSingleton( TimeProvider.System );
+
+        // Concrete provider-typed registrations (per ADR-0023). TryAddSingleton
+        // + factory delegate -- idempotent registration; record-store stays
+        // internal.
+        services.TryAddSingleton( AerospikeMigrationOptionsFactory );
+        services.TryAddSingleton<AerospikeRecordStore>( provider => new AerospikeRecordStore(
+            provider.GetRequiredService<IAsyncClient>(),
+            provider.GetRequiredService<AerospikeMigrationOptions>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<ILogger<AerospikeRecordStore>>() ) );
+        services.TryAddSingleton( provider => new AerospikeMigrationRunner(
+            provider.GetRequiredService<AerospikeRecordStore>(),
+            provider.GetRequiredService<AerospikeMigrationOptions>(),
+            provider.GetRequiredService<ILoggerFactory>() ) );
+
+        // Legacy single-provider aliases (per ADR-0023 amendment F1).
+        services.RegisterBaseAliases(
+            "Aerospike",
+            provider => provider.GetRequiredService<AerospikeMigrationOptions>(),
+            provider => provider.GetRequiredService<AerospikeRecordStore>(),
+            provider => provider.GetRequiredService<AerospikeMigrationRunner>() );
+
+        services.AddTransient( typeof( AerospikeResourceRunner<> ) );
 
         // Squash codegen wiring (per ADR-0019).
         //

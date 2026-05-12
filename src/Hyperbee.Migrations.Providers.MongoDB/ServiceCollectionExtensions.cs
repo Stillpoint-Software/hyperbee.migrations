@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using IMongoClient = MongoDB.Driver.IMongoClient;
 
 namespace Hyperbee.Migrations.Providers.MongoDB;
 
@@ -54,10 +55,27 @@ public static class ServiceCollectionExtensions
             return options;
         }
 
-        services.AddSingleton( PostgresMigrationOptionsFactory );
-        services.AddSingleton<MigrationOptions>( provider => provider.GetRequiredService<MongoDBMigrationOptions>() );
-        services.AddSingleton<IMigrationRecordStore, MongoDBRecordStore>();
-        services.AddSingleton<MigrationRunner>();
+        // Concrete provider-typed registrations (per ADR-0023). Stored via
+        // TryAddSingleton + factory delegate so duplicate AddMongoDBMigrations
+        // calls are idempotent and the internal record-store type stays
+        // internal.
+        services.TryAddSingleton( PostgresMigrationOptionsFactory );
+        services.TryAddSingleton<MongoDBRecordStore>( provider => new MongoDBRecordStore(
+            provider.GetRequiredService<IMongoClient>(),
+            provider.GetRequiredService<MongoDBMigrationOptions>(),
+            provider.GetRequiredService<ILogger<MongoDBRecordStore>>() ) );
+        services.TryAddSingleton( provider => new MongoDBMigrationRunner(
+            provider.GetRequiredService<MongoDBRecordStore>(),
+            provider.GetRequiredService<MongoDBMigrationOptions>(),
+            provider.GetRequiredService<ILoggerFactory>() ) );
+
+        // Legacy single-provider aliases (per ADR-0023 amendment F1).
+        services.RegisterBaseAliases(
+            "MongoDB",
+            provider => provider.GetRequiredService<MongoDBMigrationOptions>(),
+            provider => provider.GetRequiredService<MongoDBRecordStore>(),
+            provider => provider.GetRequiredService<MongoDBMigrationRunner>() );
+
         services.AddTransient( typeof( MongoDBResourceRunner<> ) );// technically singleton works because of the nature of migrations, but even so ..
 
         // Squash codegen wiring (per ADR-0019). Components are stateless and

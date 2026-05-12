@@ -119,6 +119,12 @@ unchanged.
   `MidRangeFleetException`.
 - `RecoveryAcknowledgement` — deterministic 12-char token for the
   `recover from-mid-range` escape hatch.
+- **Per-provider `MigrationRunner` subclasses** (`PostgresMigrationRunner`,
+  `MongoDBMigrationRunner`, `CouchbaseMigrationRunner`,
+  `OpenSearchMigrationRunner`, `AerospikeMigrationRunner`). Each provides
+  a unique DI handle so multi-provider hosts can resolve and run each
+  provider's runner independently. See ADR-0023 + the multi-provider
+  hosts operator guide.
 
 ### Changed (back-compat preserved)
 
@@ -136,6 +142,23 @@ unchanged.
   `PUT _mapping` patch on bootstrap, idempotent and IAM-aware.
 - `MigrationDescriptor` (previously a private record on `MigrationRunner`)
   is now a public core type so squash strategies can consume it.
+- **`MigrationRunner` accepts `ILoggerFactory` in addition to
+  `ILogger<MigrationRunner>`.** Per ADR-0023 (assessment F7) the new
+  primary constructor takes `ILoggerFactory` and creates a logger
+  categorized under the concrete runtime type so per-provider subclass
+  instances log under their own type names
+  (e.g. `Hyperbee.Migrations.Providers.Postgres.PostgresMigrationRunner`).
+  The original `ILogger<MigrationRunner>` constructor remains for back-
+  compat. Operators tailing logs by category may need to update filters.
+- **Multi-provider hosts**: calling `Add{Provider}Migrations` for more
+  than one provider on the same `IServiceCollection` previously caused
+  silent shadowing — only the last-registered provider's runner ran.
+  The base `MigrationRunner` / `MigrationOptions` / `IMigrationRecordStore`
+  resolutions now throw `InvalidOperationException` with a clear,
+  actionable message when multiple providers are registered; resolve
+  the typed `{Provider}MigrationRunner` explicitly. Single-provider
+  hosts are unaffected. (See ADR-0023 + the multi-provider hosts
+  operator guide at `docs/site/multi-provider-hosts.md`.)
 
 ### Breaking changes (with safe back-compat paths)
 

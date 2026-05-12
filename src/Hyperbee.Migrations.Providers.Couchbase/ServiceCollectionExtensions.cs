@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using IClusterProvider = Couchbase.Extensions.DependencyInjection.IClusterProvider;
 
 namespace Hyperbee.Migrations.Providers.Couchbase;
 
@@ -55,10 +56,27 @@ public static class ServiceCollectionExtensions
             return options;
         }
 
-        services.AddSingleton( CouchbaseMigrationOptionsFactory );
-        services.AddSingleton<MigrationOptions>( provider => provider.GetRequiredService<CouchbaseMigrationOptions>() );
-        services.AddSingleton<IMigrationRecordStore, CouchbaseRecordStore>();
-        services.AddSingleton<MigrationRunner>();
+        // Concrete provider-typed registrations (per ADR-0023). TryAddSingleton
+        // + factory delegate -- idempotent registration; record-store stays
+        // internal.
+        services.TryAddSingleton( CouchbaseMigrationOptionsFactory );
+        services.TryAddSingleton<CouchbaseRecordStore>( provider => new CouchbaseRecordStore(
+            provider.GetRequiredService<IClusterProvider>(),
+            provider.GetRequiredService<CouchbaseMigrationOptions>(),
+            provider.GetRequiredService<ICouchbaseBootstrapper>(),
+            provider.GetRequiredService<ICouchbaseRestApiService>(),
+            provider.GetRequiredService<ILogger<CouchbaseRecordStore>>() ) );
+        services.TryAddSingleton( provider => new CouchbaseMigrationRunner(
+            provider.GetRequiredService<CouchbaseRecordStore>(),
+            provider.GetRequiredService<CouchbaseMigrationOptions>(),
+            provider.GetRequiredService<ILoggerFactory>() ) );
+
+        // Legacy single-provider aliases (per ADR-0023 amendment F1).
+        services.RegisterBaseAliases(
+            "Couchbase",
+            provider => provider.GetRequiredService<CouchbaseMigrationOptions>(),
+            provider => provider.GetRequiredService<CouchbaseRecordStore>(),
+            provider => provider.GetRequiredService<CouchbaseMigrationRunner>() );
 
         services.AddTransient( typeof( CouchbaseResourceRunner<> ) ); // technically singleton works because of the nature of migrations, but even so ..
 

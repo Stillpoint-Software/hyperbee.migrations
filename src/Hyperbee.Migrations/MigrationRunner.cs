@@ -9,8 +9,23 @@ public class MigrationRunner
 {
     private readonly IMigrationRecordStore _recordStore;
     private readonly MigrationOptions _options;
-    private readonly ILogger<MigrationRunner> _logger;
+    private readonly ILogger _logger;
 
+    // Primary constructor: accepts an ILoggerFactory so subclass instances log
+    // under their concrete runtime type (per ADR-0023). The factory creates a
+    // category-named logger for the most-derived type at construction time.
+    public MigrationRunner( IMigrationRecordStore recordStore, MigrationOptions options, ILoggerFactory loggerFactory )
+    {
+        _recordStore = recordStore ?? throw new ArgumentNullException( nameof( recordStore ) );
+        _options = options ?? throw new ArgumentNullException( nameof( options ) );
+        if ( loggerFactory == null )
+            throw new ArgumentNullException( nameof( loggerFactory ) );
+        _logger = loggerFactory.CreateLogger( GetType() );
+    }
+
+    // Back-compat constructor: existing call sites that pass ILogger<MigrationRunner>
+    // continue to compile. Subclass instances should prefer the ILoggerFactory
+    // overload so logs are categorized under the runtime type.
     public MigrationRunner( IMigrationRecordStore recordStore, MigrationOptions options, ILogger<MigrationRunner> logger )
     {
         _recordStore = recordStore ?? throw new ArgumentNullException( nameof( recordStore ) );
@@ -227,12 +242,12 @@ public class MigrationRunner
         // Direct satisfaction: Migration_<v> rows present in the ledger.
         var replacedRecordIds = resolvedReplaces.Select( v => recordIdByVersion[v] ).ToArray();
         var directlyApplied = await store
-            .LoadAppliedVersionsAsync( replacedRecordIds, cancellationToken )
+            .IntersectWithAppliedAsync( replacedRecordIds, cancellationToken )
             .ConfigureAwait( false );
 
         // Transitive satisfaction: prior Squash row's Replaces array covers the version.
         var transitivelyCovered = await store
-            .LoadSatisfyingRowsAsync( resolvedReplaces, cancellationToken )
+            .IntersectWithSquashedAsync( resolvedReplaces, cancellationToken )
             .ConfigureAwait( false );
 
         var satisfied = new HashSet<long>();
@@ -380,12 +395,12 @@ public class MigrationRunner
         IEnumerable<string> candidateRecordIds,
         CancellationToken cancellationToken )
     {
-        // A single bulk realtime query (LoadAppliedVersionsAsync) is the right
+        // A single bulk realtime query (IntersectWithAppliedAsync) is the right
         // primitive here per ADR-0019; the per-id ExistsAsync loop in the DIM
         // default is a degraded fallback for v2 stores. Either way: if any
         // candidate id is in the ledger, we're not in a fresh-install state.
         var applied = await _recordStore
-            .LoadAppliedVersionsAsync( candidateRecordIds, cancellationToken )
+            .IntersectWithAppliedAsync( candidateRecordIds, cancellationToken )
             .ConfigureAwait( false );
         return applied.Count == 0;
     }
