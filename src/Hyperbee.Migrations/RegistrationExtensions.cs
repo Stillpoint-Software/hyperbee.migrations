@@ -39,7 +39,11 @@ internal static class RegistrationExtensions
         if ( existingMarker == null )
         {
             // First provider on this service collection: install marker +
-            // legacy aliases pointing at this provider.
+            // legacy aliases pointing at this provider. Capture each installed
+            // descriptor by reference so the second-provider flip can remove
+            // only the helper-owned descriptors (R-9). Any user-supplied
+            // MigrationOptions / IMigrationRecordStore / MigrationRunner
+            // registrations made before this call are preserved untouched.
             var marker = new MultiProviderRegistrationMarker
             {
                 FirstProvider = providerName,
@@ -47,9 +51,16 @@ internal static class RegistrationExtensions
             };
             services.AddSingleton( marker );
 
-            services.AddSingleton<MigrationOptions>( optionsFactory );
-            services.AddSingleton<IMigrationRecordStore>( storeFactory );
-            services.AddSingleton<MigrationRunner>( runnerFactory );
+            var optionsDesc = ServiceDescriptor.Singleton<MigrationOptions>( optionsFactory );
+            var storeDesc = ServiceDescriptor.Singleton<IMigrationRecordStore>( storeFactory );
+            var runnerDesc = ServiceDescriptor.Singleton<MigrationRunner>( runnerFactory );
+            services.Add( optionsDesc );
+            services.Add( storeDesc );
+            services.Add( runnerDesc );
+
+            marker.InstalledOptionsAlias = optionsDesc;
+            marker.InstalledStoreAlias = storeDesc;
+            marker.InstalledRunnerAlias = runnerDesc;
             return;
         }
 
@@ -66,9 +77,23 @@ internal static class RegistrationExtensions
 
         markerInstance.AllProviders.Add( providerName );
 
-        services.RemoveAll<MigrationOptions>();
-        services.RemoveAll<IMigrationRecordStore>();
-        services.RemoveAll<MigrationRunner>();
+        // R-9: remove only the descriptors WE installed on the first
+        // registration. Previously this was `RemoveAll<MigrationOptions>`,
+        // which also destroyed any user-supplied MigrationOptions /
+        // IMigrationRecordStore / MigrationRunner registrations made before
+        // the first AddXxxMigrations call -- a test-harness footgun where a
+        // bespoke fake store registered first vanished as soon as a real
+        // provider was added.
+        if ( markerInstance.InstalledOptionsAlias != null )
+            services.Remove( markerInstance.InstalledOptionsAlias );
+        if ( markerInstance.InstalledStoreAlias != null )
+            services.Remove( markerInstance.InstalledStoreAlias );
+        if ( markerInstance.InstalledRunnerAlias != null )
+            services.Remove( markerInstance.InstalledRunnerAlias );
+
+        markerInstance.InstalledOptionsAlias = null;
+        markerInstance.InstalledStoreAlias = null;
+        markerInstance.InstalledRunnerAlias = null;
 
         var providers = markerInstance.AllProviders.ToArray();
         services.AddSingleton<MigrationOptions>( _ => ThrowMultiProvider<MigrationOptions>( providers ) );

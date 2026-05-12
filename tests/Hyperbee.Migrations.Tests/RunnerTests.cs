@@ -402,6 +402,24 @@ public class RunnerTests
             return Task.FromResult( WriteOutcome.Created );
         } );
 
+        // R-2: the runner consults a bulk applied-set snapshot at startup and
+        // reuses it in the loop instead of per-migration ExistsAsync probes.
+        // NSubstitute bypasses the DIM (which would per-id-loop on ExistsAsync),
+        // so wire IntersectWithAppliedAsync to mirror exists semantics over the
+        // fake store.
+        recordStore.IntersectWithAppliedAsync(
+            Arg.Any<IEnumerable<string>>(),
+            Arg.Any<CancellationToken>()
+        ).Returns( args =>
+        {
+            var candidates = args.Arg<IEnumerable<string>>();
+            var existing = new HashSet<string>( store.Select( x => x.Id ), StringComparer.Ordinal );
+            var hit = new HashSet<string>(
+                candidates.Where( id => existing.Contains( id ) ),
+                StringComparer.Ordinal );
+            return Task.FromResult<IReadOnlySet<string>>( hit );
+        } );
+
         return recordStore;
     }
 

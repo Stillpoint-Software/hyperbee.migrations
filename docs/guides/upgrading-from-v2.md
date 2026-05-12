@@ -47,15 +47,26 @@ Task<IReadOnlySet<string>> IntersectWithAppliedAsync(IEnumerable<string> candida
 Task<IReadOnlySet<long>> IntersectWithSquashedAsync(IEnumerable<long> versions, CancellationToken ct = default);
 ```
 
-All three ship with DIM defaults so v2 record-store implementations compile
-unchanged. The defaults are degraded — the new `WriteAsync` overload
-delegates to legacy `WriteAsync(string)` (so `Checksum`/`Kind` are dropped on
-custom stores until they override); `IntersectWithAppliedAsync` falls back to
-a per-id `ExistsAsync` loop; `IntersectWithSquashedAsync` returns an empty set.
+Two of the three ship with degraded DIM defaults so v2 record-store
+implementations compile unchanged:
+
+- `WriteAsync(MigrationRecord, ...)` — delegates to the legacy
+  `WriteAsync(string)` (so `Checksum`/`Kind` are dropped on custom stores
+  until they override).
+- `IntersectWithAppliedAsync` — falls back to a per-id `ExistsAsync` loop.
+
+`IntersectWithSquashedAsync` is the exception: there is **no safe default**.
+Its DIM throws `NotSupportedException` the first time the runner reconciles a
+`Kind=Squash` descriptor against a custom store that hasn't overridden the
+method. Returning an empty set silently would misclassify mature environments
+that auto-marked an inner squash as "Fresh" against an outer squash, so the
+contract is fail-loud (R-3, ADR-0019 A6). v2 stores that never see a squash
+descriptor are untouched -- the throw is reached only when a `Kind=Squash`
+descriptor is actually being processed.
 
 **You only need to override these if you ship a custom
 `IMigrationRecordStore`.** All five shipped providers (Aerospike, Couchbase,
-MongoDB, OpenSearch, Postgres) provide real overrides — no action required.
+MongoDB, OpenSearch, Postgres) provide real overrides -- no action required.
 
 If you ship a custom store and want squash support:
 

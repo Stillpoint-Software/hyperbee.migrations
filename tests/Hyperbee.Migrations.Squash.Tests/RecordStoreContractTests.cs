@@ -10,7 +10,9 @@ namespace Hyperbee.Migrations.Squash.Tests;
 //   - WriteAsync(MigrationRecord, WritePrecondition, ...) DIM default falls
 //     back to legacy WriteAsync(string) and returns Created
 //   - IntersectWithAppliedAsync DIM default falls back to per-id ExistsAsync
-//   - IntersectWithSquashedAsync DIM default returns empty
+//   - IntersectWithSquashedAsync DIM default throws (R-3 fail-loud:
+//     stores that handle squashes MUST override; silent fail-open is
+//     a correctness gap)
 //   - EnsureLedgerIntegrity gate on the record before the DIM default writes
 //
 // Custom record stores that don't override the new methods MUST get v2-
@@ -138,22 +140,32 @@ public class RecordStoreContractTests
     // ---- IntersectWithSquashedAsync DIM default ---------------------------
 
     [TestMethod]
-    public async Task IntersectWithSquashedAsync_DIMDefault_ReturnsEmptySet()
+    public async Task IntersectWithSquashedAsync_DIMDefault_ThrowsNotSupported()
     {
-        // Per the docstring: legacy stores have no ledger scan primitive
-        // for transitive Replaces. DIM default returns empty so direct
-        // auto-mark works but transitivity fails until the store overrides.
+        // R-3: legacy stores have no ledger scan primitive for transitive
+        // Replaces; returning an empty set silently misclassifies mature
+        // environments that auto-marked an inner squash. The DIM default
+        // throws NotSupportedException with a remediation message naming
+        // the store type so the operator can either override the method
+        // or upgrade to a shipped provider.
         var store = Substitute.For<IMigrationRecordStore>();
         store.IntersectWithSquashedAsync( Arg.Any<IEnumerable<long>>(), Arg.Any<CancellationToken>() )
             .Returns( call => CallIntersectSquashedDIM( store, (IEnumerable<long>) call[0], (CancellationToken) call[1] ) );
 
-        var satisfied = await store.IntersectWithSquashedAsync( new long[] { 1000, 1100, 1200 } );
-        satisfied.Should().BeEmpty();
+        Func<Task> act = async () =>
+            await store.IntersectWithSquashedAsync( new long[] { 1000, 1100, 1200 } );
+
+        (await act.Should().ThrowAsync<NotSupportedException>())
+            .Which.Message.Should().Contain( "IntersectWithSquashedAsync" )
+            .And.Contain( "ADR-0019" );
     }
 
     [TestMethod]
-    public async Task IntersectWithSquashedAsync_NullVersions_Throws()
+    public async Task IntersectWithSquashedAsync_NullVersions_ThrowsArgumentNullBeforeNotSupported()
     {
+        // Argument validation runs before the NotSupportedException so the
+        // exception type identifies the actual API misuse rather than the
+        // contract gap.
         var store = Substitute.For<IMigrationRecordStore>();
         store.IntersectWithSquashedAsync( Arg.Any<IEnumerable<long>>(), Arg.Any<CancellationToken>() )
             .Returns( call => CallIntersectSquashedDIM( store, (IEnumerable<long>) call[0], (CancellationToken) call[1] ) );
@@ -207,7 +219,13 @@ public class RecordStoreContractTests
     {
         if ( versions == null )
             throw new ArgumentNullException( nameof( versions ) );
-        IReadOnlySet<long> empty = new HashSet<long>();
-        return Task.FromResult( empty );
+
+        throw new NotSupportedException(
+            $"IMigrationRecordStore implementation '{store.GetType().FullName}' does not override " +
+            "IntersectWithSquashedAsync; transitive squash reconciliation (ADR-0019 A6) " +
+            "cannot proceed. Override this method to scan the ledger for rows where " +
+            "Kind=Squash and the Replaces array contains the input version, or use one " +
+            "of the shipped record stores (Postgres, MongoDB, Couchbase, OpenSearch, " +
+            "Aerospike) that implement the primitive natively." );
     }
 }

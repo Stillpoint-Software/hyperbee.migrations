@@ -100,4 +100,56 @@ public class CouchbaseSquashDIWiringTests
         d.Generator.Should().BeSameAs( provider.GetRequiredService<HybridStrategy>() );
         d.Verifier.Should().BeSameAs( provider.GetRequiredService<CouchbaseSquashVerifier>() );
     }
+
+    [TestMethod]
+    public void AddCouchbaseMigrations_MissingBucketName_Throws()
+    {
+        // R-14: BucketName is required. The validation runs inside the options
+        // factory, which executes lazily on first CouchbaseMigrationOptions
+        // resolution. The error message names the field + remediation so the
+        // operator does not have to chase an obscure SDK-side NRE.
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>( new ConfigurationBuilder().Build() );
+        services.AddSingleton<IOptions<ClusterOptions>>(
+            new OptionsWrapper<ClusterOptions>( new ClusterOptions { ConnectionString = "couchbase://localhost" } ) );
+        services.AddCouchbaseMigrations(); // no opts -> BucketName stays null
+        var provider = services.BuildServiceProvider();
+
+        var act = () => provider.GetRequiredService<CouchbaseMigrationOptions>();
+
+        act.Should().Throw<InvalidOperationException>()
+            .Where( e =>
+                e.Message.Contains( "BucketName is required" ) &&
+                e.Message.Contains( "AddCouchbaseMigrations" ) );
+    }
+
+    [TestMethod]
+    public void AddCouchbaseMigrations_WhitespaceBucketName_Throws()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>( new ConfigurationBuilder().Build() );
+        services.AddSingleton<IOptions<ClusterOptions>>(
+            new OptionsWrapper<ClusterOptions>( new ClusterOptions { ConnectionString = "couchbase://localhost" } ) );
+        services.AddCouchbaseMigrations( opts => opts.BucketName = "   " );
+        var provider = services.BuildServiceProvider();
+
+        var act = () => provider.GetRequiredService<CouchbaseMigrationOptions>();
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage( "*BucketName is required*" );
+    }
+
+    [TestMethod]
+    public void AddCouchbaseMigrations_ValidBucketName_Resolves()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>( new ConfigurationBuilder().Build() );
+        services.AddSingleton<IOptions<ClusterOptions>>(
+            new OptionsWrapper<ClusterOptions>( new ClusterOptions { ConnectionString = "couchbase://localhost" } ) );
+        services.AddCouchbaseMigrations( opts => opts.BucketName = "hyperbee" );
+        var provider = services.BuildServiceProvider();
+
+        var opts = provider.GetRequiredService<CouchbaseMigrationOptions>();
+        opts.BucketName.Should().Be( "hyperbee" );
+    }
 }

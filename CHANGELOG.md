@@ -140,6 +140,44 @@ unchanged.
 
 ### Changed (back-compat preserved)
 
+- **`RegisterBaseAliases` removes only helper-owned descriptors when a second
+  provider registers.** Previously the second-provider flip called
+  `RemoveAll<MigrationOptions>` / `RemoveAll<IMigrationRecordStore>` /
+  `RemoveAll<MigrationRunner>`, which also wiped any user-supplied
+  registrations made before the first `AddXxxMigrations` call -- a
+  test-harness footgun where a bespoke fake store registered first vanished
+  as soon as a real provider was added. The marker now captures the
+  helper-installed `ServiceDescriptor` instances on first registration and
+  removes only those on the flip; user-supplied descriptors survive. In
+  multi-provider mode the throwing factory still poisons base-type
+  resolution by design (operators resolve typed runners) -- R-9's guarantee
+  is "your descriptor is not destroyed", not "your descriptor wins base-type
+  resolution". Per ADR-0023 amendment F1 + ADR-0024 audit follow-up (R-9).
+- **`AddCouchbaseMigrations` validates `BucketName` at options-factory time.**
+  Missing or whitespace-only `BucketName` now throws
+  `InvalidOperationException` with an operator-friendly message naming the
+  field plus the canonical fix (`opts.BucketName = "..."`). Previously the
+  failure surfaced as an obscure `NullReferenceException` inside the Couchbase
+  SDK on the first `BucketAsync(null)` call. Per ADR-0024 audit follow-up (R-14).
+- **`MidRangeSquashException` prints the recovery acknowledgement token** in
+  its message and exposes it as `RecoveryToken` on the exception itself, so
+  operators have the token on hand during incident response without
+  recomputing it. New `MigrationOptions.EnvironmentName` property feeds the
+  token derivation; when unset, the token is computed against an `<unset>`
+  sentinel and the exception message includes a remediation note. Per
+  ADR-0019 A3 + ADR-0024 audit follow-up (R-10).
+- **Runner snapshots the applied set once at startup** instead of issuing a
+  per-migration `ExistsAsync` round-trip. The loop now consults the in-memory
+  snapshot to decide skip-vs-run. On a 500-migration project the runner
+  formerly held the fleet lock for 500 sequential round-trips of nothing-but-
+  existence-probes; the snapshot collapses that to one bulk realtime read.
+  Up direction is correctness-stable (Up only adds records); Down direction
+  uses the start-of-run "exists?" answer, which is the correct semantic
+  (Down should revert what was present at the start, not chase concurrent
+  writers). Per ADR-0024 audit follow-up (R-2). The audit's PA-8 finding
+  (count-only optimization of the prior `IsLedgerEmptyAsync` helper) is
+  dissolved by this change -- the full applied set is now consumed
+  pervasively, so sending all ids is fully justified.
 - **`MigrationOptions.LockingEnabled` default flipped to `true`.** Production-grade safety:
   the lazy path (call `AddPostgresMigrations(...)` and run) now acquires the provider's
   native distributed lock. Operators who deliberately want lockless dev/test runs must
@@ -151,11 +189,24 @@ unchanged.
   single-round-trip realtime read (Postgres `WHERE = ANY`, MongoDB
   `find _id $in` with majority+primary, Couchbase parallel `ExistsAsync`,
   Aerospike `BatchGet`, OpenSearch `_mget realtime=true`).
-- Postgres / MongoDB / Couchbase / OpenSearch override
-  `IntersectWithSquashedAsync` for transitive squash satisfaction. Aerospike's
-  transitive override is deferred to a follow-up; the DIM default returns an
-  empty set, so direct auto-mark works but re-squash transitivity does not on
-  Aerospike v1.
+- **All five provider record stores override `IntersectWithSquashedAsync`** for
+  transitive squash satisfaction (ADR-0019 A6). Postgres uses
+  `WHERE kind=1 AND replaces && ARRAY[...]`; MongoDB uses `find { kind: 1, replaces: { $in: [...] } }`;
+  Couchbase uses N1QL `WHERE kind = 1 AND ANY v IN replaces SATISFIES v IN [...] END`;
+  OpenSearch uses `_search` with a `terms` filter on `replaces`; Aerospike uses a
+  filtered server-side scan on `Kind=Squash` with client-side replaces-array intersection
+  (R-15 -- previously the CHANGELOG incorrectly stated this override was deferred;
+  the code at `AerospikeRecordStore.cs:309-361` has shipped the implementation from
+  v3.0 day one).
+- **`IMigrationRecordStore.IntersectWithSquashedAsync` DIM default is now fail-loud.**
+  The DIM previously returned an empty set silently, which let mature
+  environments that auto-marked an inner squash misclassify as `Fresh` against
+  an outer squash. v3.0 throws `NotSupportedException` with a remediation
+  message naming the store type the first time the runner reconciles a
+  `Kind=Squash` descriptor against a store that hasn't overridden the method.
+  v2 stores without any squash usage are untouched -- the runner reaches this
+  method only when a squash descriptor is being processed. Per ADR-0024 audit
+  follow-up (R-3).
 - OpenSearch ledger index strict mapping extended with `kind` (byte) and
   `replaces` (long[]) fields. Existing v2-era indices receive an additive
   `PUT _mapping` patch on bootstrap, idempotent and IAM-aware.

@@ -53,6 +53,21 @@ public static class ServiceCollectionExtensions
                 .DefaultIfEmpty( defaultAssembly )
                 .ToList();
 
+            // R-14: validate required fields with an operator-friendly message
+            // rather than letting the failure surface as an obscure NRE inside
+            // the Couchbase SDK (`cluster.BucketAsync(null)`). BucketName is
+            // the only required field today; add more here as the contract
+            // grows.
+            if ( string.IsNullOrWhiteSpace( options.BucketName ) )
+            {
+                throw new InvalidOperationException(
+                    "CouchbaseMigrationOptions.BucketName is required. Set it in the " +
+                    "configuration callback passed to AddCouchbaseMigrations, e.g. " +
+                    "services.AddCouchbaseMigrations(opts => opts.BucketName = \"my-bucket\"). " +
+                    "BucketName names the Couchbase bucket the migration ledger and resource " +
+                    "scripts target; there is no safe default." );
+            }
+
             return options;
         }
 

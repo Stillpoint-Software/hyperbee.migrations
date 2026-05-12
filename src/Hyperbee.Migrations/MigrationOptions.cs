@@ -40,4 +40,15 @@ public class MigrationOptions
     /// may swap in resource-bytes-aware implementations.
     /// </summary>
     public IChecksumStrategy ChecksumStrategy { get; set; }
+
+    /// <summary>
+    /// Logical name of the environment this runner instance acts against
+    /// ("prod-eu-1", "staging", "dev-laptop-42", etc.). Used to derive the
+    /// deterministic mid-range squash recovery acknowledgement token and the
+    /// fleet-readiness identity. Optional; when null, the recovery token is
+    /// computed against a synthetic "&lt;unset&gt;" environment name and the
+    /// exception message includes a remediation note recommending an explicit
+    /// value. Per ADR-0019 A3 + R-10/RB-2 audit follow-ups.
+    /// </summary>
+    public string EnvironmentName { get; set; }
 }

@@ -67,15 +67,21 @@ public interface IMigrationRecordStore
     }
 
     /// <summary>
-    /// Returns the subset of <paramref name="versions"/> for which the ledger
-    /// can satisfy the squash obligation — either a direct row (<c>Migration</c>
-    /// row whose version matches) or a transitive squash row whose <c>Replaces</c>
-    /// set contains the version (per ADR-0019 A6 transitivity rule).
-    /// The default implementation considers direct id matches only; mature
-    /// environments that auto-marked an inner squash will fail
-    /// <c>MidRangeSquashException</c> against an outer squash unless the
-    /// custom store overrides this method.
+    /// Returns the subset of <paramref name="versions"/> that the ledger can
+    /// satisfy via a transitive squash row -- a <c>Kind=Squash</c> row whose
+    /// <c>Replaces</c> array contains the version (per ADR-0019 A6 transitivity
+    /// rule). Shipped providers implement this with a single round-trip batch
+    /// query. There is no safe default: a store that cannot answer this
+    /// question cannot reconcile transitive squashes, so the default-interface
+    /// method throws <see cref="NotSupportedException"/> rather than returning
+    /// an empty set and silently misclassifying mature environments that
+    /// auto-marked an inner squash.
     /// </summary>
+    /// <exception cref="NotSupportedException">
+    /// Always, when invoked on a store that has not overridden this method.
+    /// Reached only when the runner is reconciling a <c>Kind=Squash</c>
+    /// descriptor; v2 stores without squashes never enter this path.
+    /// </exception>
     Task<IReadOnlySet<long>> IntersectWithSquashedAsync(
         IEnumerable<long> versions,
         CancellationToken cancellationToken = default )
@@ -83,14 +89,20 @@ public interface IMigrationRecordStore
         if ( versions == null )
             throw new ArgumentNullException( nameof( versions ) );
 
-        // Default: returns an empty set. v2 record stores have no primitive for
-        // "scan ledger for rows whose Replaces contains v" and core has no
-        // record-id convention knowledge here. Reconciliation against a squash
-        // will see no satisfying rows, classify as Fresh (empty ledger) or
-        // MidRangeSquashException (partial), forcing the operator to either
-        // upgrade the store or run UpAsync on the squash. Shipped providers
-        // override with a single-round-trip batch query.
-        IReadOnlySet<long> empty = new HashSet<long>();
-        return Task.FromResult( empty );
+        // R-3 fail-loud (was: return empty set silently). v2 stores without
+        // any squash usage never reach this path -- MigrationRunner.ClassifySquashAsync
+        // only invokes IntersectWithSquashedAsync when a Kind=Squash descriptor
+        // is being reconciled. A custom store that handles squashes MUST scan
+        // the ledger for rows where Kind=Squash AND Replaces contains the
+        // input version. Failing silently here lets mature environments that
+        // auto-marked an inner squash misclassify as Fresh against an outer
+        // squash; surface the contract gap immediately instead.
+        throw new NotSupportedException(
+            $"IMigrationRecordStore implementation '{GetType().FullName}' does not override " +
+            "IntersectWithSquashedAsync; transitive squash reconciliation (ADR-0019 A6) " +
+            "cannot proceed. Override this method to scan the ledger for rows where " +
+            "Kind=Squash and the Replaces array contains the input version, or use one " +
+            "of the shipped record stores (Postgres, MongoDB, Couchbase, OpenSearch, " +
+            "Aerospike) that implement the primitive natively." );
     }
 }

@@ -174,6 +174,75 @@ public class RegistrationExtensionsTests
     }
 
     [TestMethod]
+    public void UserSuppliedRegistration_Survives_SecondProviderFlip()
+    {
+        // R-9: a user-supplied MigrationOptions / IMigrationRecordStore /
+        // MigrationRunner registration made BEFORE any AddXxxMigrations call
+        // must survive a second-provider flip. Previously this scenario
+        // wiped the user's registration because RegisterBaseAliases called
+        // RemoveAll<T>() instead of removing only the helper-owned descriptors.
+        // Classic test-harness footgun: fake store registered first, real
+        // provider added second, fake silently disappeared.
+        //
+        // Note: in multi-provider mode the throwing factory poisons base-type
+        // RESOLUTION by design (operators must resolve typed runners). R-9's
+        // guarantee is "your ServiceDescriptor is not destroyed", so the
+        // assertion is at the descriptor level rather than via the provider.
+        var services = new ServiceCollection();
+
+        var userOpts = MakeOptions();
+        var userStore = MakeStore();
+        var userRunner = MakeRunner( userStore, userOpts );
+        services.AddSingleton( userOpts );
+        services.AddSingleton( userStore );
+        services.AddSingleton( userRunner );
+
+        services.RegisterBaseAliases(
+            "Postgres", OptionsFactory( MakeOptions() ), StoreFactory( MakeStore() ),
+            RunnerFactory( MakeRunner( MakeStore(), MakeOptions() ) ) );
+        services.RegisterBaseAliases(
+            "MongoDB", OptionsFactory( MakeOptions() ), StoreFactory( MakeStore() ),
+            RunnerFactory( MakeRunner( MakeStore(), MakeOptions() ) ) );
+
+        // User-supplied descriptors survive at the ServiceCollection level.
+        services.Should().ContainSingle( d =>
+            d.ServiceType == typeof( MigrationOptions ) && ReferenceEquals( d.ImplementationInstance, userOpts ) );
+        services.Should().ContainSingle( d =>
+            d.ServiceType == typeof( IMigrationRecordStore ) && ReferenceEquals( d.ImplementationInstance, userStore ) );
+        services.Should().ContainSingle( d =>
+            d.ServiceType == typeof( MigrationRunner ) && ReferenceEquals( d.ImplementationInstance, userRunner ) );
+
+        // And the throwing factory is the LAST registration for each base
+        // type, so DI's last-wins semantics route a plain GetService<T>() to
+        // the throw (multi-provider safety, ADR-0023 F1).
+        var sp = services.BuildServiceProvider();
+        Action resolveOptions = () => sp.GetService<MigrationOptions>();
+        resolveOptions.Should().Throw<InvalidOperationException>();
+    }
+
+    [TestMethod]
+    public void UserSuppliedRegistration_Survives_SingleProviderRegistration()
+    {
+        // R-9: even when only one provider registers (no flip), a pre-existing
+        // user-supplied registration must remain enumerable and recoverable --
+        // the helper appends its own alias rather than replacing what the user
+        // installed. In single-provider mode no throwing factory exists, so
+        // GetServices<T>() enumerates safely.
+        var services = new ServiceCollection();
+
+        var userOpts = MakeOptions();
+        services.AddSingleton( userOpts );
+
+        services.RegisterBaseAliases(
+            "Postgres", OptionsFactory( MakeOptions() ), StoreFactory( MakeStore() ),
+            RunnerFactory( MakeRunner( MakeStore(), MakeOptions() ) ) );
+
+        var sp = services.BuildServiceProvider();
+
+        sp.GetServices<MigrationOptions>().Should().Contain( userOpts );
+    }
+
+    [TestMethod]
     public void NullArgs_Throw()
     {
         var services = new ServiceCollection();

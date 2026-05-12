@@ -216,6 +216,51 @@ public class ReconciliationTests
         ex.SquashVersion.Should().Be( 2099L );
         ex.MissingVersions.Should().BeEquivalentTo( new[] { 2003L } );
         ex.AppliedVersions.Should().BeEquivalentTo( new[] { 2001L, 2002L } );
+
+        // R-10: token is computed and surfaced on the exception and inside the
+        // message. With no environment name supplied the token is derived
+        // against the <unset> sentinel and the message includes a remediation
+        // note.
+        ex.RecoveryToken.Should().NotBeNullOrEmpty();
+        ex.RecoveryToken.Should().HaveLength( 12 );
+        ex.Message.Should().Contain( ex.RecoveryToken );
+        ex.Message.Should().Contain( "EnvironmentName was not set" );
+    }
+
+    [TestMethod]
+    public async Task MidRangeEnv_WithEnvironmentName_TokenMatchesRecoveryAcknowledgement()
+    {
+        // R-10: when EnvironmentName is supplied, the token derives from
+        // (env, squash, missing) and matches RecoveryAcknowledgement.ComputeToken
+        // verbatim so an operator can validate the token against a recompute.
+        var store = new FakeStore();
+        store.Rows["record.2001.x"] = new MigrationRecord { Id = "record.2001.x", Checksum = "h-2001" };
+        store.Rows["record.2002.x"] = new MigrationRecord { Id = "record.2002.x", Checksum = "h-2002" };
+
+        var recordIds = new Dictionary<long, string>
+        {
+            [2001L] = "record.2001.x",
+            [2002L] = "record.2002.x",
+            [2003L] = "record.2003.x"
+        };
+
+        var act = async () => await MigrationRunner.ClassifySquashAsync(
+            store,
+            squashVersion: 2099L,
+            resolvedReplaces: new[] { 2001L, 2002L, 2003L },
+            recordIdByVersion: recordIds,
+            cancellationToken: default,
+            environmentName: "prod-eu-1" );
+
+        var ex = (await act.Should().ThrowAsync<MidRangeSquashException>()).Which;
+        ex.EnvironmentName.Should().Be( "prod-eu-1" );
+
+        var expectedToken = Hyperbee.Migrations.Squash.RecoveryAcknowledgement.ComputeToken(
+            "prod-eu-1", 2099L, new[] { 2003L } );
+        ex.RecoveryToken.Should().Be( expectedToken );
+        ex.Message.Should().Contain( "prod-eu-1" );
+        ex.Message.Should().Contain( "--token " + expectedToken );
+        ex.Message.Should().NotContain( "EnvironmentName was not set" );
     }
 
     // ---------------------------------------------------------------------
