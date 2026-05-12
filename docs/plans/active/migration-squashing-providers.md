@@ -569,7 +569,7 @@ Cumulative test additions over Phases 1-4: ~120-160 new unit tests + 16 new inte
 - Phase 2 (OpenSearch): ☑ COMPLETE 2026-05-11 (re-ordered from original "Phase 4")
 - Phase 3 (MongoDB): ☑ COMPLETE 2026-05-11
 - Phase 4 (Couchbase): ☑ COMPLETE 2026-05-11
-- Phase 5 (release prep): not started -- next phase
+- Phase 5 (release prep): ☑ COMPLETE 2026-05-12 -- comprehensive audit pass closed P0/P1 gaps across docs, tests, and production code; ADR-0019 + ADR-0023 promoted Accepted; per-provider site docs gained squash sections; provider READMEs gained multi-provider notes; CONTRIBUTING.md gained provider-author DI checklist; 5 csproj Descriptions rewritten; 53 new unit + integration tests added (PostgresSquashDIWiringTests 7, ContentKindCrossProviderTests 3, CLI smoke 24, MultiProviderHostTests +3 Discovery/Profile/Replace, RecoveryAcknowledgementTests 20, RecordStoreContractTests 9, MultiProviderHostIntegrationTests 2 (live two-provider)); 2 real production bugs surfaced + fixed (Postgres AddPostgresMigrations didn't register squash components; OpenSearchTopologySignature path/querystring; Couchbase host-side connection via alt-addresses + JsonObject->dynamic capture rewrite).
 
 ## Effort
 

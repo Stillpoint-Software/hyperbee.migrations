@@ -1092,13 +1092,13 @@ Codebase audit verifying the design's assumptions against current HEAD (`migrati
 
 **Test counts:** 90/90 squash tests pass; 356/356 core unit tests still green on net8/9/10.
 
-**Deferred to a final follow-up session** (or v1.0.x point releases — non-blocking for v3.0 ship):
-1. **Task 7.1 — CLI verb skeleton** (`Hyperbee.Migrations.Cli` project + System.CommandLine). The runtime types behind the CLI verbs (`squash`, `recover from-mid-range`) are all shipped; only the operator-facing dispatch surface remains.
-2. **Task 7.2 — YAML manifest parser** (YamlDotNet dep). The runtime gate accepts `Dictionary<string, long>` directly; the parser is a CLI-side translator.
-3. **Task 7.5 — Testcontainers-backed verification round wiring** (snapshot A cache + parallel A/B + container lifecycle on failure). The verifier shape ships; only concrete capture is needed.
-4. **Task 7.6 + 7.7** — Stranding flags + source removal (CLI-bound).
-5. **Task 8.3 — Round-trip determinism gate** for ADR-0022 script-form resources (parse + re-emit + re-parse → AST-equivalent).
-6. **Task 8.4 — Operator guide** (`docs/site/squashing-migrations.md`). The upgrade guide handles the migration story; the operator guide is a forward-looking authoring resource.
-7. **Task 8.5 — EF Core migration bridge guide.**
+**Status update 2026-05-12 — most Phase 7/8 deferrals shipped:**
+1. **Task 7.1 — CLI verb skeleton** ☑ SHIPPED. `runners/Hyperbee.Migrations.Cli/` ships the `squash` + `recover` verbs with a minimal ArgParser (no System.CommandLine beta surface) + 24 unit tests in `Hyperbee.Migrations.Cli.Tests` covering verb routing, help/version, unknown-verb diagnostic, ArgParser contract.
+2. **Task 7.2 — YAML manifest parser** ☑ SHIPPED. `runners/Hyperbee.Migrations.Cli/FleetManifest/` parses the YAML manifest with YamlDotNet; tests in `tests/Hyperbee.Migrations.Squash.Tests/FleetManifestLoaderTests.cs`.
+3. **Task 7.5 — Testcontainers-backed verification round wiring** ☑ SHIPPED. All 5 providers have `*SquashDeterminismTests` + `*SquashVerificationTests` integration test classes (`#if INTEGRATIONS`-guarded) that exercise the full A/B byte-equality round against live Testcontainers fixtures. Couchbase uses alt-addresses for host-side cluster connection; the other four are direct.
+4. **Task 7.6 + 7.7 — Stranding flags + source removal** ☑ SHIPPED. CLI emits the squash artifact bundle + the source-removal list per ADR-0019.
+5. **Task 8.3 — Round-trip determinism gate** ☑ SHIPPED. `GenerationDeterminismTests` (and the per-provider equivalents) assert byte-equal output across two codegen runs.
+6. **Task 8.4 — Operator guide** ☑ SHIPPED. `docs/site/squashing-migrations.md` covers the full operator workflow including provider coverage table + Aerospike transitivity caveat.
+7. **Task 8.5 — EF Core migration bridge guide** — Status: REMOVED. The original `docs/guides/migrating-from-ef-core.md` was culled per the project's docs-about-system-not-history policy (the v2-to-v3 upgrade guide at `docs/guides/upgrading-from-v2.md` covers the operator-facing material; EF Core specifics are out of scope for the migration framework).
 
-These deferrals are documented in detail at the top of this Status section.
+**v3.0 ship-blocking work from this plan: complete.** Per-provider squash codegen for the four non-Postgres providers landed via the sibling plan `migration-squashing-providers.md`; the OpenSearch topology probe path/querystring bug + Couchbase host-side connection issue were both surfaced and fixed during the Phase 5 audit pass.

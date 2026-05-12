@@ -22,19 +22,9 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // snapshot capture + canonicalize + statement classification + emit --
 // against a live Aerospike Testcontainers fixture. Tests are guarded by
 // `#if INTEGRATIONS`; run locally with /p:EnableIntegrationTests=true.
-//
-// [TestCategory("LocalOnly")]: this suite spins its own Aerospike
-// Testcontainers fixture and is environment-sensitive when run alongside
-// the full 5-provider integration suite (Docker resource contention +
-// container reuse across runs surfaces as flaky AssemblyInitialize
-// failures). The squash correctness contract is byte-tested by ~190
-// Aerospike unit tests in the Hyperbee.Migrations.Squash.Tests project;
-// this suite is operational sanity for live cluster behavior and runs
-// reliably in isolation on a workstation.
 
 [TestClass]
 [DoNotParallelize]
-[TestCategory( "LocalOnly" )]
 public class AerospikeSquashDeterminismTests
 {
     private IAsyncClient _client;
