@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Providers.Aerospike.Parsers;
+﻿using Hyperbee.Migrations.Providers.Aerospike.Parsers;
 
 namespace Hyperbee.Migrations.Providers.Aerospike.Squash;
 

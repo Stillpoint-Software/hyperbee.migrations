@@ -1,4 +1,4 @@
-using Aerospike.Client;
+﻿using Aerospike.Client;
 using Hyperbee.Migrations.Squash;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;

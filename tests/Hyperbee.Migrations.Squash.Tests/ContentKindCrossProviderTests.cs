@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Hyperbee.Migrations.Squash;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -18,7 +18,7 @@ namespace Hyperbee.Migrations.Squash.Tests;
 [TestClass]
 public class ContentKindCrossProviderTests
 {
-    [DataTestMethod]
+    [TestMethod]
     [DataRow( "postgres", ContentKind.SqlText )]
     [DataRow( "aerospike", ContentKind.SqlText )]
     [DataRow( "opensearch", ContentKind.CanonicalJson )]

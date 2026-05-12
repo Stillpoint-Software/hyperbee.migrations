@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Aerospike.Client;
 using Hyperbee.Migrations.Squash;
 

@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using Hyperbee.Migrations.Squash;
 
 namespace Hyperbee.Migrations.Providers.MongoDB.Squash;

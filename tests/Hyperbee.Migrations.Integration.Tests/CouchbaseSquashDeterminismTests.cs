@@ -1,4 +1,4 @@
-//#define INTEGRATIONS
+﻿//#define INTEGRATIONS
 using Couchbase;
 using Couchbase.Management.Query;
 using Hyperbee.Migrations;

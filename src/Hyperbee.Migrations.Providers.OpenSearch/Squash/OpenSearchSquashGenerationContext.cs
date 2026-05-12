@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using Hyperbee.Migrations.Squash;
 using OpenSearch.Client;
 

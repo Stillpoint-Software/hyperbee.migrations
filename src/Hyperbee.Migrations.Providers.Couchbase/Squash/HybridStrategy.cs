@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Squash;
+﻿using Hyperbee.Migrations.Squash;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 

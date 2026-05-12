@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 using FluentAssertions;
 using Hyperbee.Migrations.Providers.Couchbase.Squash;
 using Hyperbee.Migrations.Providers.MongoDB.Squash;
@@ -170,9 +170,13 @@ public class CouchbaseTopologySignatureTests
         var cb = BaselineSignature();
         var mongo = new MongoDBTopologySignature
         {
-            ServerMajor = 7, ServerMinor = 0, FeatureCompatibilityVersion = "7.0",
-            DeploymentTopology = "Standalone", DatabaseName = "appdb",
-            DefaultReadConcern = "local", DefaultWriteConcern = "1",
+            ServerMajor = 7,
+            ServerMinor = 0,
+            FeatureCompatibilityVersion = "7.0",
+            DeploymentTopology = "Standalone",
+            DatabaseName = "appdb",
+            DefaultReadConcern = "local",
+            DefaultWriteConcern = "1",
             StorageEngine = "wiredTiger"
         };
 

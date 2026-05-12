@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Squash;
+﻿using Hyperbee.Migrations.Squash;
 using MongoDB.Driver;
 
 namespace Hyperbee.Migrations.Providers.MongoDB.Squash;

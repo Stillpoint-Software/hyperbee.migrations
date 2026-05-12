@@ -4,13 +4,12 @@ using Hyperbee.Migrations.Providers.OpenSearch.Internal.Locking;
 using Microsoft.Extensions.Logging;
 using OpenSearch.Client;
 using OpenSearch.Net;
-
+using OpenSearchClientException = OpenSearch.Net.OpenSearchClientException;
 // OpenSearch.Client and OpenSearch.Net both define types with the same simple
 // names (OpType, Refresh, OpenSearchClientException). Alias the Net versions
 // so call sites can drop the prior global:: disambiguation.
 using OpType = OpenSearch.Net.OpType;
 using Refresh = OpenSearch.Net.Refresh;
-using OpenSearchClientException = OpenSearch.Net.OpenSearchClientException;
 
 namespace Hyperbee.Migrations.Providers.OpenSearch;
 

@@ -1,4 +1,4 @@
-using Couchbase;
+﻿using Couchbase;
 using FluentAssertions;
 using Hyperbee.Migrations.Providers.Couchbase;
 using Hyperbee.Migrations.Providers.Couchbase.Squash;

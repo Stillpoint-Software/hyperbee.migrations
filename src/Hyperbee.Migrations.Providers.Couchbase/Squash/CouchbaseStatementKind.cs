@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Providers.Couchbase.Squash;
+﻿namespace Hyperbee.Migrations.Providers.Couchbase.Squash;
 
 /// <summary>
 /// Couchbase statement kinds surfaced by the squash classifier. Mirrors the

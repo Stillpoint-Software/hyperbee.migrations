@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Hyperbee.Migrations.Providers.MongoDB.Squash;
 using Hyperbee.Migrations.Providers.OpenSearch.Squash;
 using Microsoft.VisualStudio.TestTools.UnitTesting;

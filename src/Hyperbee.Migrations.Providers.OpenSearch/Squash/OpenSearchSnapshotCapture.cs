@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System.Text;
 using OpenSearch.Client;
 using OpenSearch.Net;

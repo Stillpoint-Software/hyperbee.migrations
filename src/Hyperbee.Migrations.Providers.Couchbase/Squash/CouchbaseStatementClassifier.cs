@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Providers.Couchbase.Parsers;
+﻿using Hyperbee.Migrations.Providers.Couchbase.Parsers;
 
 namespace Hyperbee.Migrations.Providers.Couchbase.Squash;
 

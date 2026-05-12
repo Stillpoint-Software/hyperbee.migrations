@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Hyperbee.Migrations.Squash;
 using MongoDB.Bson;
 using MongoDB.Driver;

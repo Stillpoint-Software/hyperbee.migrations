@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Providers.MongoDB.Squash;
+﻿namespace Hyperbee.Migrations.Providers.MongoDB.Squash;
 
 /// <summary>
 /// MongoDB statement kinds recognized by <see cref="MongoDBStatementClassifier"/>.

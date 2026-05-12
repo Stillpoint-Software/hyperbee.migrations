@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Providers.MongoDB.Parsers;
+﻿using Hyperbee.Migrations.Providers.MongoDB.Parsers;
 
 namespace Hyperbee.Migrations.Providers.MongoDB.Squash;
 

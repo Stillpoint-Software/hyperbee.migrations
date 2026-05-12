@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Hyperbee.Migrations.Providers.Couchbase.Squash;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 

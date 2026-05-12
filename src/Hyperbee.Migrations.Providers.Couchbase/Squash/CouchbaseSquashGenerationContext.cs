@@ -1,4 +1,4 @@
-using Couchbase;
+﻿using Couchbase;
 using Hyperbee.Migrations.Providers.Couchbase.Services;
 using Hyperbee.Migrations.Squash;
 

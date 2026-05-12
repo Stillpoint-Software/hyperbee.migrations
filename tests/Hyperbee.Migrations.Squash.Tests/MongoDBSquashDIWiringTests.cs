@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Hyperbee.Migrations.Providers.MongoDB;
 using Hyperbee.Migrations.Providers.MongoDB.Squash;
 using Hyperbee.Migrations.Squash;

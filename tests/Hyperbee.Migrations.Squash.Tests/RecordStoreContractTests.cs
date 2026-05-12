@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Hyperbee.Migrations;
 using Hyperbee.Migrations.Squash;
 using Microsoft.VisualStudio.TestTools.UnitTesting;

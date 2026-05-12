@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations;
+﻿namespace Hyperbee.Migrations;
 
 /// <summary>
 /// Internal marker registered the first time any <c>Add{Provider}Migrations</c>

@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Hyperbee.Migrations;
 using Hyperbee.Migrations.Providers.Aerospike.Squash;
 using Hyperbee.Migrations.Squash;

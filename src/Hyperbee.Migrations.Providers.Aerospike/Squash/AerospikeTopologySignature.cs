@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Aerospike.Client;
 using Hyperbee.Migrations.Squash;
 

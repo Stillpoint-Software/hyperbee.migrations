@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Providers.Aerospike.Squash;
+﻿namespace Hyperbee.Migrations.Providers.Aerospike.Squash;
 
 /// <summary>
 /// Aerospike statement kinds recognized by <see cref="AerospikeStatementClassifier"/>.

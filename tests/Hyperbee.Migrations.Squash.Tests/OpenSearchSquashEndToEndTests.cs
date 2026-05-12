@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Hyperbee.Migrations;
 using Hyperbee.Migrations.Providers.OpenSearch.Squash;
 using Hyperbee.Migrations.Squash;

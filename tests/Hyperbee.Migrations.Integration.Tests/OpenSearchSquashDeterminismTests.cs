@@ -1,4 +1,4 @@
-//#define INTEGRATIONS
+﻿//#define INTEGRATIONS
 using Hyperbee.Migrations;
 using Hyperbee.Migrations.Integration.Tests.Container.OpenSearch;
 using Hyperbee.Migrations.Providers.OpenSearch.Squash;

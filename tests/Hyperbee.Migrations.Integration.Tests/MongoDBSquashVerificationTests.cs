@@ -1,4 +1,4 @@
-//#define INTEGRATIONS
+﻿//#define INTEGRATIONS
 using System.Text.Json;
 using Hyperbee.Migrations;
 using Hyperbee.Migrations.Integration.Tests.Container.MongoDb;

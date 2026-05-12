@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Hyperbee.Migrations.Providers.Aerospike;
 using Hyperbee.Migrations.Providers.MongoDB;
 using Hyperbee.Migrations.Providers.OpenSearch;
