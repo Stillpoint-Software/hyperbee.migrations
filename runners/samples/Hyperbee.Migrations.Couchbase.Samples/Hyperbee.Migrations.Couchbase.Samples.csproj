@@ -22,6 +22,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Hyperbee.Migrations.Providers.Couchbase\Hyperbee.Migrations.Providers.Couchbase.csproj" />
+    <ProjectReference Include="..\..\..\src\Hyperbee.Migrations.Providers.Couchbase.SquashCli\Hyperbee.Migrations.Providers.Couchbase.SquashCli.csproj" />
     <ProjectReference Include="..\..\..\src\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
   </ItemGroup>
 

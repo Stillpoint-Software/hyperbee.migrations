@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Hyperbee.Migrations.Providers.Aerospike.SquashCli;
+using Hyperbee.Migrations.Providers.Couchbase.SquashCli;
 using Hyperbee.Migrations.Providers.MongoDB.SquashCli;
 using Hyperbee.Migrations.Providers.OpenSearch.SquashCli;
 using Hyperbee.Migrations.Providers.Postgres.SquashCli;
@@ -53,6 +54,16 @@ public class SquashCliProviderContractTests
     {
         var provider = new MongoDBSquashCliProvider();
         provider.ProviderId.Should().Be( "mongodb" );
+        provider.SquashFileExtension.Should().Be( ".statements" );
+        provider.ScanSource( null! ).Should().BeEmpty();
+        provider.ScanSource( "" ).Should().BeEmpty();
+    }
+
+    [TestMethod]
+    public void CouchbaseProvider_ContractValues()
+    {
+        var provider = new CouchbaseSquashCliProvider();
+        provider.ProviderId.Should().Be( "couchbase" );
         provider.SquashFileExtension.Should().Be( ".statements" );
         provider.ScanSource( null! ).Should().BeEmpty();
         provider.ScanSource( "" ).Should().BeEmpty();

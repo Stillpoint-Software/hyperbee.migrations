@@ -123,15 +123,21 @@ internal static class SquashVerb
         Console.WriteLine( $"[squash] provider={provider} range={fromVersion}-{toVersion} name={name}" );
         Console.WriteLine( $"[squash] loading assembly: {assemblyPath}" );
 
-        Assembly migrationAssembly;
+        // F-3: load via a collectible AssemblyLoadContext so the migration
+        // assembly + its provider packages unload cleanly when the CLI's
+        // verb completes. Necessary for embedding the CLI in long-running
+        // hosts; a no-op for one-shot invocations but cheap.
+        MigrationAssemblyLoader loader;
         try
         {
-            migrationAssembly = Assembly.LoadFrom( Path.GetFullPath( assemblyPath ) );
+            loader = new MigrationAssemblyLoader( assemblyPath );
         }
         catch ( Exception ex )
         {
             return Fail( $"could not load --assembly '{assemblyPath}': {ex.Message}" );
         }
+        using var _loader = loader;
+        var migrationAssembly = loader.Assembly;
 
         // Discover ISquashCliProvider implementations from the migration
         // assembly's reference closure (per ADR-0024). NuGet package presence

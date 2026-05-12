@@ -101,16 +101,19 @@ internal static class RecoverVerb
         // (per ADR-0024). The host provides the configured IServiceProvider
         // -- whichever provider the migration project uses, we resolve its
         // IMigrationRecordStore and write the recovery row.
-        Assembly migrationAssembly;
+        // F-3: collectible ALC so the migration assembly unloads cleanly.
+        MigrationAssemblyLoader loader;
         try
         {
-            migrationAssembly = Assembly.LoadFrom( Path.GetFullPath( assemblyPath ) );
+            loader = new MigrationAssemblyLoader( assemblyPath );
         }
         catch ( Exception ex )
         {
             Console.Error.WriteLine( $"hyperbee-migrations recover: could not load --assembly '{assemblyPath}': {ex.Message}" );
             return 2;
         }
+        using var _loader = loader;
+        var migrationAssembly = loader.Assembly;
 
         IMigrationHost host;
         try

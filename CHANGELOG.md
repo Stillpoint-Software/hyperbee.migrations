@@ -140,6 +140,25 @@ unchanged.
 
 ### Changed (back-compat preserved)
 
+- **Couchbase SquashCli provider package ships** -- the fifth and final
+  ISquashCliProvider implementation for the v3.0 CLI extensibility
+  cascade. `CouchbaseSquashCliProvider` spins ephemeral Couchbase Server
+  containers via `Testcontainers.Couchbase`, applies migrations through
+  the discovered `IMigrationHost`, and captures via the shared
+  `CouchbaseSnapshotCapture` helper. RB-3 fleet readiness probe runs
+  N1QL `SELECT RAW MAX(...) FROM <bucket>.<scope>.<collection>` against
+  the ledger keyspace; reads bucket/scope/collection from fleet manifest
+  topology overrides. `--provider-option bucket-name=<name>` required
+  for codegen (the snapshot scope is the bucket).
+  `CouchbaseRestApiService` is promoted from internal to public so the
+  SquashCli package can construct it without InternalsVisibleTo coupling.
+- **CLI uses collectible `AssemblyLoadContext` for the migration assembly.**
+  Previously used `Assembly.LoadFrom`, which loads into the default ALC
+  and prevents unload. The collectible ALC (`MigrationAssemblyLoader`)
+  resolves transitively-referenced assemblies from the migration project's
+  output directory and unloads cleanly when the verb completes -- safe
+  for embedding the CLI in long-running hosts. Per ADR-0024 audit
+  follow-up (F-3).
 - **`CouchbaseRecordStore.IntersectWithAppliedAsync` rewritten to single N1QL
   `USE KEYS` round-trip.** Previously fanned out N parallel `ExistsAsync`
   KV probes -- a 500-migration squash auto-mark opened 500 concurrent

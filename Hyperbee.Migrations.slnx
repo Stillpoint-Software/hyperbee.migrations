@@ -46,6 +46,7 @@
   <Project Path="src/Hyperbee.Migrations.Providers.Aerospike/Hyperbee.Migrations.Providers.Aerospike.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.Aerospike.SquashCli/Hyperbee.Migrations.Providers.Aerospike.SquashCli.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.Couchbase/Hyperbee.Migrations.Providers.Couchbase.csproj" />
+  <Project Path="src/Hyperbee.Migrations.Providers.Couchbase.SquashCli/Hyperbee.Migrations.Providers.Couchbase.SquashCli.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.OpenSearch/Hyperbee.Migrations.Providers.OpenSearch.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.OpenSearch.SquashCli/Hyperbee.Migrations.Providers.OpenSearch.SquashCli.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.OpenSearch.Aws/Hyperbee.Migrations.Providers.OpenSearch.Aws.csproj" />

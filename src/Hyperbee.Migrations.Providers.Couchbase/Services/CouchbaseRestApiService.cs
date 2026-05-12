@@ -30,7 +30,7 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
         Task<bool> ManagementReadyAsync( CancellationToken cancellationToken = default );
     }
 
-    internal class CouchbaseRestApiService : ICouchbaseRestApiService
+    public class CouchbaseRestApiService : ICouchbaseRestApiService
     {
         public HttpClient Client { get; }
         public ILogger<CouchbaseRestApiService> Logger { get; }
