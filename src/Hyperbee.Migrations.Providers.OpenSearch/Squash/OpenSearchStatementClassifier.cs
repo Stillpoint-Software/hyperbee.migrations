@@ -89,6 +89,8 @@ public static class OpenSearchStatementClassifier
             DropComponentAst c => new ClassifiedStatement( OpenSearchStatementKind.DropComponent, c.ComponentName, body ),
             CreatePolicyAst c => new ClassifiedStatement( OpenSearchStatementKind.CreatePolicy, c.PolicyId, body ),
             ApplyPolicyAst c => new ClassifiedStatement( OpenSearchStatementKind.ApplyPolicy, c.PolicyId, body ),
+            DropPolicyAst c => new ClassifiedStatement( OpenSearchStatementKind.DropPolicy, c.PolicyId, body ),
+            DetachPolicyAst c => new ClassifiedStatement( OpenSearchStatementKind.DetachPolicy, c.IndexPattern, body ),
             CompositeStatementAst c => new ClassifiedStatement(
                 Kind: OpenSearchStatementKind.Composite,
                 ObjectName: c.CompositeVerb,

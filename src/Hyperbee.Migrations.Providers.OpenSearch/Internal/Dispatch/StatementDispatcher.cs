@@ -89,6 +89,8 @@ public sealed class StatementDispatcher
             DropComponentAst dc => DispatchDropComponentAsync( dc, context ),
             CreatePolicyAst cp => DispatchCreatePolicyAsync( cp, context ),
             ApplyPolicyAst ap => DispatchApplyPolicyAsync( ap, context ),
+            DropPolicyAst dp => DispatchDropPolicyAsync( dp, context ),
+            DetachPolicyAst detp => DispatchDetachPolicyAsync( detp, context ),
             _ => throw new InvalidOperationException(
                 $"StatementDispatcher does not handle AST type {ast.GetType().Name}." )
         };
@@ -1026,6 +1028,125 @@ public sealed class StatementDispatcher
                 Detail: $"could not parse ISM add response: {ex.Message}",
                 OpenSearchResponseStatus: response.HttpStatusCode,
                 Exception: ex );
+        }
+    }
+
+    // --- DROP POLICY <id> [IF EXISTS] ---
+
+    private async Task<StatementResult> DispatchDropPolicyAsync( DropPolicyAst ast, StatementContext context )
+    {
+        var verb = ast.Verb;
+        var ll = context.Client.LowLevel;
+        var policyPath = $"{IsmPathPrefix}/policies/{ast.PolicyId}";
+
+        if ( ast.IfExists )
+        {
+            // ISM has no HEAD endpoint for policies; probe with GET and treat
+            // any non-200 response (including thrown OpenSearchClientException
+            // under ThrowExceptions-configured clients) as "not present".
+            var present = await ProbePolicyPresentAsync(
+                ll, policyPath, context.CancellationToken ).ConfigureAwait( false );
+
+            if ( !present )
+            {
+                context.Logger.LogInformation( "{verb} `{id}` skipped: IF EXISTS guard (not present)",
+                    verb, ast.PolicyId );
+                return new StatementResult( StatementOutcome.Skipped, verb,
+                    Detail: $"IF EXISTS: policy `{ast.PolicyId}` did not exist" );
+            }
+        }
+
+        // DELETE /_plugins/_ism/policies/<id>. The cluster rejects with 409 if
+        // any index still has the policy attached - the caller must run
+        // DETACH POLICY FROM INDEX first. Surface the cluster's error verbatim.
+        var response = await ll.DoRequestAsync<StringResponse>(
+            HttpMethod.DELETE,
+            policyPath,
+            context.CancellationToken ).ConfigureAwait( false );
+
+        return BuildResult( verb, response, $"policy `{ast.PolicyId}` deleted" );
+    }
+
+    // --- DETACH POLICY FROM INDEX <pattern> ---
+
+    private async Task<StatementResult> DispatchDetachPolicyAsync( DetachPolicyAst ast, StatementContext context )
+    {
+        var verb = ast.Verb;
+        var ll = context.Client.LowLevel;
+
+        // POST /_plugins/_ism/remove/<pattern>. Mirrors APPLY POLICY's add
+        // endpoint: the cluster returns HTTP 200 even when zero indices were
+        // updated (no matching indices, no policy attached). Inspect
+        // `updated_indices` and `failures` to surface logical failures
+        // explicitly, the same way DispatchApplyPolicyAsync does.
+
+        var response = await ll.DoRequestAsync<StringResponse>(
+            HttpMethod.POST,
+            $"{IsmPathPrefix}/remove/{ast.IndexPattern}",
+            context.CancellationToken ).ConfigureAwait( false );
+
+        if ( !response.Success )
+            return BuildResult( verb, response, $"policy detach from `{ast.IndexPattern}` failed" );
+
+        try
+        {
+            using var doc = JsonDocument.Parse( response.Body );
+            var root = doc.RootElement;
+
+            var updated = root.TryGetProperty( "updated_indices", out var u ) ? u.GetInt32() : 0;
+            var failures = root.TryGetProperty( "failures", out var f ) && f.GetBoolean();
+
+            if ( failures )
+            {
+                var detail = $"policy detach from `{ast.IndexPattern}`: updated {updated}, failures=true; body={response.Body}";
+                return new StatementResult( StatementOutcome.Failed, verb,
+                    Detail: detail,
+                    OpenSearchResponseStatus: response.HttpStatusCode,
+                    Exception: new InvalidOperationException( detail ) );
+            }
+
+            // Zero updated rows is informational, not failure - operators
+            // routinely detach from patterns that may have already been
+            // cleaned up (idempotent teardown). Log the no-op for visibility.
+            if ( updated == 0 )
+            {
+                context.Logger.LogInformation(
+                    "{verb} from `{pattern}` matched zero attached indices (idempotent no-op)",
+                    verb, ast.IndexPattern );
+            }
+
+            await ImplicitWaitIfMutatingAsync(
+                context, ast.IndexPattern, verb, ast.NoWaitJustification ).ConfigureAwait( false );
+
+            return new StatementResult( StatementOutcome.Executed, verb,
+                Detail: $"policy detached from `{ast.IndexPattern}` ({updated} indices)",
+                OpenSearchResponseStatus: response.HttpStatusCode );
+        }
+        catch ( JsonException ex )
+        {
+            return new StatementResult( StatementOutcome.Failed, verb,
+                Detail: $"could not parse ISM remove response: {ex.Message}",
+                OpenSearchResponseStatus: response.HttpStatusCode,
+                Exception: ex );
+        }
+    }
+
+    // GET-based presence probe for an ISM policy. ISM exposes no HEAD verb;
+    // any non-200 response - including thrown OpenSearchClientException when
+    // the client is configured with ThrowExceptions - means the policy is
+    // absent.
+    private static async Task<bool> ProbePolicyPresentAsync(
+        IOpenSearchLowLevelClient ll, string path, CancellationToken ct )
+    {
+        try
+        {
+            var response = await ll.DoRequestAsync<StringResponse>(
+                HttpMethod.GET, path, ct ).ConfigureAwait( false );
+            return response.HttpStatusCode == 200;
+        }
+        catch ( OpenSearchClientException )
+        {
+            return false;
         }
     }
 

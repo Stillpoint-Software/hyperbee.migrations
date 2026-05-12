@@ -185,4 +185,143 @@ public class OpenSearchStatementParserTests
         // Either the parser rejects, or the justification predicate throws — both acceptable.
         act.Should().Throw<Exception>();
     }
+
+    // DROP POLICY positive cases
+
+    [TestMethod]
+    public void DropPolicy_BarePlainId_Parses()
+    {
+        var ast = _parser.Parse( "DROP POLICY hot-warm-delete" );
+
+        ast.Should().BeOfType<DropPolicyAst>();
+        var d = (DropPolicyAst) ast;
+        d.PolicyId.Should().Be( "hot-warm-delete" );
+        d.IfExists.Should().BeFalse();
+        d.Verb.Should().Be( "DROP POLICY" );
+    }
+
+    [TestMethod]
+    public void DropPolicy_IfExists_FlagsTrue()
+    {
+        var ast = _parser.Parse( "DROP POLICY hot-warm-delete IF EXISTS" );
+
+        var d = (DropPolicyAst) ast;
+        d.PolicyId.Should().Be( "hot-warm-delete" );
+        d.IfExists.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void DropPolicy_BacktickId_StripsBackticks()
+    {
+        var ast = _parser.Parse( "DROP POLICY `tier 1`" );
+
+        var d = (DropPolicyAst) ast;
+        d.PolicyId.Should().Be( "tier 1" );
+    }
+
+    [TestMethod]
+    public void DropPolicy_LowercaseKeywords_Parses()
+    {
+        var ast = _parser.Parse( "drop policy archive if exists" );
+
+        ast.Should().BeOfType<DropPolicyAst>();
+        var d = (DropPolicyAst) ast;
+        d.PolicyId.Should().Be( "archive" );
+        d.IfExists.Should().BeTrue();
+    }
+
+    // DROP POLICY negative cases
+
+    [TestMethod]
+    public void DropPolicy_MissingId_Throws()
+    {
+        var act = () => _parser.Parse( "DROP POLICY" );
+
+        act.Should().Throw<OpenSearchParseException>();
+    }
+
+    [TestMethod]
+    public void DropPolicy_DoesNotMatchDropIndex()
+    {
+        // Ordering sanity: `DROP POLICY foo` must not be consumed as `DROP INDEX foo`.
+        var ast = _parser.Parse( "DROP POLICY foo" );
+
+        ast.Should().BeOfType<DropPolicyAst>();
+    }
+
+    // DETACH POLICY positive cases
+
+    [TestMethod]
+    public void DetachPolicy_FromConcreteIndex_Parses()
+    {
+        var ast = _parser.Parse( "DETACH POLICY FROM INDEX users" );
+
+        ast.Should().BeOfType<DetachPolicyAst>();
+        var d = (DetachPolicyAst) ast;
+        d.IndexPattern.Should().Be( "users" );
+        d.NoWaitJustification.Should().BeNull();
+        d.Verb.Should().Be( "DETACH POLICY" );
+    }
+
+    [TestMethod]
+    public void DetachPolicy_WildcardPattern_Parses()
+    {
+        var ast = _parser.Parse( "DETACH POLICY FROM INDEX logs-*" );
+
+        var d = (DetachPolicyAst) ast;
+        d.IndexPattern.Should().Be( "logs-*" );
+    }
+
+    [TestMethod]
+    public void DetachPolicy_BacktickedPattern_StripsBackticks()
+    {
+        var ast = _parser.Parse( "DETACH POLICY FROM INDEX `logs.app.*`" );
+
+        var d = (DetachPolicyAst) ast;
+        d.IndexPattern.Should().Be( "logs.app.*" );
+    }
+
+    [TestMethod]
+    public void DetachPolicy_WithNoWaitJustification_Parses()
+    {
+        var ast = _parser.Parse( "DETACH POLICY FROM INDEX logs-* NO WAIT(\"OPS-99 manual cluster recovery\")" );
+
+        var d = (DetachPolicyAst) ast;
+        d.IndexPattern.Should().Be( "logs-*" );
+        d.NoWaitJustification.Should().Be( "OPS-99 manual cluster recovery" );
+    }
+
+    [TestMethod]
+    public void DetachPolicy_LowercaseKeywords_Parses()
+    {
+        var ast = _parser.Parse( "detach policy from index logs-*" );
+
+        ast.Should().BeOfType<DetachPolicyAst>();
+    }
+
+    // DETACH POLICY negative cases
+
+    [TestMethod]
+    public void DetachPolicy_MissingFromIndex_Throws()
+    {
+        var act = () => _parser.Parse( "DETACH POLICY logs-*" );
+
+        act.Should().Throw<OpenSearchParseException>();
+    }
+
+    [TestMethod]
+    public void DetachPolicy_MissingPattern_Throws()
+    {
+        var act = () => _parser.Parse( "DETACH POLICY FROM INDEX" );
+
+        act.Should().Throw<OpenSearchParseException>();
+    }
+
+    [TestMethod]
+    public void DetachPolicy_BareNoWaitWithoutJustification_Throws()
+    {
+        var act = () => _parser.Parse( "DETACH POLICY FROM INDEX logs-* NO WAIT" );
+
+        act.Should().Throw<OpenSearchParseException>();
+    }
 }

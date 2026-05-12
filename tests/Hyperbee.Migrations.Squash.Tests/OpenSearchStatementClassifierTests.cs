@@ -199,6 +199,42 @@ public class OpenSearchStatementClassifierTests
     }
 
     [TestMethod]
+    public void Classify_DropPolicy_ExtractsPolicyId()
+    {
+        var c = OpenSearchStatementClassifier.Classify( "DROP POLICY hot-warm-delete" );
+
+        c.Kind.Should().Be( OpenSearchStatementKind.DropPolicy );
+        c.ObjectName.Should().Be( "hot-warm-delete" );
+    }
+
+    [TestMethod]
+    public void Classify_DropPolicyIfExists_ExtractsPolicyId()
+    {
+        var c = OpenSearchStatementClassifier.Classify( "DROP POLICY hot-warm-delete IF EXISTS" );
+
+        c.Kind.Should().Be( OpenSearchStatementKind.DropPolicy );
+        c.ObjectName.Should().Be( "hot-warm-delete" );
+    }
+
+    [TestMethod]
+    public void Classify_DetachPolicy_ExtractsIndexPattern()
+    {
+        var c = OpenSearchStatementClassifier.Classify( "DETACH POLICY FROM INDEX logs-*" );
+
+        c.Kind.Should().Be( OpenSearchStatementKind.DetachPolicy );
+        c.ObjectName.Should().Be( "logs-*" );
+    }
+
+    [TestMethod]
+    public void Classify_DetachPolicy_ConcreteIndex_ExtractsName()
+    {
+        var c = OpenSearchStatementClassifier.Classify( "DETACH POLICY FROM INDEX users" );
+
+        c.Kind.Should().Be( OpenSearchStatementKind.DetachPolicy );
+        c.ObjectName.Should().Be( "users" );
+    }
+
+    [TestMethod]
     public void Classify_MigrateIndex_FlattensToComposite_WithChildDetail()
     {
         // MIGRATE INDEX is parsed into a CompositeStatementAst with multiple

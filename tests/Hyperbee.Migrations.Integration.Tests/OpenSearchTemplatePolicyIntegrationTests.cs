@@ -328,6 +328,83 @@ public class OpenSearchTemplatePolicyIntegrationTests
             $"expected Failed outcome on zero-match apply; got {result.Outcome}: {result.Detail}" );
     }
 
+    // ---- DROP POLICY ----
+
+    [TestMethod]
+    [TestCategory( "OpenSearch" )]
+    [TestCategory( "Phase2" )]
+    public async Task DropPolicy_RemovesPolicy()
+    {
+        // Pre-create the policy.
+        var policyBody = MinimalIsmPolicyBody();
+        var create = await DispatchAsync(
+            $"CREATE POLICY {_policyId} WITH BODY $body", policyBody );
+        Assert.IsTrue( create.IsSuccess, $"create policy failed: {create.Detail}" );
+
+        // Drop it.
+        var drop = await DispatchAsync( $"DROP POLICY {_policyId}" );
+        Assert.IsTrue( drop.IsSuccess, $"drop policy failed: {drop.Detail}" );
+
+        // Post-condition: GET returns 404.
+        var ll = OpenSearchTestContainer.LowLevelClient;
+        var get = await ll.DoRequestAsync<StringResponse>(
+            OpenSearch.Net.HttpMethod.GET, $"_plugins/_ism/policies/{_policyId}", default );
+        Assert.AreNotEqual( 200, get.HttpStatusCode,
+            $"expected non-200 after DROP POLICY; got {get.HttpStatusCode}, body={get.Body}" );
+    }
+
+    [TestMethod]
+    [TestCategory( "OpenSearch" )]
+    [TestCategory( "Phase2" )]
+    public async Task DropPolicy_IfExists_MissingPolicy_Skips()
+    {
+        // No prior CREATE - the IF EXISTS guard should turn this into a Skipped
+        // outcome rather than a Failed one.
+        var result = await DispatchAsync( $"DROP POLICY {_policyId} IF EXISTS" );
+        Assert.AreEqual( StatementOutcome.Skipped, result.Outcome,
+            $"expected Skipped on missing policy under IF EXISTS; got {result.Outcome}: {result.Detail}" );
+    }
+
+    // ---- DETACH POLICY ----
+
+    [TestMethod]
+    [TestCategory( "OpenSearch" )]
+    [TestCategory( "Phase2" )]
+    public async Task DetachPolicy_FollowedByDropPolicy_Succeeds()
+    {
+        // The cluster rejects DROP POLICY while any index still references the
+        // policy. The canonical lifecycle is APPLY -> DETACH -> DROP; this
+        // exercises that flow end-to-end.
+        var policyBody = MinimalIsmPolicyBody();
+        await DispatchAsync(
+            $"CREATE POLICY {_policyId} WITH BODY $body", policyBody );
+        await DispatchAsync( $"CREATE INDEX {_indexName}" );
+
+        var apply = await DispatchAsync( $"APPLY POLICY {_policyId} TO {_indexPattern}" );
+        Assert.IsTrue( apply.IsSuccess, $"apply failed: {apply.Detail}" );
+
+        var detach = await DispatchAsync( $"DETACH POLICY FROM INDEX {_indexPattern}" );
+        Assert.IsTrue( detach.IsSuccess, $"detach failed: {detach.Detail}" );
+
+        var drop = await DispatchAsync( $"DROP POLICY {_policyId}" );
+        Assert.IsTrue( drop.IsSuccess, $"drop after detach failed: {drop.Detail}" );
+    }
+
+    [TestMethod]
+    [TestCategory( "OpenSearch" )]
+    [TestCategory( "Phase2" )]
+    public async Task DetachPolicy_NoMatchingIndices_IsIdempotentNoOp()
+    {
+        // ISM remove returns HTTP 200 even when zero indices match - that's
+        // the cluster's idempotent contract. The dispatcher must surface this
+        // as Executed (informational), NOT Failed, because operators routinely
+        // detach from patterns that may have already been cleaned up.
+        var result = await DispatchAsync( $"DETACH POLICY FROM INDEX {_indexPattern}" );
+        Assert.IsTrue( result.IsSuccess,
+            $"expected Executed outcome on zero-match detach; got {result.Outcome}: {result.Detail}" );
+        StringAssert.Contains( result.Detail!, "0 indices" );
+    }
+
     private static JsonNode MinimalIsmPolicyBody() => JsonNode.Parse( """
         {
           "policy": {

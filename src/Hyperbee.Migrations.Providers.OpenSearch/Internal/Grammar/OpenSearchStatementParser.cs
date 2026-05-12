@@ -24,6 +24,8 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
 //   DROP COMPONENT <name> [IF EXISTS]
 //   CREATE POLICY <id> [WITH BODY $body]
 //   APPLY POLICY <id> TO <pattern>
+//   DROP POLICY <id> [IF EXISTS]
+//   DETACH POLICY FROM INDEX <pattern>
 //   MIGRATE INDEX <old> TO <new> [WITH TEMPLATE <id> | WITH BODY $body]
 //                                [VIA ALIAS <alias>] [TIMEOUT <duration>]
 //   WHEN VERSION <op> '<version>' <statement>     (statement-level prefix)
@@ -87,6 +89,7 @@ public sealed class OpenSearchStatementParser
         var component = Terms.Text( "COMPONENT", caseInsensitive: true );
         var policy = Terms.Text( "POLICY", caseInsensitive: true );
         var apply = Terms.Text( "APPLY", caseInsensitive: true );
+        var detach = Terms.Text( "DETACH", caseInsensitive: true );
         var migrate = Terms.Text( "MIGRATE", caseInsensitive: true );
         var via = Terms.Text( "VIA", caseInsensitive: true );
         var when = Terms.Text( "WHEN", caseInsensitive: true );
@@ -465,6 +468,38 @@ public sealed class OpenSearchStatementParser
                 NoWaitJustification: x.Item3
             ) );
 
+        // DROP POLICY <id> [IF EXISTS]
+        //
+        // Counterpart to CREATE POLICY. The cluster rejects the delete if any
+        // index still references the policy (HTTP 409). Authors must run
+        // DETACH POLICY FROM INDEX first when there are live attachments.
+
+        var dropPolicy = drop
+            .SkipAnd( policy )
+            .SkipAnd( identifier )
+            .And( ZeroOrOne( ifExists ) )
+            .Then( static x => (StatementAst) new DropPolicyAst(
+                PolicyId: x.Item1,
+                IfExists: x.Item2
+            ) );
+
+        // DETACH POLICY FROM INDEX <pattern> [NO WAIT("<reason>")]
+        //
+        // Counterpart to APPLY POLICY. Removes the ISM policy attachment from
+        // any index matching the pattern. The pattern keyword (`indexPattern`)
+        // allows wildcards so an entire family can be detached in one call.
+
+        var detachPolicy = detach
+            .SkipAnd( policy )
+            .SkipAnd( from )
+            .SkipAnd( index )
+            .SkipAnd( indexPattern )
+            .And( ZeroOrOne( noWaitWithJustification ) )
+            .Then( static x => (StatementAst) new DetachPolicyAst(
+                IndexPattern: x.Item1,
+                NoWaitJustification: x.Item2
+            ) );
+
         // MIGRATE INDEX <old> TO <new>
         //   [WITH TEMPLATE <id> | WITH BODY $body]
         //   [VIA ALIAS <alias>]
@@ -579,6 +614,7 @@ public sealed class OpenSearchStatementParser
             createIndex,
             dropTemplate,
             dropComponent,
+            dropPolicy,
             dropIndex,
             updateMapping,
             updateSettings,
@@ -590,6 +626,7 @@ public sealed class OpenSearchStatementParser
             aliasAdd,
             aliasRemove,
             applyPolicy,
+            detachPolicy,
             migrateIndex
         );
 

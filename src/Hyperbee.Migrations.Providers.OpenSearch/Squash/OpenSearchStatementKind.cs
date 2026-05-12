@@ -33,6 +33,8 @@ public enum OpenSearchStatementKind : byte
     DropComponent,
     CreatePolicy,
     ApplyPolicy,
+    DropPolicy,
+    DetachPolicy,
     Composite,
     WhenVersion
 }

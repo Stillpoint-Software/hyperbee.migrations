@@ -214,6 +214,8 @@ See [Resource Migrations](resource-migrations.md) for the cross-provider details
 |           | `DROP COMPONENT <name> [IF EXISTS]` |
 | ISM | `CREATE POLICY <id> [WITH BODY $body]` |
 |     | `APPLY POLICY <id> TO <pattern> [NO WAIT("<reason>")]` |
+|     | `DETACH POLICY FROM INDEX <pattern> [NO WAIT("<reason>")]` |
+|     | `DROP POLICY <id> [IF EXISTS]` |
 | Cluster waits | `WAIT FOR <green|yellow> [ON <idx>] [TIMEOUT <duration>]` |
 |               | `WAIT UNTIL TASK <id> COMPLETE [TIMEOUT <duration>]` |
 | Conditional | `WHEN VERSION <op> '<version>' <statement>` |
@@ -588,6 +590,34 @@ ISM attachment to an index series isn't one problem with three solutions -- it's
 The three are stackable. A typical mature pipeline uses **greenfield** at install time, **one-time backfill** when an existing series first adopts the policy, and **ongoing reconciliation** as the policy definition evolves over the project's lifetime. Many pipelines never need more than one -- but you should choose deliberately rather than reach for runtime `APPLY POLICY` by default.
 
 Caveat: `ism_template` inside a policy body is the modern endpoint shape. Older AWS-managed clusters served by the legacy `_opendistro/_ism` endpoint may not honor it; if `IsmEndpointDetectStep` resolves to the legacy endpoint, the greenfield row falls back to runtime `APPLY POLICY` (sample 4000's pattern, run once at install time, plus sample 9001's reconciliation pattern for ongoing changes). Modern OpenSearch (2.x and the modern AWS endpoint) supports `ism_template` natively.
+
+### DETACH POLICY (ISM)
+
+```
+DETACH POLICY FROM INDEX <pattern> [NO WAIT("<reason>")]
+```
+
+Removes an ISM policy attachment from any index matching the pattern via `_plugins/_ism/remove`. Counterpart to `APPLY POLICY`. Wildcards adapt to current cluster state at run time so a single statement can detach an entire index family.
+
+```json
+{ "statement": "DETACH POLICY FROM INDEX logs-*" }
+```
+
+Unlike `APPLY POLICY`, zero-match (`updated_indices: 0`) is treated as an idempotent no-op (informational log, `Executed` outcome) rather than a failure. Operator teardown scripts routinely detach from patterns that may have already been cleaned up; failing the migration on every clean-state re-run would defeat the purpose. Logical cluster-side failures (`failures: true` in the response body) are still escalated to `Failed`.
+
+### DROP POLICY (ISM)
+
+```
+DROP POLICY <id> [IF EXISTS]
+```
+
+Deletes the ISM policy definition via `DELETE _plugins/_ism/policies/<id>`. The cluster rejects with HTTP 409 if any index still references the policy -- the canonical lifecycle for retiring a policy is `DETACH POLICY FROM INDEX <pattern>` followed by `DROP POLICY <id>`.
+
+```json
+{ "statement": "DROP POLICY hot-warm-cold-deprecated IF EXISTS" }
+```
+
+`IF EXISTS` short-circuits with `Skipped` when the policy isn't present (ISM has no `HEAD` verb, so the dispatcher probes with `GET` and treats any non-200 as absent). Combined with `DETACH POLICY`, this gives a teardown sequence that's safe to re-run on partially-cleaned clusters.
 
 ### WAIT FOR (cluster health)
 

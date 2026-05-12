@@ -16,7 +16,8 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Squash;
 ///   <item>OpenSearch statement form (per the existing
 ///         <c>OpenSearchStatementParser</c>): <c>CREATE INDEX</c>,
 ///         <c>CREATE TEMPLATE</c>, <c>CREATE COMPONENT</c>, <c>CREATE POLICY</c>,
-///         <c>APPLY POLICY</c>, <c>UPDATE MAPPING</c>, <c>UPDATE SETTINGS</c>,
+///         <c>APPLY POLICY</c>, <c>DETACH POLICY</c>,
+///         <c>UPDATE MAPPING</c>, <c>UPDATE SETTINGS</c>,
 ///         <c>ALIAS SWAP</c>/<c>ADD</c>/<c>REMOVE</c>, <c>DROP</c> family,
 ///         <c>REFRESH</c>, <c>WAIT FOR HEALTH</c>, <c>WAIT UNTIL TASK</c> ->
 ///         structural. <c>REINDEX FROM</c>/<c>TO</c> and <c>MIGRATE INDEX</c>
@@ -62,6 +63,7 @@ public sealed class OpenSearchDataOpClassifier : IDataOpClassifier
         @"CREATE\s+(INDEX|TEMPLATE|COMPONENT|POLICY)|" +
         @"DROP\s+(INDEX|TEMPLATE|COMPONENT|POLICY)|" +
         @"APPLY\s+POLICY|" +
+        @"DETACH\s+POLICY|" +
         @"UPDATE\s+(MAPPING|SETTINGS)|" +
         @"ALIAS\s+(SWAP|ADD|REMOVE)|" +
         @"REFRESH\b|" +

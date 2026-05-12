@@ -125,9 +125,28 @@ unchanged.
   a unique DI handle so multi-provider hosts can resolve and run each
   provider's runner independently. See ADR-0023 + the multi-provider
   hosts operator guide.
+- **OpenSearch ISM lifecycle DSL — `DROP POLICY` + `DETACH POLICY FROM INDEX`.**
+  Closes the CREATE/APPLY/DETACH/DROP symmetry for ISM policy management
+  (R-17 per ADR-0024 audit follow-up). `DROP POLICY <id> [IF EXISTS]` deletes
+  the policy via `DELETE _plugins/_ism/policies/<id>` (the cluster rejects
+  with 409 if any index still references the policy -- run DETACH first).
+  `DETACH POLICY FROM INDEX <pattern> [NO WAIT("<reason>")]` calls
+  `POST _plugins/_ism/remove/<pattern>` and reports `updated_indices`
+  count; zero-match is treated as an idempotent no-op (informational, not
+  failure) so operator teardown scripts stay rerunnable. The legacy
+  `_opendistro/_ism` endpoint prefix is honored automatically via the
+  existing `IsmEndpointCapability` bootstrap. Both verbs participate in
+  the data-op classifier as structural ops (squash-replaceable).
 
 ### Changed (back-compat preserved)
 
+- **`MigrationOptions.LockingEnabled` default flipped to `true`.** Production-grade safety:
+  the lazy path (call `AddPostgresMigrations(...)` and run) now acquires the provider's
+  native distributed lock. Operators who deliberately want lockless dev/test runs must
+  set `opts.LockingEnabled = false` explicitly. Existing consumers who never set the
+  property pick up locking automatically on upgrade -- if you have a CI deployment that
+  intentionally races (e.g., test fixtures that nuke + recreate the database between
+  runs), set the property explicitly. Per ADR-0024 audit follow-up (R-1).
 - All five provider record stores override `IntersectWithAppliedAsync` with a
   single-round-trip realtime read (Postgres `WHERE = ANY`, MongoDB
   `find _id $in` with majority+primary, Couchbase parallel `ExistsAsync`,

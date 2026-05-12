@@ -68,6 +68,30 @@ public class OpenSearchDataOpClassifierTests
     }
 
     [TestMethod]
+    public void Statement_DropPolicy_IsStructural()
+    {
+        var c = Classifier.Classify( "DROP POLICY hot-warm-delete" );
+        c.IsDataOp.Should().BeFalse();
+        c.IsUnclassified.Should().BeFalse();
+    }
+
+    [TestMethod]
+    public void Statement_DropPolicyIfExists_IsStructural()
+    {
+        var c = Classifier.Classify( "DROP POLICY hot-warm-delete IF EXISTS" );
+        c.IsDataOp.Should().BeFalse();
+        c.IsUnclassified.Should().BeFalse();
+    }
+
+    [TestMethod]
+    public void Statement_DetachPolicy_IsStructural()
+    {
+        var c = Classifier.Classify( "DETACH POLICY FROM INDEX logs-*" );
+        c.IsDataOp.Should().BeFalse();
+        c.IsUnclassified.Should().BeFalse();
+    }
+
+    [TestMethod]
     public void Statement_UpdateMapping_IsStructural()
     {
         var c = Classifier.Classify( "UPDATE MAPPING users WITH BODY @mapping.json" );

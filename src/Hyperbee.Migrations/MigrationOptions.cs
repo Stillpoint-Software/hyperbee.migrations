@@ -16,7 +16,9 @@ public class MigrationOptions
         Assemblies = new List<Assembly>();
         Profiles = new List<string>();
         ToVersion = 0;
-        LockingEnabled = false;
+        // Default-on for production safety (R-1 per ADR-0024 audit follow-up). Operators
+        // who deliberately want lockless dev/test runs must opt out explicitly.
+        LockingEnabled = true;
         MigrationActivator = migrationActivator;
         Conventions = new DefaultMigrationConventions();
         ChecksumStrategy = new DefaultChecksumStrategy();
