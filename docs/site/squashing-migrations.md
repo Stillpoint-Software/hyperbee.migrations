@@ -1,4 +1,10 @@
-# Squashing Migrations — Operator Guide
+---
+layout: default
+title: Squashing Migrations
+nav_order: 14
+---
+
+# Squashing Migrations
 
 **Audience:** maintainers and DBAs of services that ship Hyperbee.Migrations
 v3.0+ and want to compact a long migration history into a single
@@ -8,8 +14,10 @@ fast-applying migration.
 the migration ledger has accumulated many entries, a squash compresses a
 contiguous range into one synthetic migration whose body recreates the
 equivalent end state. Mature environments auto-mark the squash without
-running its body; fresh installs run it once. Postgres ships the v1 codegen;
-the four NoSQL providers ship in v1.1 / v1.2.
+running its body; fresh installs run it once. **All five providers
+(Aerospike, Couchbase, MongoDB, OpenSearch, Postgres) ship squash codegen
+in v1** -- being able to squash every provider is the proof that the
+strategy abstraction is correct.
 
 ---
 
@@ -30,11 +38,12 @@ Use a squash when **one of the following is true**:
 **Don't squash if:**
 
 - Any registered fleet environment hasn't yet applied the migrations you
-  want to subsume — the two-phase fleet readiness gate (per ADR-0019 A2)
+  want to subsume -- the two-phase fleet readiness gate (per ADR-0019 A2)
   refuses generation in this state and the right move is to bring the env
   forward first.
-- You're in the middle of a v2 → v3 upgrade. Ship v3 to all environments
-  first ([upgrade guide](./upgrading-from-v2.md)); then squash.
+- You're in the middle of a v2 -> v3 upgrade. Ship v3 to all environments
+  first ([upgrade guide](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/guides/upgrading-from-v2.md));
+  then squash.
 - You're considering it for an environment that'll be retired soon. The
   squash creation cost amortizes over future fresh provisions; if there
   won't be any, skip it.
@@ -82,8 +91,8 @@ squash-overrides:
 - `connection` supports `${ENV_VAR}` substitution from the process
   environment.
 - `accept-stranding` lists environments that intentionally aren't expected
-  to deploy this squash. Each entry requires a ticket-id (3–64 alphanumeric
-  + dash + underscore), an owner, a reason ≥ 20 chars, and an expiry within
+  to deploy this squash. Each entry requires a ticket-id (3-64 alphanumeric
+  + dash + underscore), an owner, a reason >= 20 chars, and an expiry within
   90 days (default 30 if omitted) per ADR-0019 A15.
 
 ### 3. Run the squash CLI
@@ -113,9 +122,9 @@ The CLI:
 5. Captures `pg_sequences` last-values for a deterministic `setval(...)`
    post-block.
 6. Emits three artifacts in `--output`:
-   - `<name>.sql` — the canonical squash content.
-   - `<name>.metadata.json` — sidecar metadata with topology, fleet versions, overrides, generation timestamp.
-   - `<name>.summary.md` — human-readable summary + per-statement diagnostics.
+   - `<name>.sql` -- the canonical squash content.
+   - `<name>.metadata.json` -- sidecar metadata with topology, fleet versions, overrides, generation timestamp.
+   - `<name>.summary.md` -- human-readable summary + per-statement diagnostics.
 
 ### 4. Author the squash migration class
 
@@ -168,28 +177,28 @@ The raw SQL is generated; reviewing it line-by-line is rarely useful.
 
 ## Recovering from squash exceptions
 
-### `MidRangeSquashException` — partial ledger coverage at deploy time
+### `MidRangeSquashException` -- partial ledger coverage at deploy time
 
 The runner raises this when an environment's ledger contains SOME but not
-ALL of the versions a squash claims to subsume — typically because a
+ALL of the versions a squash claims to subsume -- typically because a
 backup-restore brought the ledger to an awkward state, or because a
 migration was manually marked applied. Three documented recovery paths
 (per ADR-0019):
 
-1. **Restore from backup** — preferred when the partial state was caused
+1. **Restore from backup** -- preferred when the partial state was caused
    by an accident.
-2. **Re-introduce the missing migrations from version control** — apply
+2. **Re-introduce the missing migrations from version control** -- apply
    them, then the squash auto-marks normally on the next runner pass.
-3. **`dotnet hyperbee-migrations recover from-mid-range`** — last-resort
+3. **`dotnet hyperbee-migrations recover from-mid-range`** -- last-resort
    escape hatch. Requires:
    - The deterministic 12-character acknowledgement token derived from
      `(env-name, squash-version, missing-versions)`. Compute it externally
      and supply it via `--token`; the CLI rejects mismatches.
-   - `--ticket-id`, `--owner`, `--reason ≥ 20 chars` for the audit trail.
+   - `--ticket-id`, `--owner`, `--reason >= 20 chars` for the audit trail.
    - **Only safe** when an external check confirmed the live data state
      matches the squashed schema.
 
-### `StaleFleetMemberException` — environment too far behind at deploy time
+### `StaleFleetMemberException` -- environment too far behind at deploy time
 
 The runner raises this when an environment's ledger is below its recorded
 `ExpectedFleetVersions` minimum AND the squash's `MaxStalenessWindow`
@@ -197,32 +206,51 @@ The runner raises this when an environment's ledger is below its recorded
 applying the missing migrations; or regenerate the squash with the current
 fleet state (cheap when the snapshot A cache is warm per A4).
 
-### `UnregisteredEnvironmentException` — env not in the manifest
+### `UnregisteredEnvironmentException` -- env not in the manifest
 
 The squash's `ExpectedFleetVersions` doesn't list the live environment
 name. Either correct `MigrationOptions.EnvironmentName` to match an
 existing entry, or regenerate the squash with the current manifest
 including the new environment.
 
-## Roadmap
+## Provider coverage
 
-| Provider | v1 status | Codegen ships in |
-|---|---|---|
-| Postgres | ✓ shipped | v1.0 |
-| MongoDB | NullSquashStrategy refusal | v1.1 |
-| Couchbase | NullSquashStrategy refusal | v1.1 |
-| Aerospike | NullSquashStrategy refusal | v1.2 |
-| OpenSearch | NullSquashStrategy refusal | v1.2 |
+All five providers ship squash codegen in v1. Each provider's strategy
+canonicalizes the snapshot in its own way (pg_dump for Postgres; index +
+mapping + template + ISM-policy diff for OpenSearch; collection +
+secondary-index diff for Couchbase / MongoDB; namespace + set + secondary-
+index diff for Aerospike), but the orchestration -- fleet readiness gate,
+verification round, ledger-record shape, recovery semantics -- is identical.
 
-Operators on non-Postgres providers can adopt the universal scaffolding
-(Replaces graph, ApplyMode context, fleet readiness gate types) today —
-only the codegen verb is provider-gated.
+| Provider | Snapshot mechanism | Strategy class | Body output |
+|---|---|---|---|
+| Postgres | `pg_dump --schema-only` against an ephemeral container | `PgDumpSnapshotStrategy` | `.sql` text (`ContentKind.SqlText`) |
+| Aerospike | `info("namespaces;sets;sindex")` per namespace | `InfoSnapshotStrategy` | AQL statement form (`ContentKind.SqlText`) |
+| OpenSearch | `_index_template` / `_component_template` / `_index/<n>/_mapping` + ISM policy GET | `RestStateDiffStrategy` | JSON-section form (`ContentKind.CanonicalJson`) |
+| MongoDB | `listCollections` + per-collection `Indexes.List` admin commands | `IntrospectionSnapshotStrategy` | JSON-section form (`ContentKind.CanonicalJson`) |
+| Couchbase | `system:keyspaces` + `system:indexes` (N1QL) + `/pools/default/buckets/<name>` (REST) | `HybridStrategy` | JSON-section form (`ContentKind.CanonicalJson`) |
+
+Shipping all five together is deliberate: the strategy abstraction is
+validated by every provider's implementation, not just one. v3.0 ships
+**without any ADR-0019 amendments** across the four non-Postgres provider
+phases -- the 5-interface contract held intact.
+
+### Transitivity caveat (Aerospike v3.0)
+
+The `IMigrationRecordStore.IntersectWithSquashedAsync` per-provider
+override enables transitive squash auto-mark: a v3 application can apply
+a squash that *itself* replaces an earlier squash, and the runner will
+correctly recognize the intermediate squash as satisfied. **Aerospike v3.0
+returns the DIM default (empty set)** from this method, so direct squash
+auto-mark works but re-squash transitivity does not. The other four
+providers ship full transitive override. This is a known v3.0 limitation
+tracked in [CHANGELOG.md](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/CHANGELOG.md);
+a v3.1 follow-up will close the gap.
 
 ## See also
 
-- [ADR-0019 — Migration squash via Replaces graph](../decisions/0019-migration-squash-replaces-graph.md)
-- [ADR-0020 — Squashes are up-only](../decisions/0020-squashes-are-up-only.md)
-- [ADR-0021 — MigrationRecord checksum](../decisions/0021-migration-record-checksum.md)
-- [ADR-0022 — Script-format resource migrations](../decisions/0022-script-format-resource-migrations.md)
-- [Upgrade guide v2 → v3](./upgrading-from-v2.md)
-- [Migrating from EF Core](./migrating-from-ef-core.md)
+- [ADR-0019 -- Migration squash via Replaces graph](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0019-migration-squash-replaces-graph.md)
+- [ADR-0020 -- Squashes are up-only](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0020-squashes-are-up-only.md)
+- [ADR-0021 -- MigrationRecord checksum](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0021-migration-record-checksum.md)
+- [ADR-0022 -- Script-format resource migrations](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0022-script-format-resource-migrations.md)
+- [Upgrade guide v2 -> v3](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/guides/upgrading-from-v2.md)

@@ -19,6 +19,11 @@ await runner.RunAsync(cancellationToken);
 
 Best for: development, simple deployments, applications that own their database.
 
+> If your host registers more than one provider (e.g. PostgreSQL + MongoDB), see
+> [Multi-Provider Hosts](multi-provider-hosts.md). Resolving the base
+> `MigrationRunner` type in a multi-provider host throws -- resolve the typed
+> subclass (`PostgresMigrationRunner`, `MongoDBMigrationRunner`, etc.) instead.
+
 ### 2. Standalone Runner
 
 A dedicated console application that runs migrations independently. The project
@@ -104,3 +109,30 @@ docker run -e "Postgresql__ConnectionString=..." my-migrations
 Environment variables override `appsettings.json` using the standard .NET
 double-underscore convention. For example, `Migrations__Lock__Enabled=true`
 overrides the `Lock.Enabled` setting in configuration.
+
+## Squash CLI
+
+The `hyperbee-migrations` CLI (built from `runners/Hyperbee.Migrations.Cli`)
+is a separate operator-facing executable for generating + recovering
+squash migrations. It is independent from the per-provider runner
+containers above.
+
+```bash
+# Generate a squash migration that subsumes versions 1000-2000
+dotnet hyperbee-migrations squash \
+    --provider postgres \
+    --connection "Host=...;Database=...;Username=...;Password=..." \
+    --range 1000-2000 \
+    --output ./squash-out \
+    [--fleet-manifest ./fleet.yaml]
+
+# Recover from a mid-range squash state (last-resort escape hatch)
+dotnet hyperbee-migrations recover from-mid-range \
+    --env my-env-name \
+    --token <deterministic-token-from-MidRangeSquashException> \
+    --ticket-id <3-64-alphanumeric-id> \
+    --reason "detailed prose describing why"
+```
+
+The squash verb supports all 5 providers in v3.0. See
+[Squashing migrations](squashing-migrations.md) for the full workflow.

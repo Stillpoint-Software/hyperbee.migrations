@@ -57,10 +57,16 @@ they only run once.
 | [Continuous Migrations](continuous-migrations.md) | Long-running, scheduled, and repeating migrations |
 | [Resource Migrations](resource-migrations.md) | Declarative migrations with embedded resource files |
 | [Runners](runners.md) | Standalone runners, CLI reference, Docker |
+| [Multi-Provider Hosts](multi-provider-hosts.md) | Composing two or more providers in a single application |
 | [Aerospike](aerospike.md) | Aerospike provider reference |
 | [Couchbase](couchbase.md) | Couchbase provider reference |
 | [MongoDB](mongodb.md) | MongoDB provider reference |
+| [OpenSearch](opensearch.md) | OpenSearch provider reference |
+| [OpenSearch FAQ - Template Propagation](opensearch-template-propagation-faq.md) | Detailed FAQ on OpenSearch index-template behavior |
 | [PostgreSQL](postgresql.md) | PostgreSQL provider reference |
+| [Squashing Migrations](squashing-migrations.md) | Compact long migration histories into a single fast-applying migration |
+| [Troubleshooting](troubleshooting.md) | Common errors, recovery flows, frequently asked questions |
+| [Supported Versions](supported-versions.md) | .NET TFMs and provider-server versions |
 | [Advanced Topics](advanced.md) | Custom providers, retry strategies, locking internals |
 
 ## Installation
@@ -68,13 +74,14 @@ they only run once.
 Install the provider package that matches your database:
 
 ```bash
-dotnet add package Hyperbee.Migrations.Provider.Aerospike
-dotnet add package Hyperbee.Migrations.Provider.Couchbase
-dotnet add package Hyperbee.Migrations.Provider.MongoDB
-dotnet add package Hyperbee.Migrations.Provider.PostgreSQL
+dotnet add package Hyperbee.Migrations.Providers.Aerospike
+dotnet add package Hyperbee.Migrations.Providers.Couchbase
+dotnet add package Hyperbee.Migrations.Providers.MongoDB
+dotnet add package Hyperbee.Migrations.Providers.OpenSearch
+dotnet add package Hyperbee.Migrations.Providers.Postgres
 ```
 
-Or install the core library on its own:
+The core library is referenced transitively by every provider package; install it directly only if you are writing a custom record store:
 
 ```bash
 dotnet add package Hyperbee.Migrations
@@ -93,6 +100,7 @@ The Hyperbee Migrations API is heavily influenced by
 
 ## Contributing
 
-We welcome contributions! Please see our
-[Contributing Guide](https://github.com/Stillpoint-Software/.github/blob/main/.github/CONTRIBUTING.md)
-for more details.
+We welcome contributions! See the
+[repo-local CONTRIBUTING guide](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/CONTRIBUTING.md)
+for the development setup, coding conventions, and the provider-author DI
+checklist (per ADR-0023).
