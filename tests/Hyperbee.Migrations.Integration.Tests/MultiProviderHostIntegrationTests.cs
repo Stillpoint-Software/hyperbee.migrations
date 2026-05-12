@@ -46,7 +46,9 @@ public class MultiProviderHostIntegrationTests
         // executing cleanly, not the actual application of migrations).
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>( new ConfigurationBuilder().Build() );
-        services.AddSingleton<ILoggerFactory>( NullLoggerFactory.Instance );
+        // AddLogging wires both ILoggerFactory + the open-generic ILogger<T>
+        // services that PostgresRecordStore etc. require at construction.
+        services.AddLogging();
 
         // Postgres dependency: NpgsqlDataSource from the live container.
         var pgConnString = ((Npgsql.NpgsqlConnection) PostgresTestContainer.Connection).ConnectionString;
@@ -106,7 +108,9 @@ public class MultiProviderHostIntegrationTests
         // independent per ADR-0005).
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>( new ConfigurationBuilder().Build() );
-        services.AddSingleton<ILoggerFactory>( NullLoggerFactory.Instance );
+        // AddLogging wires both ILoggerFactory + the open-generic ILogger<T>
+        // services that PostgresRecordStore etc. require at construction.
+        services.AddLogging();
 
         var pgConnString = ((Npgsql.NpgsqlConnection) PostgresTestContainer.Connection).ConnectionString;
         services.AddSingleton( new Npgsql.NpgsqlDataSourceBuilder( pgConnString ).Build() );

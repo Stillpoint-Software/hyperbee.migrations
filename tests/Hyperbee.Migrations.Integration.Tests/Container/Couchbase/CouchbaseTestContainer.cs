@@ -127,22 +127,6 @@ public class CouchbaseTestContainer
                 await EnsureSuccessStatusCodeAsync( response )
                     .ConfigureAwait( false );
             }
-
-            // Configure alternate ("external") addresses so a host-side
-            // Couchbase SDK connection via `couchbase://localhost?network=external`
-            // routes service traffic through the localhost ports the container
-            // binds. Without this, the cluster map returned by /pools/default
-            // carries the container's internal IP (from RenameNodeRequest)
-            // which the host process cannot reach. This is the documented
-            // multi-network solution per the Couchbase networking guide.
-            using ( var request = new SetupAlternateAddressesRequest( container ) )
-            {
-                request.Headers.Add( BasicAuthenticationHeader.Key, BasicAuthenticationHeader.Value );
-                using var response = await httpClient.SendAsync( request, cancellationToken )
-                    .ConfigureAwait( false );
-                await EnsureSuccessStatusCodeAsync( response )
-                    .ConfigureAwait( false );
-            }
         }
 
         // As long as we do not expose the bucket API, we do not need to iterate over all of them.
@@ -233,34 +217,6 @@ public class CouchbaseTestContainer
         }
     }
 
-
-    // Configures the node's "external" alternate addresses so host-side
-    // Couchbase SDK connections via `couchbase://localhost?network=external`
-    // see the localhost-bound service ports rather than the container's
-    // internal IP. Documented at:
-    // https://docs.couchbase.com/server/current/learn/clusters-and-availability/connectivity.html
-    private sealed class SetupAlternateAddressesRequest : HttpRequestMessage
-    {
-        public SetupAlternateAddressesRequest( CouchbaseContainer container )
-            : base( HttpMethod.Put, "/node/controller/setupAlternateAddresses/external" )
-        {
-            // The container binds these ports to localhost in the builder
-            // setup (.WithPortBinding(11210, 11210) etc), so we hardcode the
-            // service mapping to localhost + the well-known port numbers.
-            var content = new Dictionary<string, string>
-            {
-                { "hostname", "localhost" },
-                { "mgmt", "8091" },     // Management REST
-                { "kv",   "11210" },    // KV / memcached binary protocol
-                { "capi", "8092" },     // Views / CAPI
-                { "n1ql", "8093" },     // Query (N1QL)
-                { "fts",  "8094" },     // Search (FTS)
-                { "cbas", "8095" },     // Analytics (cbas)
-                { "eventingAdminPort", "8096" }
-            };
-            Content = new FormUrlEncodedContent( content );
-        }
-    }
 
     private sealed class RenameNodeRequest : HttpRequestMessage
     {

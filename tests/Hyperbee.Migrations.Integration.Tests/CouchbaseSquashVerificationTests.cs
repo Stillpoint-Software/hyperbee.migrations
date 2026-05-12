@@ -30,13 +30,14 @@ namespace Hyperbee.Migrations.Integration.Tests;
 //   6. Capture B.
 //   7. CouchbaseSquashVerifier.VerifyAsync -> expect Success.
 //
-// Host-side cluster connection uses `couchbase://localhost?network=external`
-// + alt-addresses configured by CouchbaseTestContainer's
-// SetupAlternateAddressesRequest. See CouchbaseSquashDeterminismTests for
-// architectural notes.
+// [TestCategory("LocalOnly")]: same Couchbase host-side connection
+// limitation documented in CouchbaseSquashDeterminismTests. Verifier
+// correctness is byte-tested by CouchbaseSquashVerifierTests in the
+// unit suite.
 
 [TestClass]
 [DoNotParallelize]
+[TestCategory( "LocalOnly" )]
 public class CouchbaseSquashVerificationTests
 {
     private ICluster _cluster;
