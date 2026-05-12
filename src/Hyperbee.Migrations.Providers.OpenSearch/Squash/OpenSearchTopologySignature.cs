@@ -4,6 +4,7 @@ using System.Text.Json;
 using Hyperbee.Migrations.Squash;
 using OpenSearch.Client;
 using OpenSearch.Net;
+using OpenSearch.Net.Specification.CatApi;
 using HttpMethod = OpenSearch.Net.HttpMethod;
 
 namespace Hyperbee.Migrations.Providers.OpenSearch.Squash;
@@ -181,9 +182,14 @@ public sealed record OpenSearchTopologySignature : ITopologySignature
         var clusterName = healthResp.ClusterName ?? "";
         var nodeCount = healthResp.NumberOfNodes;
 
-        // Plugin matrix via _cat/plugins.
-        var pluginsResp = await ll.DoRequestAsync<StringResponse>(
-            HttpMethod.GET, "/_cat/plugins?format=json", cancellationToken ).ConfigureAwait( false );
+        // Plugin matrix via _cat/plugins. Pass `format=json` via the typed
+        // CatPluginsRequestParameters.Format property (OpenSearch.Net's
+        // DoRequestAsync rejects query-strings embedded in the path; the
+        // low-level Cat namespace routes the parameter to the request URI
+        // correctly via the strongly-typed request-parameters object).
+        var pluginsParams = new CatPluginsRequestParameters { Format = "json" };
+        var pluginsResp = await ll.Cat.PluginsAsync<StringResponse>(
+            pluginsParams, cancellationToken ).ConfigureAwait( false );
 
         var plugins = pluginsResp.Success
             ? ParsePluginsResponse( pluginsResp.Body )
