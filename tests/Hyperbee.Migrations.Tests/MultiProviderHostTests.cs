@@ -5,6 +5,7 @@ using Hyperbee.Migrations.Providers.OpenSearch;
 using Hyperbee.Migrations.Providers.Postgres;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -214,6 +215,82 @@ public class MultiProviderHostTests
         Action act = () => sp.GetRequiredService<MigrationRunner>();
         act.Should().Throw<InvalidOperationException>()
             .WithMessage( "*Postgres*MongoDB*Aerospike*OpenSearch*" );
+    }
+
+    // ---- Phase 2 Task 2.3 — Discovery scope isolation ----------------------
+
+    [TestMethod]
+    public void DiscoveryScope_IsIsolatedPerProvider()
+    {
+        // Each provider's options factory configures its own Assemblies list
+        // (driven by Migrations:FromAssemblies / FromPaths + the calling
+        // assembly default). In a multi-provider host the per-provider
+        // options must NOT share assemblies, even though they share the
+        // same DI container.
+        var services = BaseServices();
+        services.AddPostgresMigrations();
+        services.AddMongoDBMigrations();
+        var sp = services.BuildServiceProvider();
+
+        var pgOptions = sp.GetRequiredService<PostgresMigrationOptions>();
+        var moOptions = sp.GetRequiredService<MongoDBMigrationOptions>();
+
+        // Both registered: each carries its own Assemblies list. The
+        // default-assembly fallback means they could legitimately be the
+        // same SINGLE entry when no Migrations:FromAssemblies is configured,
+        // but they MUST be separate List instances (no aliasing).
+        pgOptions.Should().NotBeSameAs( moOptions );
+        pgOptions.Assemblies.Should().NotBeSameAs( moOptions.Assemblies,
+            "each provider's options.Assemblies must be an independent List" );
+    }
+
+    // ---- Phase 2 Task 2.4 — Profile filtering -----------------------------
+
+    [TestMethod]
+    public void ProfileFiltering_IsPerProvider()
+    {
+        // Per-provider Profiles configured on each Add{Provider}Migrations
+        // must NOT bleed across providers in a multi-provider host.
+        var services = BaseServices();
+        services.AddPostgresMigrations( opts => opts.Profiles = new[] { "bootstrap" } );
+        services.AddMongoDBMigrations( opts => opts.Profiles = new[] { "seed-data" } );
+        var sp = services.BuildServiceProvider();
+
+        var pgOptions = sp.GetRequiredService<PostgresMigrationOptions>();
+        var moOptions = sp.GetRequiredService<MongoDBMigrationOptions>();
+
+        pgOptions.Profiles.Should().BeEquivalentTo( new[] { "bootstrap" } );
+        moOptions.Profiles.Should().BeEquivalentTo( new[] { "seed-data" } );
+        pgOptions.Profiles.Should().NotContain( "seed-data",
+            "Postgres profiles must not include MongoDB's profile values" );
+        moOptions.Profiles.Should().NotContain( "bootstrap",
+            "MongoDB profiles must not include Postgres's profile values" );
+    }
+
+    // ---- Phase 4 Task 4.1 — services.Replace semantics --------------------
+
+    [TestMethod]
+    public void ServicesReplace_TypedRunner_ResolvesReplacement()
+    {
+        // services.Replace<PostgresMigrationRunner>() after AddPostgresMigrations
+        // must resolve the replacement instance, not the original. This is
+        // the documented escape hatch for operators who need to wrap a
+        // runner (e.g., to add metrics, retry, custom logging).
+        var services = BaseServices();
+        services.AddPostgresMigrations();
+
+        var customRunner = new PostgresMigrationRunner(
+            Substitute.For<IMigrationRecordStore>(),
+            new PostgresMigrationOptions( Substitute.For<IMigrationActivator>() ),
+            NullLoggerFactory.Instance );
+
+        services.Replace( ServiceDescriptor.Singleton( customRunner ) );
+        var sp = services.BuildServiceProvider();
+
+        sp.GetRequiredService<PostgresMigrationRunner>().Should().BeSameAs( customRunner );
+        // The base alias still resolves through the typed runner (single-
+        // provider mode), and the typed runner is now the replacement.
+        sp.GetRequiredService<MigrationRunner>().Should().BeSameAs( customRunner );
     }
 
     private sealed class CapturingLoggerProvider : ILoggerProvider

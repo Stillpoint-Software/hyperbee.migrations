@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Aerospike Provider
-nav_order: 8
+nav_order: 9
 ---
 
 # Aerospike Provider
@@ -81,9 +81,36 @@ Mark each file `EmbeddedResource` in the project file:
 
 ## Statement grammar
 
-Statements use AQL-flavored syntax inside a JSON wrapper. Statement keywords are case-insensitive. Identifiers may be plain (`users`, `idx_users_email`) or backtick-quoted (`` `users.archive` ``) for names containing characters the plain-form parser does not accept.
+Statements use AQL-flavored syntax. Statement keywords are case-insensitive. Identifiers may be plain (`users`, `idx_users_email`) or backtick-quoted (`` `users.archive` ``) for names containing characters the plain-form parser does not accept.
 
 The grammar is a subset of AQL focused on the operations that make sense as migrations -- index lifecycle and intent-only declarations for set creation and bulk record I/O.
+
+### Statement file format
+
+The runner accepts two file shapes. The script form (`.statements`) is the recommended default for new migrations per [ADR-0022](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0022-script-format-resource-migrations.md); the JSON-array form (`.statements.json`) is the original ADR-0002 wrapper and is supported indefinitely. Both parse to the same statement list.
+
+Script form (`Resources/2000-AddSecondaryIndexes/statements`):
+
+```
+-- Secondary indexes for the application's queries.
+CREATE INDEX WAIT idx_users_role ON test.users (role) STRING;
+CREATE INDEX WAIT idx_products_category ON test.products (category) STRING;
+CREATE INDEX WAIT idx_products_price    ON test.products (price)    NUMERIC;
+```
+
+JSON-array form (`Resources/2000-AddSecondaryIndexes/statements.json`):
+
+```json
+{
+  "statements": [
+    { "statement": "CREATE INDEX WAIT idx_users_role ON test.users (role) STRING" },
+    { "statement": "CREATE INDEX WAIT idx_products_category ON test.products (category) STRING" },
+    { "statement": "CREATE INDEX WAIT idx_products_price ON test.products (price) NUMERIC" }
+  ]
+}
+```
+
+The script form supports `--`/`//` line comments and `/* ... */` block comments; statements are terminated by `;`. See [Resource Migrations](resource-migrations.md) for the cross-provider details.
 
 ### Statement summary
 
@@ -249,6 +276,14 @@ The resource runner discovers documents by walking the `<namespace>/<set>` path 
 ## Locking semantics
 
 The provider uses a single Aerospike record as a distributed lock. Acquisition uses a generation-aware put so two runners cannot both claim the lock; the holder's heartbeat refreshes the record TTL. `LockMaxLifetime` caps total wall-clock hold so a hung migration cannot lock forever -- when reached, the in-flight migration is canceled cleanly via the cancellation token.
+
+## Squash support
+
+The Aerospike provider ships full squash codegen via `InfoSnapshotStrategy` (per ADR-0019). The canonical output is AQL statement form: `CREATE INDEX` + sentinel-set membership recorded as section-headered text. The capture path probes the live cluster via `Info.Request("sets/<namespace>", "sindex/<namespace>")` and an injected snapshot delegate; the canonicalizer strips ephemeral counters (`objects`, `memory_used`, etc.) at every level.
+
+The Roslyn-based `AerospikeMigrationSourceScanner` enforces the `[DataMigration]` / `[StructuralOnly]` annotation requirement (ADR-0019 amendment A5) for migrations that write data via the SDK.
+
+See [Squashing migrations](squashing-migrations.md) for the cross-provider squash CLI + workflow.
 
 ## Production deployment
 

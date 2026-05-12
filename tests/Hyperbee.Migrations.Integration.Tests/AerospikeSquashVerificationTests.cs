@@ -28,9 +28,16 @@ namespace Hyperbee.Migrations.Integration.Tests;
 //   7. AerospikeSquashVerifier.VerifyAsync -> expect Success.
 //
 // Guarded by `#if INTEGRATIONS`; run locally with /p:EnableIntegrationTests=true.
+//
+// [TestCategory("LocalOnly")]: same environment-sensitivity as
+// AerospikeSquashDeterminismTests -- Docker resource contention +
+// container reuse surfaces as flaky AssemblyInitialize in the full
+// integration suite. Verifier correctness is byte-tested by
+// AerospikeSquashVerifierTests in the unit suite.
 
 [TestClass]
 [DoNotParallelize]
+[TestCategory( "LocalOnly" )]
 public class AerospikeSquashVerificationTests
 {
     private IAsyncClient _client;

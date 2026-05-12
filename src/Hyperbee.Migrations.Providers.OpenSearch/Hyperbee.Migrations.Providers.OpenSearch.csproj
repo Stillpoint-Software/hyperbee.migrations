@@ -12,7 +12,7 @@
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <Copyright>Stillpoint Software, Inc.</Copyright>
     <Title>Hyperbee Migrations OpenSearch Provider</Title>
-    <Description>Hyperbee Migrations OpenSearch Provider adds OpenSearch support to Hyperbee Migrations.</Description>
+    <Description>OpenSearch provider for Hyperbee.Migrations. Versioned, journaled migration framework with rich statement grammar (index/template/component/policy/alias/reindex), split ledger/lock indices (ADR-0018), pluggable bootstrap pipeline, per-provider MigrationRunner subclass for multi-provider hosts, and squash codegen via RestStateDiffStrategy with opaque painless preservation.</Description>
     <RepositoryUrl>https://github.com/Stillpoint-Software/Hyperbee.Migrations</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>

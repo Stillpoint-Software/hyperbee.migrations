@@ -280,3 +280,30 @@ The `MigrationAttribute` supports several constructor overloads and a named
 
 See [Continuous Migrations](continuous-migrations.md) for detailed scheduling
 and lifecycle documentation.
+
+## Squashing migrations
+
+Long migration chains slow down fresh-environment provisioning and clutter
+source trees. **Squashing** compresses a contiguous range of historical
+migrations into a single replacement migration whose body produces the same
+end state. Mature environments auto-mark the squash without running its
+body (the constituent migrations are already applied); fresh environments
+run the squash as a baseline.
+
+The runner reconciles per environment by comparing the ledger's
+applied-version set against the squash's `Replaces` graph. Three
+`MigrationRecord` fields support this:
+
+| Field      | Purpose                                                  |
+| ---------- | -------------------------------------------------------- |
+| `Kind`     | `Migration` / `Squash` / `Baseline` (per ADR-0021)        |
+| `Replaces` | `long[]` of versions the squash subsumes                 |
+| `Checksum` | SHA-256 of `(typeof.FullName, Version)` -- drift gate    |
+
+A separate squash CLI (`dotnet hyperbee-migrations squash`) generates the
+destructive codegen from a live ephemeral cluster (snapshot A + apply
+[N..M] + snapshot B + diff). All 5 providers ship squash codegen in v3.0
+per ADR-0019.
+
+See [Squashing migrations](squashing-migrations.md) for the full operator
+workflow + per-provider snapshot strategy details.

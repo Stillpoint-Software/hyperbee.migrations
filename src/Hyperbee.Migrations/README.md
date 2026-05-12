@@ -29,10 +29,11 @@ using Hyperbee.Migrations.Providers.Postgres;
 
 var builder = WebApplication.CreateBuilder( args );
 
+builder.Services.AddNpgsqlDataSource( builder.Configuration.GetConnectionString( "Migrations" ) );
+
 builder.Services.AddPostgresMigrations( opts =>
 {
-    opts.ConnectionString = builder.Configuration.GetConnectionString( "Migrations" );
-    opts.LockingEnabled   = true;
+    opts.LockingEnabled = true;
 } );
 
 var app = builder.Build();

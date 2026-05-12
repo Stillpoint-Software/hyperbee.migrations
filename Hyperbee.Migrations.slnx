@@ -38,6 +38,7 @@
     <File Path="unlist_package.yml" />
   </Folder>
   <Folder Name="/Solution Tests/">
+    <Project Path="tests/Hyperbee.Migrations.Cli.Tests/Hyperbee.Migrations.Cli.Tests.csproj" />
     <Project Path="tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj" />
     <Project Path="tests/Hyperbee.Migrations.Squash.Tests/Hyperbee.Migrations.Squash.Tests.csproj" />
     <Project Path="tests/Hyperbee.Migrations.Tests/Hyperbee.Migrations.Tests.csproj" />

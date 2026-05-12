@@ -11,7 +11,7 @@
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <Copyright>Stillpoint Software, Inc.</Copyright>
     <Title>Hyperbee Migrations Couchbase Provider</Title>
-    <Description>Hyperbee Migrations Couchbase Provider adds Couchbase support to Hyperbee Migrations.</Description>
+    <Description>Couchbase provider for Hyperbee.Migrations. Versioned, journaled migration framework with N1QL statement-form resources, REST + N1QL hybrid bootstrap, mutex-based distributed locking, per-provider MigrationRunner subclass for multi-provider hosts, and squash codegen via HybridStrategy (combines N1QL system tables + Management REST).</Description>
     <RepositoryUrl>https://github.com/Stillpoint-Software/Hyperbee.Migrations</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>

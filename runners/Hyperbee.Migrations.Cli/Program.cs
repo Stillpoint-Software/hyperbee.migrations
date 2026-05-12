@@ -64,7 +64,7 @@ internal static class Program
         Console.WriteLine();
         Console.WriteLine( "Verbs:" );
         Console.WriteLine( "  squash    Generate a destructive squash migration that subsumes a contiguous range." );
-        Console.WriteLine( "            v1 ships Postgres codegen; other providers refuse with a roadmap-pointing message." );
+        Console.WriteLine( "            v3.0 ships codegen for all 5 providers: Postgres, Aerospike, OpenSearch, MongoDB, Couchbase." );
         Console.WriteLine( "  recover   Last-resort recovery from a mid-range squash state. Requires a deterministic" );
         Console.WriteLine( "            acknowledgement token derived from (env-name, squash-version, missing-versions)." );
         Console.WriteLine();

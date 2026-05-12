@@ -1,7 +1,7 @@
 ---
 layout: default
 title: OpenSearch Provider
-nav_order: 11
+nav_order: 12
 ---
 
 # OpenSearch Provider
@@ -134,9 +134,65 @@ public class CreateInitialIndex( OpenSearchResourceRunner<CreateInitialIndex> ru
 
 ## Statement grammar
 
-The grammar is a small SQL-flavored DSL. Each statement is one line; one or more statements live inside a `statements.json` resource. Statement keywords are case-insensitive. Identifiers may be plain (`users`, `users-v1`, `users.archive`) or backtick-quoted (`` `users.v2` ``) for names containing characters the plain-form parser does not accept. The grammar is offline-pure (ADR-0015) -- no network I/O at parse time. Anything that needs the live cluster (template resolution, version checks) happens at dispatch time.
+The grammar is a small SQL-flavored DSL. Statement keywords are case-insensitive. Identifiers may be plain (`users`, `users-v1`, `users.archive`) or backtick-quoted (`` `users.v2` ``) for names containing characters the plain-form parser does not accept. The grammar is offline-pure (ADR-0015) -- no network I/O at parse time. Anything that needs the live cluster (template resolution, version checks) happens at dispatch time.
 
 Durations use `<integer><s|m|h>` (e.g., `30s`, `5m`, `2h`). Pure integers are rejected -- the suffix is required.
+
+### Statement file format
+
+The runner accepts two file shapes. The script form (`.statements`) is the recommended default for new migrations per [ADR-0022](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0022-script-format-resource-migrations.md); the JSON-array form (`.statements.json`) is the original ADR-0002 wrapper and is supported indefinitely. OpenSearch's script form adds two affordances over the universal shape: a `BODIES { ... }` header block that declares named bodies referenced by `$name`, and inline `WITH BODY { ... }` brace-balanced bodies that the splitter consumes as opaque blocks (semicolons inside the body are NOT statement terminators).
+
+Script form (`Resources/1000-CreateInitialIndex/statements`):
+
+```
+-- Initial sample_users index with a tight strict mapping. The BODIES header
+-- declares the index body once; CREATE INDEX references it by $name. WAIT
+-- FOR YELLOW gates the next statement on shard readiness.
+
+BODIES {
+  usersIndex: {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+    "mappings": {
+      "properties": {
+        "id":     { "type": "keyword" },
+        "email":  { "type": "keyword" },
+        "name":   { "type": "text"    },
+        "active": { "type": "boolean" }
+      }
+    }
+  }
+}
+
+CREATE INDEX sample_users IF NOT EXISTS WITH BODY $usersIndex;
+
+WAIT FOR YELLOW ON sample_users TIMEOUT 30s;
+```
+
+JSON-array form (`Resources/1000-CreateInitialIndex/statements.json`):
+
+```json
+{
+  "bodies": {
+    "usersIndex": {
+      "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+      "mappings": { "properties": {
+        "id":     { "type": "keyword" },
+        "email":  { "type": "keyword" },
+        "name":   { "type": "text"    },
+        "active": { "type": "boolean" }
+      } }
+    }
+  },
+  "statements": [
+    { "statement": "CREATE INDEX sample_users IF NOT EXISTS WITH BODY $usersIndex" },
+    { "statement": "WAIT FOR YELLOW ON sample_users TIMEOUT 30s" }
+  ]
+}
+```
+
+A third body-source form (`WITH BODY @path`) loads JSON from a sibling embedded file -- see [Body references](#body-references) below.
+
+See [Resource Migrations](resource-migrations.md) for the cross-provider details on the script form's lexical rules.
 
 ### Statement summary
 
@@ -684,6 +740,16 @@ The migration ledger captures forensic fields per R-06 so post-mortems have what
 | appliedBy | `<machineName>/<processId>` |
 | error | Failure detail, when applicable |
 | failedStatementIndex | Which rollback statement halted the Down sequence |
+
+## Squash support
+
+The OpenSearch provider ships full squash codegen via `RestStateDiffStrategy` (per ADR-0019). The canonical output is JSON-section form (`[index_template]`, `[component_template]`, `[index_metadata]`, `[alias]`, `[ism_policy]`, `[ingest_pipeline]`, etc.) because OpenSearch structural state is irreducibly JSON-bodied. The capture path probes the live cluster via REST endpoints; the canonicalizer strips ephemeral catalog fields (`creation_date`, `uuid`, `version`, `provided_name`, `policy_version`, `last_updated_time`, `seq_no`, `primary_term`) at every nesting level.
+
+**Painless preservation:** painless script source rides through as opaque JSON string content -- the canonicalizer never parses or modifies painless. This is the Task 2.0 spike conclusion (opaque-string preservation + structural JSON canonicalization); no painless parser, no operator annotation, no fallback needed.
+
+The Roslyn-based `OpenSearchMigrationSourceScanner` enforces the `[DataMigration]` / `[StructuralOnly]` annotation requirement (ADR-0019 amendment A5) for migrations using receiver-anchored `_client.*` write call-sites (`Index*`, `Update*`, `UpdateByQuery*`, `Delete*`, `DeleteByQuery*`, `Bulk*`, `Reindex*`).
+
+See [Squashing migrations](squashing-migrations.md) for the cross-provider squash CLI + workflow.
 
 ## Production deployment
 

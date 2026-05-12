@@ -12,7 +12,7 @@
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <Copyright>Stillpoint Software, Inc.</Copyright>
     <Title>Hyperbee Migrations Aerospike Provider</Title>
-    <Description>Hyperbee Migrations Aerospike Provider adds Aerospike support to Hyperbee Migrations.</Description>
+    <Description>Aerospike provider for Hyperbee.Migrations. Versioned, journaled migration framework with AQL statement-form resources, native distributed locking via single-record sentinel, per-provider MigrationRunner subclass for multi-provider hosts, and squash codegen via InfoSnapshotStrategy.</Description>
     <RepositoryUrl>https://github.com/Stillpoint-Software/Hyperbee.Migrations</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>

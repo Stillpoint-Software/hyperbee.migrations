@@ -12,7 +12,7 @@
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <Copyright>Stillpoint Software, Inc.</Copyright>
     <Title>Hyperbee Migrations MongoDB Provider</Title>
-    <Description>Hyperbee Migrations MongoDB Provider adds MongoDB support to Hyperbee Migrations.</Description>
+    <Description>MongoDB provider for Hyperbee.Migrations. Versioned, journaled migration framework with MongoDB statement-form resources, collection-level distributed locking via findOneAndUpdate, per-provider MigrationRunner subclass for multi-provider hosts, and squash codegen via IntrospectionSnapshotStrategy with BSON Extended JSON canonical output.</Description>
     <RepositoryUrl>https://github.com/Stillpoint-Software/Hyperbee.Migrations</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>

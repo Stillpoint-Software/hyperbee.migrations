@@ -15,17 +15,21 @@ using Hyperbee.Migrations.Providers.Postgres;
 
 var builder = WebApplication.CreateBuilder( args );
 
+// Register the Npgsql data source the migration runner reads from.
+builder.Services.AddNpgsqlDataSource( builder.Configuration.GetConnectionString( "Migrations" ) );
+
 builder.Services.AddPostgresMigrations( opts =>
 {
-    opts.ConnectionString = builder.Configuration.GetConnectionString( "Migrations" );
-    opts.Schema           = "public";
-    opts.LockingEnabled   = true;
+    opts.SchemaName     = "migration";  // ledger schema (default: "migration")
+    opts.LockingEnabled = true;
 } );
 
 var app = builder.Build();
 
 using ( var scope = app.Services.CreateScope() )
 {
+    // Single-provider hosts can resolve the base MigrationRunner.
+    // For multi-provider hosts (ADR-0023), resolve PostgresMigrationRunner directly.
     var runner = scope.ServiceProvider.GetRequiredService<MigrationRunner>();
     await runner.RunAsync( app.Lifetime.ApplicationStopping );
 }
@@ -53,6 +57,10 @@ For configuration reference, resource layout, locking semantics (session-level a
 **https://stillpoint-software.github.io/hyperbee.migrations/postgresql.html**
 
 A working sample lives in [`runners/samples/Hyperbee.Migrations.Postgres.Samples/`](https://github.com/Stillpoint-Software/hyperbee.migrations/tree/main/runners/samples/Hyperbee.Migrations.Postgres.Samples).
+
+## Multi-provider hosts
+
+For applications that host more than one provider in the same `IServiceCollection`, resolve `PostgresMigrationRunner` directly rather than the base `MigrationRunner` (which throws in multi-provider hosts per [ADR-0023](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0023-multi-runner-not-meta-runner.md)). See the [multi-provider hosts guide](https://stillpoint-software.github.io/hyperbee.migrations/multi-provider-hosts.html) for the failure-isolation, parallel-composition, and expand/contract patterns.
 
 ## License
 

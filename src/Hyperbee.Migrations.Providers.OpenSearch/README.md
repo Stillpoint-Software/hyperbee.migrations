@@ -29,13 +29,14 @@ builder.Services.AddSingleton<IOpenSearchClient>( sp =>
     return new OpenSearchClient( settings );
 } );
 
-builder.Services.AddOpenSearchMigrations( opts =>
-{
-    opts.WithProductionDefaults();
-    opts.LedgerIndex = ".migrations";
-    opts.LockIndex   = ".migrations-lock";
-    opts.LockName    = "host-lock";
-} );
+builder.Services
+    .WithProductionDefaults()
+    .AddOpenSearchMigrations( opts =>
+    {
+        opts.LedgerIndex = ".migrations";
+        opts.LockIndex   = ".migrations-lock";
+        opts.LockName    = "host-lock";
+    } );
 
 var app = builder.Build();
 
@@ -59,6 +60,10 @@ A common-questions FAQ for index-template behavior is at:
 **https://stillpoint-software.github.io/hyperbee.migrations/opensearch-template-propagation-faq.html**
 
 A working sample lives in [`runners/samples/Hyperbee.Migrations.OpenSearch.Samples/`](https://github.com/Stillpoint-Software/hyperbee.migrations/tree/main/runners/samples/Hyperbee.Migrations.OpenSearch.Samples).
+
+## Multi-provider hosts
+
+For applications that host more than one provider in the same `IServiceCollection`, resolve `OpenSearchMigrationRunner` directly rather than the base `MigrationRunner` (which throws in multi-provider hosts per [ADR-0023](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0023-multi-runner-not-meta-runner.md)). See the [multi-provider hosts guide](https://stillpoint-software.github.io/hyperbee.migrations/multi-provider-hosts.html) for the failure-isolation, parallel-composition, and expand/contract patterns.
 
 ## License
 

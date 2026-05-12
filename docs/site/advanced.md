@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Advanced Topics
-nav_order: 12
+nav_order: 17
 ---
 
 # Advanced Topics
@@ -22,20 +22,80 @@ To add support for a new database, implement the following:
 ```csharp
 public interface IMigrationRecordStore
 {
+    // Lifecycle
     Task InitializeAsync(CancellationToken cancellationToken = default);
     Task<IDisposable> CreateLockAsync();
-    Task<bool> ExistsAsync(string recordId);
-    Task DeleteAsync(string recordId);
-    Task WriteAsync(string recordId);
+
+    // Per-record CRUD
+    Task<bool>            ExistsAsync(string recordId);
+    Task<MigrationRecord> ReadAsync(string recordId);
+    Task                  DeleteAsync(string recordId);
+    Task                  WriteAsync(string recordId);
+
+    // Squash-aware write (ADR-0021): persists Checksum + Kind + Replaces.
+    // Default-interface-method delegates to the legacy WriteAsync(string)
+    // for backward compatibility; shipped providers override.
+    Task<WriteOutcome> WriteAsync(
+        MigrationRecord record,
+        WritePrecondition precondition = WritePrecondition.None,
+        CancellationToken cancellationToken = default);
+
+    // Bulk reads used during reconciliation.
+    Task<IReadOnlySet<string>> IntersectWithAppliedAsync(
+        IEnumerable<string> candidateIds,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlySet<long>> IntersectWithSquashedAsync(
+        IEnumerable<long> versions,
+        CancellationToken cancellationToken = default);
 }
 ```
 
+**Lifecycle**
+
 - **InitializeAsync** -- create tables, collections, or sets needed for tracking.
-- **CreateLockAsync** -- acquire a distributed lock; return an `IDisposable` that
-  releases it.
-- **ExistsAsync** -- check whether a migration record has already been applied.
-- **WriteAsync** -- persist a migration record after successful execution.
+- **CreateLockAsync** -- acquire a distributed lock; return an `IDisposable`
+  that releases it. Provider-native locking per
+  [ADR-0005](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0005-provider-native-distributed-locking.md).
+
+**Per-record CRUD**
+
+- **ExistsAsync** -- realtime point-lookup; checks whether a migration record
+  has already been applied. Used in the runner's discover loop.
+- **ReadAsync** -- realtime read returning the full `MigrationRecord` (id,
+  runOn, checksum, kind, replaces). Used for ledger inspection and integrity
+  checks.
+- **WriteAsync(string)** -- legacy v2 overload; persists only the record id.
+  Kept for source compatibility with v2 record-store implementations.
 - **DeleteAsync** -- remove a migration record (used during down migrations).
+
+**Squash-aware write (v3, ADR-0021)**
+
+- **WriteAsync(MigrationRecord, ...)** -- the v3 write path. Persists the
+  record id along with its `Checksum`, `Kind` (`Migration` / `Squash` /
+  `Baseline`), and `Replaces` array. The optional `WritePrecondition`
+  ensures concurrent runners don't double-write a row. Returns a
+  `WriteOutcome` distinguishing `Created`, `AlreadyExistsBenign` (the row
+  exists with matching content -- treated as no-op success), and
+  `PreconditionFailed` (the row exists with a different checksum -- hard
+  error).
+
+  The default-interface-method implementation delegates to the legacy
+  `WriteAsync(string)` so v2 record-store implementations compile
+  unchanged. Shipped providers override with a single-round-trip persist
+  that captures all three fields.
+
+**Bulk reads (v3, ADR-0019 reconciliation)**
+
+- **IntersectWithAppliedAsync** -- given a candidate set of record ids,
+  returns the subset already in the ledger. Single round trip per
+  reconciliation pass. Default implementation falls back to a per-id
+  `ExistsAsync` loop -- adequate but slow for large migration sets.
+- **IntersectWithSquashedAsync** -- given a candidate set of migration
+  versions, returns the subset transitively covered by some applied
+  squash row's `Replaces` array. Default returns an empty set; custom
+  implementations must walk the squash graph to support fresh-install
+  reconciliation against squashed history.
 
 ## Custom Conventions
 
@@ -77,15 +137,18 @@ Each provider implements locking at the database layer using native primitives:
 
 ### Provider Lock Options
 
-| Option | Aerospike | Couchbase | MongoDB | PostgreSQL |
-|--------|-----------|-----------|---------|------------|
-| LockName | Yes | Yes | Yes | Yes |
-| LockMaxLifetime | Yes | Yes | Yes | Yes |
-| LockExpireInterval | No | Yes | No | No |
-| LockRenewInterval | No | Yes | No | No |
+| Option              | Aerospike | Couchbase | MongoDB | OpenSearch | PostgreSQL |
+|---------------------|-----------|-----------|---------|------------|------------|
+| LockName            | Yes       | Yes       | Yes     | Yes        | Yes        |
+| LockMaxLifetime     | Yes       | Yes       | Yes     | Yes        | Yes        |
+| LockExpireInterval  | No        | Yes       | No      | No         | No         |
+| LockRenewInterval   | No        | Yes       | No      | Yes        | No         |
+| LockStaleAfter      | No        | No        | No      | Yes        | No         |
 
-Couchbase supports additional lock options because its lock implementation
-uses a renewal loop to extend the lock during long-running migrations.
+Couchbase + OpenSearch support additional lock options because their lock
+implementations use renewal loops to extend the lock during long-running
+migrations. OpenSearch additionally exposes `LockStaleAfter` for forensic
+recovery from crashed runners (per ADR-0018 split lock index).
 
 ## Error Handling
 

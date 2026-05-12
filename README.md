@@ -1,81 +1,153 @@
-# Hyperbee Migrations
+# Hyperbee.Migrations
 
-## Introduction
+[![Build status](https://github.com/Stillpoint-Software/hyperbee.migrations/actions/workflows/pack_publish.yml/badge.svg)](https://github.com/Stillpoint-Software/hyperbee.migrations/actions/workflows/pack_publish.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![NuGet](https://img.shields.io/nuget/v/Hyperbee.Migrations.svg)](https://www.nuget.org/packages/Hyperbee.Migrations/)
+[![.NET](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-512BD4.svg)](https://dotnet.microsoft.com/)
 
-Hyperbee Migrations is a migration framework for .NET. Migrations are a structured way to alter your database
-schema and are an alternative to creating lots of database scripts that have to be run manually by every
-developer involved. Migrations solve the problem of evolving a database schema (and data) for multiple databases
-(for example, the developer's local database, the test database and the production database). Database changes
-are described in classes written in C# that can be checked into a version control system.
+A versioned, journaled migration framework for .NET that supports relational and NoSQL databases through a single, consistent API.
 
-The framework API is heavily influenced by [Fluent Migrator](https://github.com/schambers/fluentmigrator), [Raven Migrations](https://github.com/migrating-ravens/RavenMigrations) and [DbUp](https://github.com/DbUp/DbUp)
+**Documentation:** https://stillpoint-software.github.io/hyperbee.migrations/
 
-The Cron Helper uses HangFire Cronos.
+## Why
 
-### Features include:
+Database schema and data evolve over the life of an application. Hyperbee.Migrations gives you a structured, version-controlled way to evolve them across every environment -- local, test, staging, production -- with the same discipline you bring to source code. Migrations live in your repo as C# classes (or as embedded resource files), are discovered by reflection at runtime, and execute exactly once per environment.
 
-* Easy integration
-* Supports **Aerospike**, **Couchbase**, **MongoDB**, **OpenSearch**, and **PostgreSQL**
-* Resource Migrations
-    * Migrations can be defined as embedded resource files (SQL, N1QL, AQL, MongoDB commands, OpenSearch DDL, JSON documents) alongside code-based migrations, enabling database changes without recompilation.
-* Preventing simultaneous migrations
-    * By default, Hyperbee Migrations prevents parallel migration runner execution.
-* Profiles 
-    * There are times when you may want to scope migrations to specific environments.
-* A Record Store
-    * Keeps list of migrations that have completed
-* Local Solutions
-    * Run a migration locally
-* Run from Command Line
-    * Run a migration at the command line
-* Cron Helper
-    * Run a migration based on a start and stop criteria using a cron setting
-* Journaling
-    * You can determine whether or not to journal the migration
+## Supported providers
 
-### A Migration Example
+| Provider       | Package                                    | Statement format | Locking                         |
+| -------------- | ------------------------------------------ | ---------------- | ------------------------------- |
+| **Aerospike**  | `Hyperbee.Migrations.Providers.Aerospike`  | AQL-like         | CREATE_ONLY record + TTL        |
+| **Couchbase**  | `Hyperbee.Migrations.Providers.Couchbase`  | N1QL             | Couchbase.Extensions.Locks      |
+| **MongoDB**    | `Hyperbee.Migrations.Providers.MongoDB`    | shell-like       | document conditional write      |
+| **OpenSearch** | `Hyperbee.Migrations.Providers.OpenSearch` | OpenSearch DSL   | `op_type=create` + realtime GET |
+| **PostgreSQL** | `Hyperbee.Migrations.Providers.Postgres`   | raw `.sql` files | session-level advisory lock     |
 
-A migration looks like the following:
+Targets **.NET 8, 9, and 10**. Each provider package is shipped independently on NuGet.
 
-```c#
-// #1 - specify the migration number
-[Migration(1)]
-public class PeopleHaveFullNames : Migration // #2 inherit from Migration
-{
-    // #3 do the migration
-    public async override Task UpAsync( CancellationToken cancellationToken = default )
-    {
-    }
+## Install
 
-    // #4 optional: undo the migration
-    public async override Task DownAsync( CancellationToken cancellationToken = default )
-    {
-    }
-}
-
+```bash
+dotnet add package Hyperbee.Migrations.Providers.Postgres
 ```
 
-### Project Structure
+Or whichever provider matches your store. The core `Hyperbee.Migrations` library is referenced transitively.
 
-| Path | Description |
-|------|-------------|
-| `src/` | Core migration libraries and provider implementations |
-| `runners/` | Provider-specific migration runners |
-| `runners/samples/` | Sample migrations for each provider |
-| `tests/` | Unit and integration tests |
+## Quick start
 
-# Build Requirements
+```csharp
+// Program.cs
+using Hyperbee.Migrations.Providers.Postgres;
 
-* To build and run this project, **.NET 8, 9 or 10 SDK** is required.
-* Ensure your development tools are compatible with .NET 8, 9 or 10.
+var builder = WebApplication.CreateBuilder( args );
 
-## Building the Solution
+// Register the Npgsql data source the migration runner reads from.
+builder.Services.AddNpgsqlDataSource( builder.Configuration.GetConnectionString( "Migrations" ) );
 
-* With .NET 8, 9 or 10 SDK installed, you can build the solution using the standard `dotnet build` command.
+builder.Services.AddPostgresMigrations( opts =>
+{
+    opts.SchemaName     = "migration";  // ledger schema (default: "migration")
+    opts.LockingEnabled = true;
+} );
 
+var app = builder.Build();
 
-# Status
+using ( var scope = app.Services.CreateScope() )
+{
+    var runner = scope.ServiceProvider.GetRequiredService<MigrationRunner>();
+    await runner.RunAsync( app.Lifetime.ApplicationStopping );
+}
 
-| Branch     | Action                                                                                                                                                                                                                      |
-|------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `main`     | [![Build status](https://github.com/Stillpoint-Software/hyperbee.migrations/actions/workflows/pack_publish.yml/badge.svg)](https://github.com/Stillpoint-Software/hyperbee.migration/actions/workflows/pack_publish.yml)                 |
+app.Run();
+```
+
+A migration is a class:
+
+```csharp
+using Hyperbee.Migrations;
+
+[Migration( 20260101_001 )]
+public class CreateUsersTable( PostgresResourceRunner<CreateUsersTable> runner ) : Migration
+{
+    public override Task UpAsync( CancellationToken ct = default )
+        => runner.AllSqlFromAsync( ct );
+}
+```
+
+The companion resource file `Resources/20260101_001_CreateUsersTable.sql` ships in the assembly via `<EmbeddedResource>`.
+
+For detailed walk-throughs by provider, see the documentation site:
+
+- [Concepts](https://stillpoint-software.github.io/hyperbee.migrations/concepts.html)
+- [Getting Started](https://stillpoint-software.github.io/hyperbee.migrations/getting-started.html)
+- [PostgreSQL](https://stillpoint-software.github.io/hyperbee.migrations/postgresql.html) | [Aerospike](https://stillpoint-software.github.io/hyperbee.migrations/aerospike.html) | [Couchbase](https://stillpoint-software.github.io/hyperbee.migrations/couchbase.html) | [MongoDB](https://stillpoint-software.github.io/hyperbee.migrations/mongodb.html) | [OpenSearch](https://stillpoint-software.github.io/hyperbee.migrations/opensearch.html)
+
+## Multi-provider hosts
+
+A single application can register migrations for more than one provider:
+
+```csharp
+builder.Services
+    .AddPostgresMigrations( opts => { /* ... */ } )
+    .AddMongoDBMigrations(  opts => { /* ... */ } );
+
+// Resolve typed runners; the base MigrationRunner resolution throws in
+// multi-provider hosts to prevent silent shadowing.
+var pg = sp.GetRequiredService<PostgresMigrationRunner>();
+var mg = sp.GetRequiredService<MongoDBMigrationRunner>();
+```
+
+See [Multi-Provider Hosts](https://stillpoint-software.github.io/hyperbee.migrations/multi-provider-hosts.html) for the full pattern, failure-isolation samples, and the expand/contract recipe for cross-store changes.
+
+## Project layout
+
+| Path                                                   | Contents                                                                    |
+| ------------------------------------------------------ | --------------------------------------------------------------------------- |
+| [`src/Hyperbee.Migrations/`](src/Hyperbee.Migrations/) | Core: runner, options, record-store contract, conventions, resource helpers |
+| [`src/Hyperbee.Migrations.Providers.*/`](src/)         | Per-provider implementations                                                |
+| [`runners/Hyperbee.MigrationRunner.*/`](runners/)      | Per-provider standalone runner executables (Docker-ready)                   |
+| [`runners/samples/`](runners/samples/)                 | Working samples per provider                                                |
+| [`docs/site/`](docs/site/)                             | Jekyll documentation source (just-the-docs)                                 |
+| [`docs/decisions/`](docs/decisions/)                   | Architecture Decision Records                                               |
+| [`tests/`](tests/)                                     | Unit + Testcontainers integration tests                                     |
+
+## Documentation
+
+|                            |                                                            |
+| -------------------------- | ---------------------------------------------------------- |
+| **Concepts & guides**      | https://stillpoint-software.github.io/hyperbee.migrations/ |
+| **Architecture decisions** | [`docs/decisions/`](docs/decisions/)                       |
+| **Operator guides**        | [`docs/guides/`](docs/guides/)                             |
+| **Changelog**              | [`CHANGELOG.md`](CHANGELOG.md)                             |
+
+## Building from source
+
+Requires .NET 8, 9, and 10 SDKs (the solution multi-targets all three for compatibility testing).
+
+```bash
+git clone https://github.com/Stillpoint-Software/hyperbee.migrations.git
+cd hyperbee.migrations
+dotnet build Hyperbee.Migrations.slnx -c Release
+dotnet test  Hyperbee.Migrations.slnx -c Release
+```
+
+Integration tests use [Testcontainers](https://dotnet.testcontainers.org/) and require a Docker engine. They are gated behind `#if INTEGRATIONS`; enable with `-p:EnableIntegrationTests=true`.
+
+## Acknowledgments
+
+The framework API draws on prior art in the .NET migration space:
+
+- [Fluent Migrator](https://github.com/schambers/fluentmigrator)
+- [Raven Migrations](https://github.com/migrating-ravens/RavenMigrations)
+- [DbUp](https://github.com/DbUp/DbUp)
+- [Cronos](https://github.com/HangfireIO/Cronos) -- cron expression support
+- [Couchbase .NET Client](https://github.com/couchbase/couchbase-net-client) -- Couchbase connectivity and DI extensions
+- [Parlot](https://github.com/sebastienros/parlot) -- statement parsers across all providers
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the build/test/PR flow. We use a trunk-based GitHub flow; please open an issue to discuss substantial changes before sending a PR.
+
+## License
+
+Released under the [MIT License](LICENSE).

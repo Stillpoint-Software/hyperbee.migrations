@@ -1,6 +1,8 @@
 ﻿using System.Reflection;
 using System.Runtime.Loader;
 using Hyperbee.Migrations.Providers.Postgres.Resources;
+using Hyperbee.Migrations.Providers.Postgres.Squash;
+using Hyperbee.Migrations.Squash;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -79,6 +81,29 @@ public static class ServiceCollectionExtensions
             provider => provider.GetRequiredService<PostgresMigrationRunner>() );
 
         services.AddTransient( typeof( PostgresResourceRunner<> ) ); // technically singleton works because of the nature of migrations, but even so ..
+
+        // Squash codegen wiring (per ADR-0019). Components are stateless and
+        // idempotent; safe singletons.
+        services.TryAddSingleton<PostgresSnapshotCanonicalizer>();
+        services.TryAddSingleton<PostgresDataOpClassifier>();
+        services.TryAddSingleton( provider => new PgDumpSnapshotStrategy(
+            provider.GetRequiredService<PostgresSnapshotCanonicalizer>(),
+            provider.GetRequiredService<PostgresDataOpClassifier>() ) );
+        services.TryAddSingleton<PostgresSquashVerifier>();
+        services.TryAddSingleton( provider =>
+        {
+            // Default topology instance for descriptor composition; live
+            // CaptureAsync overrides at runtime.
+            ITopologySignature topology = new PostgresTopologySignature();
+            var descriptor = new SquashStrategyDescriptor(
+                TopologySignature: topology,
+                DataOpClassifier: provider.GetRequiredService<PostgresDataOpClassifier>(),
+                Generator: provider.GetRequiredService<PgDumpSnapshotStrategy>(),
+                Verifier: provider.GetRequiredService<PostgresSquashVerifier>(),
+                Canonicalizer: provider.GetRequiredService<PostgresSnapshotCanonicalizer>() );
+            descriptor.EnsureValid();
+            return descriptor;
+        } );
 
         return services;
     }

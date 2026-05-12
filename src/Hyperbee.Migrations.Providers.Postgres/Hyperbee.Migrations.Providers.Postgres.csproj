@@ -12,7 +12,7 @@
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
     <Copyright>Stillpoint Software, Inc.</Copyright>
     <Title>Hyperbee Migrations Postgres Provider</Title>
-    <Description>Hyperbee Migrations Postgres Provider adds Postgres support to Hyperbee Migrations.</Description>
+    <Description>PostgreSQL provider for Hyperbee.Migrations. Versioned, journaled migration framework with raw .sql resources via PostgresResourceRunner, session-level advisory lock distribution (ADR-0005), per-provider MigrationRunner subclass for multi-provider hosts, and squash codegen via PgDumpSnapshotStrategy (canonical pg_dump --schema-only output).</Description>
     <RepositoryUrl>https://github.com/Stillpoint-Software/Hyperbee.Migrations</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
