@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Hyperbee.Migrations.Providers.Aerospike.SquashCli;
 using Hyperbee.Migrations.Providers.Couchbase.SquashCli;
 using Hyperbee.Migrations.Providers.MongoDB.SquashCli;

@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Squash.Cli;
+﻿namespace Hyperbee.Migrations.Squash.Cli;
 
 /// <summary>
 /// Per-class verdict produced by <see cref="ISquashCliProvider.ScanSource"/>.

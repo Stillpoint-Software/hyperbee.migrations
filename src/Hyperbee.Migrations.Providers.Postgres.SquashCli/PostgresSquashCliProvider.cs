@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Providers.Postgres.Squash;
+﻿using Hyperbee.Migrations.Providers.Postgres.Squash;
 using Hyperbee.Migrations.Squash;
 using Hyperbee.Migrations.Squash.Cli;
 using Microsoft.Extensions.DependencyInjection;

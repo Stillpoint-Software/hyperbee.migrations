@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Squash;
+﻿using Hyperbee.Migrations.Squash;
 using Hyperbee.Migrations.Squash.Cli;
 
 namespace Hyperbee.Migrations.Cli.FleetManifest;

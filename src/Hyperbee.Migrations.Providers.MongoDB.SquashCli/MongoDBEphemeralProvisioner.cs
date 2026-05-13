@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Squash.Cli;
+﻿using Hyperbee.Migrations.Squash.Cli;
 using Testcontainers.MongoDb;
 
 namespace Hyperbee.Migrations.Providers.MongoDB.SquashCli;

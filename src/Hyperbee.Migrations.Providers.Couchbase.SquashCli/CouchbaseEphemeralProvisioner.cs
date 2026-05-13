@@ -1,4 +1,4 @@
-using Couchbase;
+﻿using Couchbase;
 using Hyperbee.Migrations.Squash.Cli;
 using Testcontainers.Couchbase;
 

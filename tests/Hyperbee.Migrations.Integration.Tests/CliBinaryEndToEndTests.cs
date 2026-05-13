@@ -1,4 +1,4 @@
-//#define INTEGRATIONS
+﻿//#define INTEGRATIONS
 using System.Diagnostics;
 
 namespace Hyperbee.Migrations.Integration.Tests;

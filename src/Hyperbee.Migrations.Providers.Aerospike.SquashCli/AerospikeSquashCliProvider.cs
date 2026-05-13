@@ -1,4 +1,4 @@
-using Aerospike.Client;
+﻿using Aerospike.Client;
 using Hyperbee.Migrations.Providers.Aerospike.Squash;
 using Hyperbee.Migrations.Squash;
 using Hyperbee.Migrations.Squash.Cli;

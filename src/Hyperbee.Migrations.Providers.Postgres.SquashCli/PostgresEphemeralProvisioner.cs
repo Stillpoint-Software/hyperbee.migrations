@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Squash.Cli;
+﻿using Hyperbee.Migrations.Squash.Cli;
 using Testcontainers.PostgreSql;
 
 namespace Hyperbee.Migrations.Providers.Postgres.SquashCli;

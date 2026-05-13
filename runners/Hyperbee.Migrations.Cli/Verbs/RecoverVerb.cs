@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Hyperbee.Migrations;
 using Hyperbee.Migrations.Squash;
 using Microsoft.Extensions.DependencyInjection;

@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Squash.Cli;
+﻿namespace Hyperbee.Migrations.Squash.Cli;
 
 /// <summary>
 /// Operator-supplied inputs for one squash-generation invocation, passed by

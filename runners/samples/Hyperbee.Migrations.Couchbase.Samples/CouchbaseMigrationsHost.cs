@@ -1,4 +1,4 @@
-using Couchbase.Extensions.DependencyInjection;
+﻿using Couchbase.Extensions.DependencyInjection;
 using Hyperbee.Migrations;
 using Hyperbee.Migrations.Providers.Couchbase;
 using Microsoft.Extensions.Configuration;

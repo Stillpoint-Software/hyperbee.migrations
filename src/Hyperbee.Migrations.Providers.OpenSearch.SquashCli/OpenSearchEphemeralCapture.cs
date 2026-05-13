@@ -1,4 +1,4 @@
-using Hyperbee.Migrations.Providers.OpenSearch.Squash;
+﻿using Hyperbee.Migrations.Providers.OpenSearch.Squash;
 using Hyperbee.Migrations.Squash;
 using Hyperbee.Migrations.Squash.Cli;
 using OpenSearch.Client;

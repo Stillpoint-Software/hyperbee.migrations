@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Squash.Cli;
+﻿namespace Hyperbee.Migrations.Squash.Cli;
 
 /// <summary>
 /// Per-provider extensibility contract for the <c>hyperbee-migrations squash</c>

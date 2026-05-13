@@ -1,4 +1,4 @@
-//#define INTEGRATIONS
+﻿//#define INTEGRATIONS
 using System.Reflection;
 using Hyperbee.Migrations;
 using Hyperbee.Migrations.Integration.Tests.Container.Couchbase;

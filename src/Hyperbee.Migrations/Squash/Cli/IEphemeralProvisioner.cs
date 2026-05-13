@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Squash.Cli;
+﻿namespace Hyperbee.Migrations.Squash.Cli;
 
 /// <summary>
 /// Provisions an ephemeral cluster fixture for squash codegen (per ADR-0019

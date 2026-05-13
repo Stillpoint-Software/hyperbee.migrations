@@ -1,4 +1,4 @@
-using Hyperbee.Migrations;
+﻿using Hyperbee.Migrations;
 using Hyperbee.Migrations.Providers.Postgres;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
