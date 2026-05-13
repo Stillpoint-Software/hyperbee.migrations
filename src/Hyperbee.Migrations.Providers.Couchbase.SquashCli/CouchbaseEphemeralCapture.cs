@@ -2,34 +2,31 @@ using Couchbase;
 using Hyperbee.Migrations.Providers.Couchbase.Services;
 using Hyperbee.Migrations.Providers.Couchbase.Squash;
 using Hyperbee.Migrations.Squash;
+using Hyperbee.Migrations.Squash.Cli;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Testcontainers.Couchbase;
 
 namespace Hyperbee.Migrations.Providers.Couchbase.SquashCli;
 
 /// <summary>
-/// Couchbase snapshot capture concrete: spins an ephemeral Couchbase Server
-/// container via <see cref="CouchbaseBuilder"/>, applies migrations through
-/// the requested upper bound, then captures via
-/// <see cref="CouchbaseSnapshotCapture"/>. Per ADR-0019 A18 the container is
-/// torn down after each capture.
+/// Couchbase snapshot capture orchestrator. Consumes an
+/// <see cref="IEphemeralProvisioner"/> for the container lifecycle (default
+/// <see cref="CouchbaseEphemeralProvisioner"/>; sibling-container variant via
+/// <see cref="CouchbaseSiblingContainerProvisioner"/>); applies migrations
+/// through a caller-supplied delegate; captures via
+/// <see cref="CouchbaseSnapshotCapture"/>.
 /// </summary>
-/// <remarks>
-/// The host-side CLI talks to the containerized Couchbase via the bootstrap
-/// connection string Testcontainers exposes. Cluster-map race vs. host SDK
-/// is handled by passing `network=external` in the connection settings -- this
-/// instructs the SDK to use the externally-resolvable address it bootstrapped
-/// from rather than the container-internal addresses the cluster reports.
-/// </remarks>
 public sealed class CouchbaseEphemeralCapture : IAsyncDisposable
 {
+    private readonly IEphemeralProvisioner _provisioner;
     private readonly Func<string, long, CancellationToken, Task> _applyMigrations;
 
     public CouchbaseEphemeralCapture(
-        Func<string, long, CancellationToken, Task> applyMigrations )
+        Func<string, long, CancellationToken, Task> applyMigrations,
+        IEphemeralProvisioner provisioner = null )
     {
         _applyMigrations = applyMigrations ?? throw new ArgumentNullException( nameof( applyMigrations ) );
+        _provisioner = provisioner ?? new CouchbaseEphemeralProvisioner();
     }
 
     public async Task<SnapshotCaptureResult> CaptureAsync(
@@ -37,73 +34,83 @@ public sealed class CouchbaseEphemeralCapture : IAsyncDisposable
         string bucketName,
         CancellationToken cancellationToken )
     {
-        // Testcontainers.Couchbase ships a CouchbaseBuilder that bootstraps
-        // a single-node cluster with default services. The bucket the
-        // operator's migrations target is created by their own IMigrationHost
-        // setup (or by an InitializeAsync-time bucket-create per
-        // CouchbaseRecordStore.InitializeAsync). The bucketName parameter
-        // here just scopes the snapshot capture.
-        _ = bucketName; // captured below; ContainerBuilder doesn't pre-create
-        var container = new CouchbaseBuilder()
-            .WithCleanUp( true )
-            .Build();
+        var hints = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
 
+        await using var rawFixture = await _provisioner.ProvisionAsync( hints, cancellationToken )
+            .ConfigureAwait( false );
+
+        // Capture needs hostname + mgmt-port + credentials. The default
+        // CouchbaseEphemeralFixture carries them as typed properties; the
+        // sibling-container fixture exposes them via Metadata. Read both
+        // paths so either provisioner shape works.
+        string username, password, mgmtHost;
+        int mgmtPort;
+
+        if ( rawFixture is CouchbaseEphemeralFixture defaultFixture )
+        {
+            username = defaultFixture.Username;
+            password = defaultFixture.Password;
+            mgmtHost = defaultFixture.Hostname;
+            mgmtPort = defaultFixture.MgmtPort;
+        }
+        else
+        {
+            username = ReadMetadata( rawFixture, "username" )
+                ?? throw new InvalidOperationException( "Couchbase fixture metadata missing `username`." );
+            mgmtPort = int.Parse(
+                ReadMetadata( rawFixture, "mgmt-port" )
+                    ?? throw new InvalidOperationException( "Couchbase fixture metadata missing `mgmt-port`." ),
+                System.Globalization.CultureInfo.InvariantCulture );
+            mgmtHost = ReadMetadata( rawFixture, "hostname" )
+                ?? ReadMetadata( rawFixture, "network-alias" )
+                ?? throw new InvalidOperationException( "Couchbase fixture metadata missing `hostname` or `network-alias`." );
+            password = ReadMetadata( rawFixture, "password" ) ?? "password";
+        }
+
+        await _applyMigrations( rawFixture.ConnectionString, request.UpToVersion, cancellationToken )
+            .ConfigureAwait( false );
+
+        var clusterOptions = new ClusterOptions
+        {
+            ConnectionString = rawFixture.ConnectionString,
+            UserName = username,
+            Password = password
+        };
+
+        var cluster = await Cluster.ConnectAsync( clusterOptions ).ConfigureAwait( false );
         try
         {
-            await container.StartAsync( cancellationToken ).ConfigureAwait( false );
+            await cluster.WaitUntilReadyAsync( TimeSpan.FromMinutes( 1 ) ).ConfigureAwait( false );
 
-            var connectionString = container.GetConnectionString() + "?network=external";
-
-            await _applyMigrations( connectionString, request.UpToVersion, cancellationToken ).ConfigureAwait( false );
-
-            // Now connect a fresh cluster handle for the capture phase. Use
-            // the same external-network connection setting so cluster-map
-            // resolution stays consistent.
-            var clusterOptions = new ClusterOptions
+            using var http = new HttpClient
             {
-                ConnectionString = connectionString,
-                UserName = CouchbaseBuilder.DefaultUsername,
-                Password = CouchbaseBuilder.DefaultPassword
+                BaseAddress = new Uri( $"http://{mgmtHost}:{mgmtPort}" )
             };
+            http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue(
+                    "Basic",
+                    Convert.ToBase64String( System.Text.Encoding.ASCII.GetBytes( $"{username}:{password}" ) ) );
 
-            var cluster = await Cluster.ConnectAsync( clusterOptions ).ConfigureAwait( false );
-            try
-            {
-                await cluster.WaitUntilReadyAsync( TimeSpan.FromMinutes( 1 ) ).ConfigureAwait( false );
+            var restApi = new CouchbaseRestApiService(
+                http,
+                new OptionsWrapper<ClusterOptions>( clusterOptions ),
+                NullLogger<CouchbaseRestApiService>.Instance );
 
-                // Build the REST API service using the same credentials.
-                // CouchbaseSnapshotCapture wants bucket/scope settings the
-                // N1QL system tables don't expose, so it goes through REST.
-                using var http = new HttpClient
-                {
-                    BaseAddress = new Uri( $"http://{container.Hostname}:{container.GetMappedPublicPort( CouchbaseBuilder.MgmtPort )}" )
-                };
-                http.DefaultRequestHeaders.Authorization =
-                    new System.Net.Http.Headers.AuthenticationHeaderValue(
-                        "Basic",
-                        Convert.ToBase64String( System.Text.Encoding.ASCII.GetBytes(
-                            $"{CouchbaseBuilder.DefaultUsername}:{CouchbaseBuilder.DefaultPassword}" ) ) );
+            var blob = await CouchbaseSnapshotCapture.CaptureAsync(
+                cluster, restApi, bucketName, cancellationToken ).ConfigureAwait( false );
 
-                var restApi = new CouchbaseRestApiService(
-                    http,
-                    new OptionsWrapper<ClusterOptions>( clusterOptions ),
-                    NullLogger<CouchbaseRestApiService>.Instance );
-
-                var blob = await CouchbaseSnapshotCapture.CaptureAsync(
-                    cluster, restApi, bucketName, cancellationToken ).ConfigureAwait( false );
-
-                return new SnapshotCaptureResult( blob );
-            }
-            finally
-            {
-                await cluster.DisposeAsync().ConfigureAwait( false );
-            }
+            return new SnapshotCaptureResult( blob );
         }
         finally
         {
-            await container.DisposeAsync().ConfigureAwait( false );
+            await cluster.DisposeAsync().ConfigureAwait( false );
         }
     }
+
+    private static string ReadMetadata( IEphemeralFixture fixture, string key )
+        => fixture.Metadata != null && fixture.Metadata.TryGetValue( key, out var v ) && !string.IsNullOrWhiteSpace( v )
+            ? v
+            : null;
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

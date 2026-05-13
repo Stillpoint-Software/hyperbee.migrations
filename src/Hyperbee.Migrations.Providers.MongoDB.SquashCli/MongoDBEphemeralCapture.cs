@@ -1,32 +1,27 @@
 using Hyperbee.Migrations.Providers.MongoDB.Squash;
 using Hyperbee.Migrations.Squash;
+using Hyperbee.Migrations.Squash.Cli;
 using MongoDB.Driver;
-using Testcontainers.MongoDb;
 
 namespace Hyperbee.Migrations.Providers.MongoDB.SquashCli;
 
 /// <summary>
-/// MongoDB snapshot capture concrete: spins an ephemeral mongo:7 container,
-/// applies migrations through the requested upper bound via the
-/// caller-supplied delegate, then captures the section-headered snapshot via
-/// <see cref="MongoDBSnapshotCapture"/>. Per ADR-0019 A18 the container is
-/// torn down after each capture.
+/// MongoDB snapshot capture orchestrator. Consumes an
+/// <see cref="IEphemeralProvisioner"/> for the container lifecycle; applies
+/// migrations through a caller-supplied delegate; captures via
+/// <see cref="MongoDBSnapshotCapture"/>.
 /// </summary>
 public sealed class MongoDBEphemeralCapture : IAsyncDisposable
 {
+    private readonly IEphemeralProvisioner _provisioner;
     private readonly Func<string, long, CancellationToken, Task> _applyMigrations;
 
-    /// <param name="applyMigrations">
-    /// Caller-supplied callback that applies the operator's migration
-    /// assembly through the requested upper version. Takes (connectionString,
-    /// upToVersion, ct). Typically wraps the discovered IMigrationHost's
-    /// ConfigureAsync against a MongoDB client bound to the ephemeral
-    /// container.
-    /// </param>
     public MongoDBEphemeralCapture(
-        Func<string, long, CancellationToken, Task> applyMigrations )
+        Func<string, long, CancellationToken, Task> applyMigrations,
+        IEphemeralProvisioner provisioner = null )
     {
         _applyMigrations = applyMigrations ?? throw new ArgumentNullException( nameof( applyMigrations ) );
+        _provisioner = provisioner ?? new MongoDBEphemeralProvisioner();
     }
 
     public async Task<SnapshotCaptureResult> CaptureAsync(
@@ -35,32 +30,21 @@ public sealed class MongoDBEphemeralCapture : IAsyncDisposable
         string image,
         CancellationToken cancellationToken )
     {
-        var resolvedImage = string.IsNullOrWhiteSpace( image )
-            ? "mongo:7"
-            : image;
+        var hints = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
+        if ( !string.IsNullOrWhiteSpace( image ) )
+            hints["image"] = image;
 
-        var container = new MongoDbBuilder( resolvedImage )
-            .WithCleanUp( true )
-            .Build();
+        await using var rawFixture = await _provisioner.ProvisionAsync( hints, cancellationToken )
+            .ConfigureAwait( false );
 
-        try
-        {
-            await container.StartAsync( cancellationToken ).ConfigureAwait( false );
+        await _applyMigrations( rawFixture.ConnectionString, request.UpToVersion, cancellationToken )
+            .ConfigureAwait( false );
 
-            var connectionString = container.GetConnectionString();
+        var client = new MongoClient( rawFixture.ConnectionString );
+        var blob = await MongoDBSnapshotCapture.CaptureAsync( client, databaseName, cancellationToken )
+            .ConfigureAwait( false );
 
-            await _applyMigrations( connectionString, request.UpToVersion, cancellationToken ).ConfigureAwait( false );
-
-            var client = new MongoClient( connectionString );
-            var blob = await MongoDBSnapshotCapture.CaptureAsync( client, databaseName, cancellationToken )
-                .ConfigureAwait( false );
-
-            return new SnapshotCaptureResult( blob );
-        }
-        finally
-        {
-            await container.DisposeAsync().ConfigureAwait( false );
-        }
+        return new SnapshotCaptureResult( blob );
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;

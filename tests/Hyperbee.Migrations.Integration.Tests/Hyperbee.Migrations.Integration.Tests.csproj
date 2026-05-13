@@ -49,6 +49,31 @@
     <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Aerospike\Hyperbee.Migrations.Providers.Aerospike.csproj" />
     <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Couchbase\Hyperbee.Migrations.Providers.Couchbase.csproj" />
     <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.OpenSearch\Hyperbee.Migrations.Providers.OpenSearch.csproj" />
+    <!--
+      SquashCli packages are referenced directly so end-to-end tests can
+      instantiate the {Provider}SquashCliProvider types. Sample assemblies
+      are NOT project references because their `Hyperbee.Migrations.{Provider}.*`
+      namespaces shadow the corresponding SDK namespaces (e.g.,
+      `Hyperbee.Migrations.OpenSearch.Samples` shadows `OpenSearch.Net` from
+      the test files' resolution scope). Integration tests load sample
+      assemblies by DLL path via Assembly.LoadFrom; the sample csprojs are
+      registered as MSBuild targets that copy their output next to the test
+      binary on build.
+    -->
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Postgres.SquashCli\Hyperbee.Migrations.Providers.Postgres.SquashCli.csproj" />
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Aerospike.SquashCli\Hyperbee.Migrations.Providers.Aerospike.SquashCli.csproj" />
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.OpenSearch.SquashCli\Hyperbee.Migrations.Providers.OpenSearch.SquashCli.csproj" />
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.MongoDB.SquashCli\Hyperbee.Migrations.Providers.MongoDB.SquashCli.csproj" />
+    <ProjectReference Include="..\..\src\Hyperbee.Migrations.Providers.Couchbase.SquashCli\Hyperbee.Migrations.Providers.Couchbase.SquashCli.csproj" />
+    <!-- Sample project references with ReferenceOutputAssembly=false:
+         triggers MSBuild build ordering (samples build before this test
+         project) without bringing their compile-time types into our
+         namespace lookup scope. -->
+    <ProjectReference Include="..\..\runners\samples\Hyperbee.Migrations.Postgres.Samples\Hyperbee.Migrations.Postgres.Samples.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\runners\samples\Hyperbee.Migrations.Aerospike.Samples\Hyperbee.Migrations.Aerospike.Samples.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\runners\samples\Hyperbee.Migrations.OpenSearch.Samples\Hyperbee.Migrations.OpenSearch.Samples.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\runners\samples\Hyperbee.Migrations.MongoDB.Samples\Hyperbee.Migrations.MongoDB.Samples.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\runners\samples\Hyperbee.Migrations.Couchbase.Samples\Hyperbee.Migrations.Couchbase.Samples.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>

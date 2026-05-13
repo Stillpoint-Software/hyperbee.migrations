@@ -613,19 +613,42 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
 
     private JsonNode? LoadBodyFromResource( string path, string label )
     {
-        // Convert path separators to embedded-resource dot notation. The
-        // resource manifest name format is:
-        //   <RootNamespace>.<MigrationFolder>.<sub>.<dirs>.<file>.json
-        // ResourceHelper.GetResource prepends the assembly's ResourceLocation.
+        // The resource manifest name format is:
+        //   <RootNamespace>.<MigrationFolder>.<sub>.<dirs>.<file>.<ext>
+        //
+        // MSBuild's manifest-name rule differs between folder and leaf
+        // segments: folder names get identifier-sanitized (digit prefix
+        // gets a leading `_`, dashes become `_`), but the LEAF filename
+        // keeps its dashes verbatim and only the extension is dotted.
+        // ResourceHelper.SanitizeName converts dashes uniformly which
+        // mismatches the leaf filename, so build the manifest name
+        // directly and load via `fullyQualified: true`.
         var migrationName = Migration.VersionedName<TMigration>();
+        var assembly = typeof( TMigration ).Assembly;
+        var rootNamespace = assembly
+            .GetCustomAttributes( typeof( ResourceLocationAttribute ), false )
+            .Cast<ResourceLocationAttribute>()
+            .Select( x => x.RootNamespace )
+            .FirstOrDefault() ?? typeof( TMigration ).Namespace;
+
         var normalized = path.Replace( '\\', '/' );
-        var resourceTail = normalized.Replace( '/', '.' );
-        var resourceName = $"{migrationName}.{resourceTail}";
+        var segments = normalized.Split( '/' );
+        var sanitizedSegments = new string[segments.Length];
+        for ( var i = 0; i < segments.Length; i++ )
+        {
+            sanitizedSegments[i] = i == segments.Length - 1
+                ? SanitizeLeafFilename( segments[i] )
+                : SanitizeFolderSegment( segments[i] );
+        }
+
+        var migrationSegment = SanitizeFolderSegment( migrationName );
+        var resourceName =
+            $"{rootNamespace}.{migrationSegment}.{string.Join( '.', sanitizedSegments )}";
 
         string content;
         try
         {
-            content = ResourceHelper.GetResource<TMigration>( resourceName );
+            content = ResourceHelper.GetResource<TMigration>( resourceName, fullyQualified: true );
         }
         catch ( Exception ex )
         {
@@ -639,6 +662,35 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
             throw new InvalidOperationException(
                 $"{label}: `WITH BODY @{path}` resolved to empty or invalid JSON." );
         return parsed;
+    }
+
+    // Folder segments: digit-prefixed gets a leading `_`; dashes -> `_`;
+    // matches MSBuild's CreateManifestResourceName rule for non-leaf
+    // path components.
+    private static string SanitizeFolderSegment( string segment )
+    {
+        if ( string.IsNullOrEmpty( segment ) )
+            return "_";
+
+        var sb = new System.Text.StringBuilder( segment.Length + 1 );
+        if ( char.IsDigit( segment[0] ) )
+            sb.Append( '_' );
+        foreach ( var c in segment )
+        {
+            sb.Append( char.IsLetterOrDigit( c ) ? c : '_' );
+        }
+        return sb.ToString();
+    }
+
+    // Leaf filename: MSBuild preserves dashes and most non-identifier
+    // chars verbatim; only the extension separator is left as `.`. The
+    // leaf already comes in dotted form (`name-with-dashes.json`) so we
+    // keep it verbatim.
+    private static string SanitizeLeafFilename( string segment )
+    {
+        if ( string.IsNullOrEmpty( segment ) )
+            return "_";
+        return segment;
     }
 
     private static BodySource? ExtractBodySource( Internal.Ast.StatementAst ast )

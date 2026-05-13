@@ -22,7 +22,15 @@ public class OpenSearchMigrationsHost : IMigrationHost
         services.AddLogging();
 
         var endpoint = new Uri( context.ConnectionString );
-        var settings = new ConnectionSettings( endpoint );
+        // DefaultIndex avoids OpenSearch.Net's "Index name is null for the given
+        // type" path on the typed surface when the runner's record store reads
+        // through generic helpers that resolve via type inference. The record
+        // store passes .Index(ledgerIndex) on every typed call explicitly, but
+        // OpenSearch.Net's serializer still consults the index inferrer when
+        // emitting strongly typed responses; a sensible default keeps that
+        // path clean. Matches OpenSearchMigrationOptions.DefaultLedgerIndex.
+        var settings = new ConnectionSettings( endpoint )
+            .DefaultIndex( ".migrations" );
         services.AddSingleton<IOpenSearchClient>( new OpenSearchClient( settings ) );
 
         services.AddOpenSearchMigrations( opts =>

@@ -137,6 +137,28 @@ Docker runtime cost.
   a unique DI handle so multi-provider hosts can resolve and run each
   provider's runner independently. See ADR-0023 + the multi-provider
   hosts operator guide.
+- **`IEphemeralProvisioner` abstraction (+ Couchbase sibling-container variant).**
+  The per-provider squash CLI capture orchestrators consume an
+  `IEphemeralProvisioner` for container provisioning, decoupling lifecycle
+  from the apply/capture pipeline. Each SquashCli package ships a default
+  Testcontainers-backed provisioner; the Couchbase package additionally
+  ships `CouchbaseSiblingContainerProvisioner` for the case where the CLI
+  itself runs inside a Docker container (CI pipelines, containerized
+  operator tooling). Provider provisioners are DI-overridable: the
+  default `{Provider}SquashCliProvider()` ctor wires the default
+  Testcontainers impl; a second `(IEphemeralProvisioner)` ctor accepts
+  a caller-supplied provisioner for integration tests and third-party
+  embeddings. Per ADR-0024 audit Week 2 + Week 4 completion.
+- **5 end-to-end SquashCliProvider integration tests.** One per provider
+  (Postgres, Aerospike, OpenSearch, MongoDB, Couchbase). Each test loads
+  the corresponding sample assembly by path (`Assembly.LoadFrom`),
+  discovers `IMigrationHost`, builds a `SquashCliContext`, and invokes
+  `provider.GenerateAsync` end-to-end. Determinism gate (C12): the
+  Postgres variant runs `GenerateAsync` twice against the same sample
+  and asserts byte-equal output. Plus `CliBinaryEndToEndTests` spawns
+  the actual `hyperbee-migrations.exe` child process against the
+  Postgres sample + a live Postgres Testcontainer and verifies the
+  emitted `.sql`, `.metadata.json`, and `.summary.md` artifacts.
 - **OpenSearch ISM lifecycle DSL — `DROP POLICY` + `DETACH POLICY FROM INDEX`.**
   Closes the CREATE/APPLY/DETACH/DROP symmetry for ISM policy management
   (R-17 per ADR-0024 audit follow-up). `DROP POLICY <id> [IF EXISTS]` deletes

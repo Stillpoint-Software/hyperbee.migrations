@@ -13,8 +13,20 @@ namespace Hyperbee.Migrations.Providers.MongoDB.SquashCli;
 /// </summary>
 public sealed class MongoDBSquashCliProvider : ISquashCliProvider
 {
+    private readonly IEphemeralProvisioner _provisioner;
+
     public string ProviderId => "mongodb";
     public string SquashFileExtension => ".statements";
+
+    public MongoDBSquashCliProvider()
+        : this( provisioner: null )
+    {
+    }
+
+    public MongoDBSquashCliProvider( IEphemeralProvisioner provisioner )
+    {
+        _provisioner = provisioner ?? new MongoDBEphemeralProvisioner();
+    }
 
     public async Task<SquashGenerationResult> GenerateAsync(
         SquashCliContext context,
@@ -37,12 +49,14 @@ public sealed class MongoDBSquashCliProvider : ISquashCliProvider
             ? imgOpt
             : null;
 
-        var capture = new MongoDBEphemeralCapture( async ( connStr, upTo, ct ) =>
-            await ApplyMigrationsViaHostAsync(
-                context.MigrationHost,
-                connStr,
-                upTo,
-                ct ).ConfigureAwait( false ) );
+        var capture = new MongoDBEphemeralCapture(
+            applyMigrations: async ( connStr, upTo, ct ) =>
+                await ApplyMigrationsViaHostAsync(
+                    context.MigrationHost,
+                    connStr,
+                    upTo,
+                    ct ).ConfigureAwait( false ),
+            provisioner: _provisioner );
 
         var liveClient = new MongoClient( context.ConnectionString );
 

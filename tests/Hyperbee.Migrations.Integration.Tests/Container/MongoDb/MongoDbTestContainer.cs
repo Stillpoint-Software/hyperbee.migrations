@@ -6,6 +6,7 @@ namespace Hyperbee.Migrations.Integration.Tests.Container.MongoDb;
 public class MongoDbTestContainer
 {
     public static IMongoClient Client { get; set; }
+    public static string ConnectionString { get; set; }
     public static INetwork Network { get; set; }
 
     public static async Task Initialize( TestContext context )
@@ -37,7 +38,8 @@ public class MongoDbTestContainer
         await mongoDbContainer.StartAsync( cancellationToken )
             .ConfigureAwait( false );
 
-        Client = new MongoClient( mongoDbContainer.GetConnectionString() );
+        ConnectionString = mongoDbContainer.GetConnectionString();
+        Client = new MongoClient( ConnectionString );
         Network = network;
     }
 }

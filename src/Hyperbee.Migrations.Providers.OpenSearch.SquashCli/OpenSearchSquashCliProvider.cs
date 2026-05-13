@@ -13,8 +13,20 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.SquashCli;
 /// </summary>
 public sealed class OpenSearchSquashCliProvider : ISquashCliProvider
 {
+    private readonly IEphemeralProvisioner _provisioner;
+
     public string ProviderId => "opensearch";
     public string SquashFileExtension => ".statements";
+
+    public OpenSearchSquashCliProvider()
+        : this( provisioner: null )
+    {
+    }
+
+    public OpenSearchSquashCliProvider( IEphemeralProvisioner provisioner )
+    {
+        _provisioner = provisioner ?? new OpenSearchEphemeralProvisioner();
+    }
 
     public async Task<SquashGenerationResult> GenerateAsync(
         SquashCliContext context,
@@ -29,14 +41,25 @@ public sealed class OpenSearchSquashCliProvider : ISquashCliProvider
             ? imgOpt
             : null;
 
-        var capture = new OpenSearchEphemeralCapture( async ( endpoint, upTo, ct ) =>
-            await ApplyMigrationsViaHostAsync(
-                context.MigrationHost,
-                endpoint,
-                upTo,
-                ct ).ConfigureAwait( false ) );
+        var capture = new OpenSearchEphemeralCapture(
+            applyMigrations: async ( endpoint, upTo, ct ) =>
+                await ApplyMigrationsViaHostAsync(
+                    context.MigrationHost,
+                    endpoint,
+                    upTo,
+                    ct ).ConfigureAwait( false ),
+            provisioner: _provisioner );
 
-        var liveSettings = new ConnectionSettings( new Uri( context.ConnectionString ) );
+        // DisableDirectStreaming matches the test container's ConnectionSettings
+        // shape so the strategy + topology probe see byte-for-byte identical
+        // SDK behavior whether invoked from the test container or the CLI
+        // provider. DefaultIndex avoids the "Index name is null for the given
+        // type" SDK error path on the typed surface; the squash codegen only
+        // walks the migration ledger from the typed surface so "migrations"
+        // is a reasonable default.
+        var liveSettings = new ConnectionSettings( new Uri( context.ConnectionString ) )
+            .DisableDirectStreaming()
+            .DefaultIndex( "migrations" );
         var liveClient = new OpenSearchClient( liveSettings );
 
         var ctx = new OpenSearchSquashGenerationContext(

@@ -1,74 +1,86 @@
 using Hyperbee.Migrations.Providers.Postgres.Squash;
+using Hyperbee.Migrations.Squash.Cli;
 using Npgsql;
-using Testcontainers.PostgreSql;
 
 namespace Hyperbee.Migrations.Providers.Postgres.SquashCli;
 
 /// <summary>
-/// Postgres snapshot capture concrete: spins an ephemeral
-/// <c>postgres:&lt;major&gt;-alpine</c> container per the topology signature
-/// (per ADR-0019 A10 server-version-matched), applies migrations through
-/// the requested upper bound via a caller-supplied delegate, runs
-/// <c>pg_dump --schema-only</c> via <c>docker exec</c>, captures sequence
-/// <c>last_value</c>s, and returns a <see cref="SnapshotCaptureResult"/>.
-/// Per A18, the container is torn down after each capture.
+/// Postgres snapshot capture orchestrator. Consumes an
+/// <see cref="IEphemeralProvisioner"/> for the container lifecycle (default
+/// <see cref="PostgresEphemeralProvisioner"/>); applies migrations through
+/// a caller-supplied delegate; runs <c>pg_dump --schema-only</c> via
+/// <c>docker exec</c>; returns a section-headered
+/// <see cref="SnapshotCaptureResult"/>.
 /// </summary>
 public sealed class PostgresEphemeralCapture : IAsyncDisposable
 {
-    private readonly Func<NpgsqlDataSource, long, CancellationToken, Task> _applyMigrations;
+    private readonly IEphemeralProvisioner _provisioner;
+    private readonly Func<string, long, CancellationToken, Task> _applyMigrations;
 
     /// <param name="applyMigrations">
-    /// Caller-supplied callback that applies the operator's migration
-    /// assembly through the requested upper version. Typically wraps the
-    /// discovered <see cref="IMigrationHost"/>'s <c>ConfigureAsync</c>
-    /// against an Npgsql connection bound to the ephemeral container.
+    /// Apply-through-upper-bound callback. Receives the ephemeral container's
+    /// connection string (verbatim, with credentials) and the upper-bound
+    /// version. Typically wraps the discovered <see cref="IMigrationHost"/>.
+    /// IMPORTANT: the connection string must be passed through verbatim --
+    /// re-deriving from <c>NpgsqlDataSource.ConnectionString</c> strips the
+    /// password under Npgsql 10's secret-handling rules and breaks SCRAM
+    /// auth on the ephemeral container.
+    /// </param>
+    /// <param name="provisioner">
+    /// Optional alternate provisioner; defaults to
+    /// <see cref="PostgresEphemeralProvisioner"/>.
     /// </param>
     public PostgresEphemeralCapture(
-        Func<NpgsqlDataSource, long, CancellationToken, Task> applyMigrations )
+        Func<string, long, CancellationToken, Task> applyMigrations,
+        IEphemeralProvisioner provisioner = null )
     {
         _applyMigrations = applyMigrations ?? throw new ArgumentNullException( nameof( applyMigrations ) );
+        _provisioner = provisioner ?? new PostgresEphemeralProvisioner();
     }
 
-    /// <summary>Captures one snapshot per the supplied request.</summary>
     public async Task<SnapshotCaptureResult> CaptureAsync(
         SnapshotCaptureRequest request,
         CancellationToken cancellationToken )
     {
-        var image = $"postgres:{request.RequiredTopology.ServerMajor}-alpine";
-
-        var container = new PostgreSqlBuilder( image )
-            .WithDatabase( "squashdb" )
-            .WithUsername( "squash" )
-            .WithPassword( "squash" )
-            .WithCleanUp( true )
-            .Build();
-
-        try
+        var hints = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase )
         {
-            await container.StartAsync( cancellationToken ).ConfigureAwait( false );
+            ["server-major"] = request.RequiredTopology.ServerMajor.ToString()
+        };
 
-            await using ( var dataSource = NpgsqlDataSource.Create( container.GetConnectionString() ) )
-            {
-                await _applyMigrations( dataSource, request.UpToVersion, cancellationToken ).ConfigureAwait( false );
-            }
+        await using var rawFixture = await _provisioner.ProvisionAsync( hints, cancellationToken )
+            .ConfigureAwait( false );
 
-            var dump = await DumpSchemaAsync( container, cancellationToken ).ConfigureAwait( false );
-            var sequenceLastValues = await CaptureSequencesAsync( container, cancellationToken ).ConfigureAwait( false );
-
-            return new SnapshotCaptureResult( dump, sequenceLastValues );
-        }
-        finally
+        // The provider's pg_dump-via-exec path needs the underlying
+        // PostgreSqlContainer handle. The default provisioner returns a
+        // PostgresEphemeralFixture carrying it; alternate provisioners
+        // (third-party, sibling-container, etc.) must do the same.
+        if ( rawFixture is not PostgresEphemeralFixture pgFixture )
         {
-            await container.DisposeAsync().ConfigureAwait( false );
+            throw new InvalidOperationException(
+                $"IEphemeralProvisioner returned `{rawFixture?.GetType().FullName}`; " +
+                $"PostgresEphemeralCapture requires `{nameof( PostgresEphemeralFixture )}` " +
+                "(or a derived type) so the snapshot pipeline can run pg_dump via docker exec." );
         }
+
+        // Apply migrations through the connection string verbatim. See
+        // the docstring on _applyMigrations for the Npgsql 10 password-
+        // stripping rationale.
+        await _applyMigrations( pgFixture.ConnectionString, request.UpToVersion, cancellationToken )
+            .ConfigureAwait( false );
+
+        var dump = await DumpSchemaAsync( pgFixture, cancellationToken ).ConfigureAwait( false );
+        var sequenceLastValues = await CaptureSequencesAsync( pgFixture, cancellationToken )
+            .ConfigureAwait( false );
+
+        return new SnapshotCaptureResult( dump, sequenceLastValues );
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     private static async Task<string> DumpSchemaAsync(
-        PostgreSqlContainer container, CancellationToken cancellationToken )
+        PostgresEphemeralFixture fixture, CancellationToken cancellationToken )
     {
-        var result = await container.ExecAsync( new[]
+        var result = await fixture.Container.ExecAsync( new[]
         {
             "pg_dump",
             "--schema-only",
@@ -86,9 +98,9 @@ public sealed class PostgresEphemeralCapture : IAsyncDisposable
     }
 
     private static async Task<IReadOnlyDictionary<string, long>> CaptureSequencesAsync(
-        PostgreSqlContainer container, CancellationToken cancellationToken )
+        PostgresEphemeralFixture fixture, CancellationToken cancellationToken )
     {
-        await using var dataSource = NpgsqlDataSource.Create( container.GetConnectionString() );
+        await using var dataSource = new NpgsqlDataSourceBuilder( fixture.ConnectionString ).Build();
         await using var conn = await dataSource.OpenConnectionAsync( cancellationToken ).ConfigureAwait( false );
 
         const string sql =

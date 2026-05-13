@@ -20,8 +20,20 @@ namespace Hyperbee.Migrations.Providers.Couchbase.SquashCli;
 /// </summary>
 public sealed class CouchbaseSquashCliProvider : ISquashCliProvider
 {
+    private readonly IEphemeralProvisioner _provisioner;
+
     public string ProviderId => "couchbase";
     public string SquashFileExtension => ".statements";
+
+    public CouchbaseSquashCliProvider()
+        : this( provisioner: null )
+    {
+    }
+
+    public CouchbaseSquashCliProvider( IEphemeralProvisioner provisioner )
+    {
+        _provisioner = provisioner ?? new CouchbaseEphemeralProvisioner();
+    }
 
     public async Task<SquashGenerationResult> GenerateAsync(
         SquashCliContext context,
@@ -39,25 +51,50 @@ public sealed class CouchbaseSquashCliProvider : ISquashCliProvider
                 "Couchbase squash codegen requires the target bucket name. Supply " +
                 "--provider-option bucket-name=<name>." );
 
-        var capture = new CouchbaseEphemeralCapture( async ( connStr, upTo, ct ) =>
-            await ApplyMigrationsViaHostAsync(
-                context.MigrationHost,
-                connStr,
-                upTo,
-                ct ).ConfigureAwait( false ) );
+        var capture = new CouchbaseEphemeralCapture(
+            applyMigrations: async ( connStr, upTo, ct ) =>
+                await ApplyMigrationsViaHostAsync(
+                    context.MigrationHost,
+                    connStr,
+                    upTo,
+                    ct ).ConfigureAwait( false ),
+            provisioner: _provisioner );
 
         // Live cluster handle for the operator's cluster (used by the
-        // generation context for topology capture).
-        var liveOptions = new ClusterOptions { ConnectionString = context.ConnectionString };
-        // The operator's connection string typically already carries
-        // credentials; if not, the SDK errors out and the operator fixes
-        // their input. v1 doesn't second-guess.
+        // generation context for topology capture). Couchbase requires
+        // username + password set on ClusterOptions; pull them from
+        // provider options or default to the test-cluster defaults
+        // (Administrator/password) which match `Testcontainers.Couchbase`.
+        var username = context.ProviderOptions != null
+            && context.ProviderOptions.TryGetValue( "username", out var u )
+            && !string.IsNullOrWhiteSpace( u )
+            ? u
+            : "Administrator";
+        var password = context.ProviderOptions != null
+            && context.ProviderOptions.TryGetValue( "password", out var pw )
+            && !string.IsNullOrWhiteSpace( pw )
+            ? pw
+            : "password";
+
+        var liveOptions = new ClusterOptions
+        {
+            ConnectionString = context.ConnectionString,
+            UserName = username,
+            Password = password
+        };
         var liveCluster = await Cluster.ConnectAsync( liveOptions ).ConfigureAwait( false );
         try
         {
             await liveCluster.WaitUntilReadyAsync( TimeSpan.FromMinutes( 1 ) ).ConfigureAwait( false );
 
+            // CouchbaseRestApiService talks to /pools/default/... via REST.
+            // Couchbase REST endpoints require basic auth even when the SDK
+            // already has cluster credentials. Wire the auth header explicitly.
             using var http = new HttpClient();
+            http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue(
+                    "Basic",
+                    Convert.ToBase64String( System.Text.Encoding.ASCII.GetBytes( $"{username}:{password}" ) ) );
             var liveRestApi = new CouchbaseRestApiService(
                 http,
                 new OptionsWrapper<ClusterOptions>( liveOptions ),

@@ -13,8 +13,30 @@ namespace Hyperbee.Migrations.Providers.Postgres.SquashCli;
 /// </summary>
 public sealed class PostgresSquashCliProvider : ISquashCliProvider
 {
+    private readonly IEphemeralProvisioner _provisioner;
+
     public string ProviderId => "postgres";
     public string SquashFileExtension => ".sql";
+
+    /// <summary>
+    /// Default ctor used by <see cref="CliProviderRegistry.Discover"/>
+    /// (requires public parameterless ctor). Wires the default
+    /// <see cref="PostgresEphemeralProvisioner"/>.
+    /// </summary>
+    public PostgresSquashCliProvider()
+        : this( provisioner: null )
+    {
+    }
+
+    /// <summary>
+    /// Test / DI ctor that lets the caller swap the provisioner (e.g.
+    /// integration tests inject a real <see cref="PostgresEphemeralProvisioner"/>;
+    /// a third-party host could plug in a sibling-container variant).
+    /// </summary>
+    public PostgresSquashCliProvider( IEphemeralProvisioner provisioner )
+    {
+        _provisioner = provisioner ?? new PostgresEphemeralProvisioner();
+    }
 
     public async Task<SquashGenerationResult> GenerateAsync(
         SquashCliContext context,
@@ -27,16 +49,22 @@ public sealed class PostgresSquashCliProvider : ISquashCliProvider
         // wiring (Add{Provider}Migrations + their MigrationOptions
         // configuration) is the single source of truth -- no static
         // ApplyToDataSourceAsync reflection convention (RB-4 closed).
-        var capture = new PostgresEphemeralCapture( async ( dataSource, upTo, ct ) =>
-        {
-            await ApplyMigrationsViaHostAsync(
-                context.MigrationHost,
-                dataSource,
-                upTo,
-                ct ).ConfigureAwait( false );
-        } );
+        var capture = new PostgresEphemeralCapture(
+            applyMigrations: async ( ephemeralConnStr, upTo, ct ) =>
+            {
+                await ApplyMigrationsViaHostAsync(
+                    context.MigrationHost,
+                    ephemeralConnStr,
+                    upTo,
+                    ct ).ConfigureAwait( false );
+            },
+            provisioner: _provisioner );
 
-        await using var liveDataSource = NpgsqlDataSource.Create( context.ConnectionString );
+        // Use NpgsqlDataSourceBuilder so credentials in the connection string
+        // (Username/Password) are honored end-to-end through SCRAM-SHA-256
+        // handshake.
+        var dsBuilder = new NpgsqlDataSourceBuilder( context.ConnectionString );
+        await using var liveDataSource = dsBuilder.Build();
 
         var ctx = new PostgresSquashGenerationContext(
             squashName: context.SquashName,
@@ -96,7 +124,7 @@ public sealed class PostgresSquashCliProvider : ISquashCliProvider
         // injection while preserving case sensitivity.
         var qualifiedTable = QuoteIdentifier( schemaName ) + "." + QuoteIdentifier( tableName );
 
-        await using var dataSource = NpgsqlDataSource.Create( liveConnectionString );
+        await using var dataSource = new NpgsqlDataSourceBuilder( liveConnectionString ).Build();
         await using var connection = await dataSource.OpenConnectionAsync( cancellationToken ).ConfigureAwait( false );
 
         var sql =
@@ -136,7 +164,7 @@ public sealed class PostgresSquashCliProvider : ISquashCliProvider
 
     private static async Task ApplyMigrationsViaHostAsync(
         IMigrationHost host,
-        NpgsqlDataSource dataSource,
+        string ephemeralConnectionString,
         long upToVersion,
         CancellationToken cancellationToken )
     {
@@ -147,10 +175,13 @@ public sealed class PostgresSquashCliProvider : ISquashCliProvider
         // run to <= upToVersion. RB-4 close-out: this path is the
         // replacement for the v1 ApplyToDataSourceAsync static reflection
         // convention -- the host class is the single supported integration
-        // point.
+        // point. The connection string MUST be passed verbatim from the
+        // fixture -- Npgsql 10's NpgsqlDataSource.ConnectionString strips
+        // the password under its secret-handling rules, breaking SCRAM
+        // auth on the ephemeral container.
         ArgumentNullException.ThrowIfNull( host );
 
-        var ctx = new MigrationHostContext( dataSource.ConnectionString )
+        var ctx = new MigrationHostContext( ephemeralConnectionString )
         {
             OverrideOptions = opts => opts.ToVersion = upToVersion
         };

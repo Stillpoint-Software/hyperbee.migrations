@@ -12,12 +12,20 @@ namespace Hyperbee.Migrations.Providers.Aerospike.SquashCli;
 /// </summary>
 public sealed class AerospikeSquashCliProvider : ISquashCliProvider
 {
-    public string ProviderId => "aerospike";
+    private readonly IEphemeralProvisioner _provisioner;
 
-    // ADR-0022 script-form for all 4 NoSQL providers. Aerospike resource
-    // statements live in `.statements` files; the squash codegen emits the
-    // canonicalized snapshot in the same format.
+    public string ProviderId => "aerospike";
     public string SquashFileExtension => ".statements";
+
+    public AerospikeSquashCliProvider()
+        : this( provisioner: null )
+    {
+    }
+
+    public AerospikeSquashCliProvider( IEphemeralProvisioner provisioner )
+    {
+        _provisioner = provisioner ?? new AerospikeEphemeralProvisioner();
+    }
 
     public async Task<SquashGenerationResult> GenerateAsync(
         SquashCliContext context,
@@ -39,14 +47,40 @@ public sealed class AerospikeSquashCliProvider : ISquashCliProvider
         // against the ephemeral container).
         ParseHostPort( context.ConnectionString, defaultPort: 3000, out var liveHost, out var livePort );
 
-        var capture = new AerospikeEphemeralCapture( async ( host, port, upTo, ct ) =>
-            await ApplyMigrationsViaHostAsync(
-                context.MigrationHost,
-                host, port,
-                upTo,
-                ct ).ConfigureAwait( false ) );
+        var capture = new AerospikeEphemeralCapture(
+            applyMigrations: async ( host, port, upTo, ct ) =>
+                await ApplyMigrationsViaHostAsync(
+                    context.MigrationHost,
+                    host, port,
+                    upTo,
+                    ct ).ConfigureAwait( false ),
+            provisioner: _provisioner );
 
-        using var liveClient = new AerospikeClient( liveHost, livePort );
+        // Open the live client with a brief retry loop. AsyncClient (not the
+        // synchronous AerospikeClient) is used here because the daemon's
+        // cluster-map advertises its internal address; AsyncClient's lazier
+        // discovery tolerates the first-connect race against single-node
+        // test fixtures where AerospikeClient's blocking ctor reports
+        // "connection forcibly closed".
+        IAerospikeClient liveClient = null;
+        AsyncClientPolicy policy = new AsyncClientPolicy
+        {
+            timeout = 30_000,
+            failIfNotConnected = false
+        };
+        for ( var attempt = 0; attempt < 10 && liveClient == null; attempt++ )
+        {
+            try
+            {
+                liveClient = new AsyncClient( policy, liveHost, livePort );
+            }
+            catch ( AerospikeException )
+            {
+                if ( attempt == 9 ) throw;
+                await Task.Delay( TimeSpan.FromMilliseconds( 500 ), cancellationToken ).ConfigureAwait( false );
+            }
+        }
+        using var liveClientScope = (IDisposable) liveClient;
 
         var ctx = new AerospikeSquashGenerationContext(
             squashName: context.SquashName,
