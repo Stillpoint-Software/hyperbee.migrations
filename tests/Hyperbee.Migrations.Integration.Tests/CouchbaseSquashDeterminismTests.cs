@@ -21,30 +21,21 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // runtime stats, server-assigned node placement, vBucketServerMap, etc.) at
 // every nesting level and JSON key orderings are sorted away.
 //
-// [TestCategory("LocalOnly")]: Host-side Couchbase SDK connection requires
-// alternate-address configuration on each cluster node so the SDK
-// -- bootstrapping via port 11210 (KV) and learning about n1ql / index /
-// fts from the cluster map -- routes through localhost-bound ports rather
-// than the container's internal IP. The standard fix is `/node/controller/
-// setupAlternateAddresses/external` + connecting with
-// `?network=external`. In this repo the alt-address approach broke the
-// sibling-container CouchbaseRunnerTest (cluster-map race during the
-// migration container's bootstrap), so the cleanest path forward is the
-// sibling-container test model (build a Docker image containing the test
-// program, run it inside the Couchbase network so the SDK reaches `db`
-// directly). That refactor is tracked for v3.0.1; until then this suite
-// is local-only -- developers running it on a workstation with manual
-// port-forwarding + alt-address config can validate squash determinism
-// end-to-end. The squash correctness contract is byte-tested by 192
-// Couchbase unit tests in the Hyperbee.Migrations.Squash.Tests project
-// (idempotence, divergent-input canonical equality, ephemeral strip,
-// deferred-state preservation per R-P3 OQ).
+// F-1 / RB-5 close-out: this suite previously carried
+// [TestCategory("LocalOnly")] because the shared CouchbaseTestContainer
+// + CouchbaseRunnerTest combination forced an alt-addresses configuration
+// that broke the runner test's cluster-map. v3.0 isolates this suite via
+// IsolatedCouchbaseContainer (its own Testcontainers Couchbase instance
+// per test class), which avoids the conflict entirely. The squash
+// correctness contract is also byte-tested by the Couchbase unit tests
+// in Hyperbee.Migrations.Squash.Tests; this suite covers the live-cluster
+// end-to-end determinism gate (C12 per ADR-0019 A12).
 
 [TestClass]
 [DoNotParallelize]
-[TestCategory( "LocalOnly" )]
 public class CouchbaseSquashDeterminismTests
 {
+    private IsolatedCouchbaseContainer _container;
     private ICluster _cluster;
     private ICouchbaseRestApiService _restApi;
     private HttpClient _http;
@@ -53,20 +44,15 @@ public class CouchbaseSquashDeterminismTests
     [TestInitialize]
     public async Task Setup()
     {
-        Assert.IsNotNull( CouchbaseTestContainer.ConnectionString,
-            "CouchbaseTestContainer must initialize before this test class runs." );
+        _container = await IsolatedCouchbaseContainer.StartAsync( TestBucket );
+        _cluster = _container.ClusterHandle;
 
-        var options = new ClusterOptions
+        var options = new ClusterOptions { ConnectionString = _container.ConnectionString };
+
+        _http = new HttpClient
         {
-            ConnectionString = "couchbase://localhost?network=external",
-            UserName = "Administrator",
-            Password = "password"
+            BaseAddress = new Uri( $"http://localhost:{_container.MgmtPort}" )
         };
-
-        _cluster = await Cluster.ConnectAsync( options );
-        await _cluster.WaitUntilReadyAsync( TimeSpan.FromMinutes( 1 ) );
-
-        _http = new HttpClient { BaseAddress = new Uri( "http://localhost:8091" ) };
         _http.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue(
                 "Basic",
@@ -86,8 +72,9 @@ public class CouchbaseSquashDeterminismTests
             await DropTestArtifactsAsync();
         }
         catch { }
-        _cluster?.Dispose();
         _http?.Dispose();
+        if ( _container != null )
+            await _container.DisposeAsync();
     }
 
     [TestMethod]

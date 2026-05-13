@@ -30,16 +30,16 @@ namespace Hyperbee.Migrations.Integration.Tests;
 //   6. Capture B.
 //   7. CouchbaseSquashVerifier.VerifyAsync -> expect Success.
 //
-// [TestCategory("LocalOnly")]: same Couchbase host-side connection
-// limitation documented in CouchbaseSquashDeterminismTests. Verifier
-// correctness is byte-tested by CouchbaseSquashVerifierTests in the
-// unit suite.
+// F-1 / RB-5 close-out: previously [TestCategory("LocalOnly")] for the
+// same shared-container-conflict reason as CouchbaseSquashDeterminismTests.
+// v3.0 isolates via IsolatedCouchbaseContainer; verifier correctness is
+// also byte-tested by CouchbaseSquashVerifierTests in the unit suite.
 
 [TestClass]
 [DoNotParallelize]
-[TestCategory( "LocalOnly" )]
 public class CouchbaseSquashVerificationTests
 {
+    private IsolatedCouchbaseContainer _container;
     private ICluster _cluster;
     private ICouchbaseRestApiService _restApi;
     private HttpClient _http;
@@ -49,20 +49,15 @@ public class CouchbaseSquashVerificationTests
     [TestInitialize]
     public async Task Setup()
     {
-        Assert.IsNotNull( CouchbaseTestContainer.ConnectionString,
-            "CouchbaseTestContainer must initialize before this test class runs." );
+        _container = await IsolatedCouchbaseContainer.StartAsync( TestBucket );
+        _cluster = _container.ClusterHandle;
 
-        var options = new ClusterOptions
+        var options = new ClusterOptions { ConnectionString = _container.ConnectionString };
+
+        _http = new HttpClient
         {
-            ConnectionString = "couchbase://localhost?network=external",
-            UserName = "Administrator",
-            Password = "password"
+            BaseAddress = new Uri( $"http://localhost:{_container.MgmtPort}" )
         };
-
-        _cluster = await Cluster.ConnectAsync( options );
-        await _cluster.WaitUntilReadyAsync( TimeSpan.FromMinutes( 1 ) );
-
-        _http = new HttpClient { BaseAddress = new Uri( "http://localhost:8091" ) };
         _http.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue(
                 "Basic",
@@ -80,8 +75,9 @@ public class CouchbaseSquashVerificationTests
     public async Task Cleanup()
     {
         try { await DropTestArtifactsAsync(); } catch { }
-        _cluster?.Dispose();
         _http?.Dispose();
+        if ( _container != null )
+            await _container.DisposeAsync();
     }
 
     [TestMethod]

@@ -5,16 +5,28 @@ All notable changes to **Hyperbee.Migrations** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.0] — 2026-05-11 — Migration Squashing (all 5 providers)
+## [3.0.0] — 2026-05-12 — Migration Squashing (all 5 providers)
 
 This release ships the destructive-model migration squash feature
 (per [ADR-0019](docs/decisions/0019-migration-squash-replaces-graph.md)) plus
 the universal script-format resource form (per
-[ADR-0022](docs/decisions/0022-script-format-resource-migrations.md)).
+[ADR-0022](docs/decisions/0022-script-format-resource-migrations.md)) and
+the CLI extensibility contract that lets each provider plug into
+`hyperbee-migrations squash` (per
+[ADR-0024](docs/decisions/0024-migration-host-discovery.md)).
 v3.0 is a major release because of two breaking changes around
 `IMigrationRecordStore` and provider record-store schemas — both protected by
 safe back-compat paths so existing v2 migrations and consumers keep working
 unchanged.
+
+The full release-readiness audit
+(`docs/research/0009-v3-release-readiness-assessment.md`) is closed: 5
+release-blockers + 17 Redesigns + the F-tier deferred items are resolved.
+Library tier ships at 1335 unit tests per target framework (.NET 8, 9, 10);
+the five SquashCli provider packages
+(`Hyperbee.Migrations.Providers.{Provider}.SquashCli`) ship as separate
+NuGet packages so production deployments do not pay the Testcontainers /
+Docker runtime cost.
 
 ### Highlights
 
@@ -140,6 +152,13 @@ unchanged.
 
 ### Changed (back-compat preserved)
 
+- **F-1 / RB-5 closed -- Couchbase squash integration tests no longer
+  carry `[TestCategory("LocalOnly")]`.** Refactored to use a per-test-class
+  `IsolatedCouchbaseContainer` Testcontainers fixture instead of the
+  shared `CouchbaseTestContainer` that conflicted with the runner test's
+  cluster-map. The "all 5 providers" CI coverage claim now matches the
+  CI evidence; no Couchbase squash coverage is gated behind a
+  developer-machine-only flag.
 - **Couchbase SquashCli provider package ships** -- the fifth and final
   ISquashCliProvider implementation for the v3.0 CLI extensibility
   cascade. `CouchbaseSquashCliProvider` spins ephemeral Couchbase Server

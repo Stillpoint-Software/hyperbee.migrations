@@ -203,9 +203,18 @@ raises `MidRangeSquashException`. Three documented recovery paths:
    from a sibling environment is rejected. **Use only when the live data
    state has been externally verified to match the squashed schema.**
 
-The CLI verb ships in a follow-up to v3.0; the runtime token-verification
-helper (`Hyperbee.Migrations.Squash.RecoveryAcknowledgement`) is available
-today for tooling and runbooks.
+The CLI verb `hyperbee-migrations recover from-mid-range` ships in v3.0.
+It validates the supplied token, persists the acknowledgement row to the
+migration ledger (`Kind=Recovery`), and exits zero. The next runner
+invocation reads the recovery row, re-verifies the token, force-marks the
+squash without running its body, then deletes the recovery row.
+
+**On the token specifically (D-2):** the 12-char hex token is a 48-bit
+SHA-256 truncation; it is **anti-typo / anti-cross-env-paste, not
+anti-security**. Operators can compute the token from a runbook; it is
+not a secret. The protection comes from binding the token to
+`(env, squash, missing-versions)` so accidentally pasting a token from a
+sibling environment fails verification.
 
 ## Compatibility matrix
 
@@ -218,6 +227,80 @@ today for tooling and runbooks.
 | `MigrationRecord` consumers reading `Checksum` / `Kind` / `Replaces` | New properties exist; null-safe defaults apply                                         |
 | Mixed v2/v3 fleet against same ledger                                | **Unsupported** — deploy v3 everywhere first                                           |
 | Squash → rollback to v2                                              | **Unsupported** — backup-restore is the recovery                                       |
+
+## Release notes: known characteristics + monitoring guidance
+
+v3.0 surfaces a handful of operational characteristics that are not bugs
+but are worth understanding before adopting. They are documented here in
+addition to the CHANGELOG.
+
+### Authoring gotchas (D-series)
+
+- **D-3 -- `[Migration(v, "name")]` 2-arg ambiguity.** The 2-arg
+  attribute binds the second positional to `StartMethod`, not `Profile`.
+  A migration declared as `[Migration(1000, "load")]` does NOT belong to
+  the `"load"` profile; it has a `StartMethod` named `"load"`. To bind a
+  profile, use the 5-arg form: `[Migration(1000, null, null, true, "load")]`.
+  A Roslyn analyzer ships in v3.0.x; a non-ambiguous attribute ctor
+  ships in v4.
+- **D-4 -- empty `Profiles = []` semantic.** `opts.Profiles = new string[0]`
+  means **include all profiles**, not "include none". v3.0 keeps the v2
+  semantic intact; if you want to scope by profile, supply at least one
+  entry.
+- **D-1 -- v3 -> v2 downgrade is undefined.** Once a v3 deploy has run
+  against a ledger, downgrading the package without a backup-restore is
+  unsupported. Plan accordingly before adopting squash for environments
+  where you anticipate rollback.
+
+### Monitoring guidance (M-series)
+
+These are real but bounded characteristics. None block adoption; all are
+worth a one-time read.
+
+- **M-1 -- canonicalizer ephemeral catalog evolution.** Each provider's
+  canonicalizer strips a fixed catalog of server-side ephemeral fields
+  from the snapshot before canonicalization. New server fields introduced
+  by a future provider version may bypass the strip and surface as
+  determinism failures. The verifier byte-equality round IS the gate:
+  operators see "verification failed" + diff summary, not silent drift.
+  Pin a server-version axis in your topology if you depend on byte
+  stability across upgrades.
+- **M-2 -- lock-hold duration linear in migration count.** The runner
+  holds the provider's distributed lock for the duration of `RunAsync`,
+  scaled with the count of pending migrations. A 1000-migration cold-start
+  serializes the fleet for that duration. Squash periodically to bound it.
+- **M-3 -- MongoDB lock has no fencing token.** A GC pause longer than
+  `LockMaxLifetime` allows a second runner to claim and race. Pre-existing
+  v2 behavior; not a v3 regression. Set `LockMaxLifetime` >> any expected
+  GC pause (default 1h covers ordinary cases).
+- **M-4 -- Aerospike `IntersectWithSquashedAsync` is a full-namespace
+  scan.** No secondary index on `Replaces`; the scan is bounded (few
+  squashes per project) but worth knowing if your namespace grows beyond
+  the typical migration-ledger size.
+- **M-5 -- canonicalizer 3x memory copy + `Indented=true` for large
+  snapshots.** Operator-initiated codegen path, not hot path. Real but
+  bounded. Document the snapshot size ceiling for your environment.
+- **M-6 -- `pg_dump` output buffered as managed string.** Operator-
+  initiated. For very large schemas (multi-MB dumps), the buffer can
+  land on the LOH. Same bounded characteristic as M-5.
+
+### v3.0 CI coverage state (D-5)
+
+The "all 5 providers" v3.0 release claim references the following CI
+coverage state:
+
+| Provider   | Unit | Integration (CI) | Notes                                                                                                                                |
+| ---------- | ---- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Postgres   | yes  | yes              | Full PR-time integration coverage via run_tests.yml                                                                                  |
+| Aerospike  | yes  | yes (multi-node) | Multi-node integration suite ships per multi_node_tests.yml                                                                          |
+| OpenSearch | yes  | yes (multi-node) | Multi-node integration suite ships per multi_node_tests.yml                                                                          |
+| MongoDB    | yes  | yes              | INTEGRATIONS-gated suite                                                                                                             |
+| Couchbase  | yes  | yes (v3.0)       | F-1 / RB-5 closed by `IsolatedCouchbaseContainer` per-test ephemeral fixture; squash determinism + verification suites run in CI now |
+
+The five SquashCli packages
+(`Hyperbee.Migrations.Providers.{Provider}.SquashCli`) carry their own
+end-to-end integration coverage via the standard provider integration
+suites plus the contract-pin tests in `Hyperbee.Migrations.Squash.Tests`.
 
 ## See also
 
