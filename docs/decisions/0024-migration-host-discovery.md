@@ -1,7 +1,7 @@
 # ADR-0024: Migration Host Discovery via Single Interface
 
-**Status:** Proposed
-**Date:** 2026-05-12
+**Status:** Accepted
+**Date:** 2026-05-12 (promoted 2026-05-13)
 **Amends:** None directly. Replaces an implicit Postgres-only convention (`static ApplyToDataSourceAsync(NpgsqlDataSource, ...)`) that the v1 squash CLI used for migration apply.
 **Related ADRs:** ADR-0006 (Options Inheritance with DI Registration), ADR-0019 (Squash via Replaces Graph), ADR-0023 (Multi-Runner Composition).
 **Assessed in:** [docs/research/0009-v3-release-readiness-assessment.md](../research/0009-v3-release-readiness-assessment.md) — R-17 + the Path A architecture decision.
@@ -166,8 +166,60 @@ Migration project authors who used the legacy pattern delete the static method a
 - **Unit:** `MigrationHostDiscoveryTests` covers zero-implementations / one-implementation / multiple-implementations / non-default-ctor / abstract-implementations / non-public cases. The interface itself + context record have property-init tests.
 - **Integration:** each provider sample in `runners/samples/Hyperbee.Migrations.*.Samples/` adds a `*MigrationsHost.cs` and demonstrates `dotnet hyperbee-migrations squash --assembly <sample.dll>` invoking the host. Sample integration tests exercise the host being discovered, configured, and used to drive a squash codegen round-trip.
 
+## Amendments
+
+### A1 (2026-05-13) — `IEphemeralProvisioner` extension
+
+`{Provider}SquashCliProvider.GenerateAsync` originally bound its container provisioning inline (each provider's snapshot capture orchestrator constructed its `Testcontainers.*Container` directly inside the capture method). A1 lifts that into a small abstraction so the lifecycle is replaceable:
+
+```csharp
+public interface IEphemeralProvisioner
+{
+    Task<IEphemeralFixture> ProvisionAsync(
+        IReadOnlyDictionary<string, string> hints,
+        CancellationToken cancellationToken);
+}
+
+public interface IEphemeralFixture : IAsyncDisposable
+{
+    string ConnectionString { get; }
+    IReadOnlyDictionary<string, string> Metadata { get; }
+}
+```
+
+Each per-provider SquashCli package ships:
+- A default Testcontainers-backed provisioner (`{Provider}EphemeralProvisioner`) consumed by `{Provider}SquashCliProvider`'s default constructor.
+- A typed fixture (`{Provider}EphemeralFixture : IEphemeralFixture`) carrying any provider-specific handles (e.g., `PostgreSqlContainer` for the `pg_dump --schema-only` exec path) alongside the connection string.
+- A second `{Provider}SquashCliProvider(IEphemeralProvisioner)` constructor so integration tests and third-party embeddings can substitute their own provisioner.
+
+Couchbase additionally ships `CouchbaseSiblingContainerProvisioner` — when the CLI itself runs inside a Docker container, the sibling pattern provisions Couchbase as a sibling container on the same Docker network rather than a child Testcontainers instance. The provisioner returns the fixture with `network-alias` metadata so the snapshot capture client can route via the alias.
+
+**Why:** v3.0's host-side Couchbase F-1 issue surfaced the need for an explicit lifecycle hook. Inline `new Testcontainers.*Container()` in the capture method tied us to one provisioning shape forever; with the abstraction, the sibling-container variant becomes a drop-in alternative without rewriting the strategy code path.
+
+**Compliance:** ADR-0019 (Squash via Replaces Graph) unaffected — the strategy contract still consumes a capture function; only the orchestrator that builds that function gained an injection point. ADR-0023 (Multi-Runner) unaffected.
+
+### A2 (2026-05-13) — Plugin-style `AssemblyLoadContext` isolation
+
+`MigrationAssemblyLoader` originally used a collectible `AssemblyLoadContext` whose `Load` override probed only the migration assembly's directory. A2 extends this to a full plugin-style loader:
+
+1. **Shared-type identity for the host/plugin boundary.** When the migration assembly references an infrastructure type that the CLI binary also references (e.g., `Microsoft.Extensions.DependencyInjection.Abstractions.IServiceCollection`), the load context must return the **same type identity** as the CLI binary holds. The loader does this by:
+   - First checking the Default ALC's already-loaded assemblies by name.
+   - Then attempting `AssemblyLoadContext.Default.LoadFromAssemblyName(name)` — this routes through the CLI binary's own deps.json + shared framework probing.
+   - Only on Default-ALC failure does the loader fall back to migration-side resolution.
+
+   Without this discipline, the migration project's transitive `Microsoft.Extensions.DependencyInjection.Abstractions.dll` loads into the collectible ALC as a second copy; the Postgres provider then calls `RegisterBaseAliases<IServiceCollection>(...)` with one type identity while the binder resolves a different identity, surfacing as `MissingMethodException` at the first cross-ALC dispatch.
+
+2. **NuGet-cache probe via deps.json.** Library projects (migration assemblies) don't ship a `runtimeconfig.json`, so `AssemblyDependencyResolver` returns null for NuGet packages. The loader parses the migration assembly's `.deps.json` directly to find each package's NuGet path (`<name>/<version>`) and the runtime DLL path (`lib/<tfm>/<dll>`), then composes the absolute path under `~/.nuget/packages` (or `NUGET_PACKAGES` if set).
+
+3. **Directory scan for build-side-effect references.** `CliProviderRegistry.Discover` augments the metadata-driven reference closure with a scan of every managed DLL in the migration assembly's directory. The C# compiler strips unused references from assembly metadata, so a sample that has a `<ProjectReference>` to `Hyperbee.Migrations.Providers.*.SquashCli` but never *uses* a type from it drops out of the metadata closure. The directory scan catches these and loads them via the migration ALC so their `ISquashCliProvider` types share identity with the host's `ISquashCliProvider` interface.
+
+**Why:** The v1 CLI worked because Postgres-only didn't need the SquashCli DLL at runtime (the static-method convention only required `NpgsqlDataSource`). The v3.0 plug-in model puts the provider's actual `ISquashCliProvider` implementation on the discovery path, which surfaces all three of these previously-latent load-context concerns.
+
+**Compliance:** ADR-0019 unaffected. ADR-0023 unaffected. The host/plugin shared-type contract is unstated in this ADR's original body — A2 codifies it as a requirement of the discovery mechanism.
+
 ## Status
 
 - Proposed: 2026-05-12.
 - Implementation: Week 2 Day 1 of Path A (see `docs/research/0009-v3-release-readiness-assessment.md`).
-- Promotion to Accepted: when the contract ships in v3.0 with at least Postgres reference + one non-Postgres provider exercising it end-to-end.
+- Accepted: 2026-05-13 — all 5 providers ship a working `IMigrationHost` host class; CLI binary E2E test (`CliBinaryEndToEndTests`) drives Postgres host through the actual `hyperbee-migrations.exe` child process and validates emitted `.sql` + `.metadata.json` + `.summary.md` artifacts; 5 per-provider SquashCliProvider integration tests pass on net8/net9/net10 (Couchbase tagged LocalOnly per F-1 v3.0.1 follow-up).
+- Amendments: A1 (`IEphemeralProvisioner` extension, 2026-05-13), A2 (plugin-style ALC isolation, 2026-05-13).

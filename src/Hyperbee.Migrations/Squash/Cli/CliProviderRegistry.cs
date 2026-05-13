@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using System.Runtime.Loader;
 
 namespace Hyperbee.Migrations.Squash.Cli;
 
@@ -39,10 +40,27 @@ public static class CliProviderRegistry
     {
         ArgumentNullException.ThrowIfNull( migrationAssembly );
 
-        // Walk the reference closure. Each AssemblyName is loaded via
-        // Assembly.Load -- if the assembly can't resolve, we ignore it
-        // (it's an indirect reference whose provider type, if any, would
-        // not be reachable from the migration project's actual code path).
+        // Provider discovery walks two surfaces:
+        //
+        //   (1) The metadata reference closure of `migrationAssembly` --
+        //       finds types the migration project transitively uses.
+        //   (2) Every DLL in the migration project's output directory --
+        //       catches provider packages that are referenced ONLY for
+        //       build-side-effect (e.g., `<ProjectReference>` with no
+        //       actual type use in user code). The C# compiler strips
+        //       unused references from assembly metadata, so a sample
+        //       that has the SquashCli package as a `<ProjectReference>`
+        //       but never uses an `Hyperbee.Migrations.Providers.*.SquashCli`
+        //       type directly drops out of (1). Discovery via directory
+        //       scan is the production-correct fallback.
+        //
+        // Loading routes through the migration assembly's ALC so type
+        // identity for shared types (`ISquashCliProvider`,
+        // `IMigrationHost`, etc.) is preserved across the host/plugin
+        // boundary.
+        var alc = AssemblyLoadContext.GetLoadContext( migrationAssembly )
+            ?? AssemblyLoadContext.Default;
+
         var visited = new HashSet<string>( StringComparer.Ordinal ) { migrationAssembly.GetName().Name! };
         var pending = new Queue<Assembly>();
         pending.Enqueue( migrationAssembly );
@@ -57,7 +75,7 @@ public static class CliProviderRegistry
                     continue;
                 try
                 {
-                    var loaded = Assembly.Load( referenced );
+                    var loaded = alc.LoadFromAssemblyName( referenced );
                     assemblies.Add( loaded );
                     pending.Enqueue( loaded );
                 }
@@ -66,6 +84,44 @@ public static class CliProviderRegistry
                     // Indirect reference that isn't in the load path; skip.
                     // Provider packages a user actually consumes will resolve
                     // because the migration project references them directly.
+                }
+            }
+        }
+
+        // Directory scan for the build-side-effect case (surface 2).
+        // Walks DLLs in the migration assembly's directory; loads each
+        // via the migration ALC so the providers' types share identity
+        // with the host's `ISquashCliProvider` interface. Skips already-
+        // visited assemblies and assemblies that can't be inspected.
+        var migrationDir = Path.GetDirectoryName( migrationAssembly.Location );
+        if ( !string.IsNullOrEmpty( migrationDir ) && Directory.Exists( migrationDir ) )
+        {
+            foreach ( var dllPath in Directory.EnumerateFiles( migrationDir, "*.dll" ) )
+            {
+                AssemblyName name;
+                try
+                {
+                    name = AssemblyName.GetAssemblyName( dllPath );
+                }
+                catch
+                {
+                    // Native or otherwise non-managed DLL; skip.
+                    continue;
+                }
+
+                if ( !visited.Add( name.Name! ) )
+                    continue;
+
+                try
+                {
+                    var loaded = alc.LoadFromAssemblyName( name );
+                    assemblies.Add( loaded );
+                }
+                catch
+                {
+                    // Mixed-mode, broken metadata, version mismatch, etc.
+                    // Provider packages a user actually consumes will be
+                    // loadable; everything else can be skipped.
                 }
             }
         }

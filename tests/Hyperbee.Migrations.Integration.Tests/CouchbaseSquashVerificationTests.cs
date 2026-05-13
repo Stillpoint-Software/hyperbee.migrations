@@ -32,11 +32,17 @@ namespace Hyperbee.Migrations.Integration.Tests;
 //
 // F-1 / RB-5 close-out: previously [TestCategory("LocalOnly")] for the
 // same shared-container-conflict reason as CouchbaseSquashDeterminismTests.
-// v3.0 isolates via IsolatedCouchbaseContainer; verifier correctness is
-// also byte-tested by CouchbaseSquashVerifierTests in the unit suite.
+// The audit pass through IsolatedCouchbaseContainer attempted to remove
+// the LocalOnly tag, but the host-side cluster-map race against an
+// isolated Testcontainers Couchbase persists empirically. Verifier
+// correctness is byte-tested by CouchbaseSquashVerifierTests in the
+// unit suite; this end-to-end suite is gated behind LocalOnly until
+// the sibling-container variant
+// (CouchbaseSiblingContainerProvisioner) lands in v3.0.1.
 
 [TestClass]
 [DoNotParallelize]
+[TestCategory( "LocalOnly" )]
 public class CouchbaseSquashVerificationTests
 {
     private IsolatedCouchbaseContainer _container;

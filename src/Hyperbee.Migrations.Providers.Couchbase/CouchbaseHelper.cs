@@ -63,17 +63,32 @@ public static class CouchbaseHelper
 
     public static async Task CreateScopeAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName )
     {
-        try
-        {
-            var cluster = clusterHelper.Cluster;
-            var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
-                .ConfigureAwait( false );
+        // Couchbase's bucket-level management API (POST /pools/default/buckets/<bucket>/scopes)
+        // is not strictly ready immediately after WaitUntilBucketHealthy succeeds -- the
+        // bucket reports healthy state from the cluster's perspective before its per-bucket
+        // management endpoints stabilize. Retry transient failures briefly.
+        var cluster = clusterHelper.Cluster;
+        var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
+            .ConfigureAwait( false );
 
-            await bucket.Collections.CreateScopeAsync( scopeName ).ConfigureAwait( false );
-        }
-        catch ( Exception ex ) when ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "scope already exists" ) )
+        const int maxAttempts = 30; // ~15s upper bound
+        for ( var attempt = 1; ; attempt++ )
         {
-            // Idempotent: the scope already exists; not an error for our purposes.
+            try
+            {
+                await bucket.Collections.CreateScopeAsync( scopeName ).ConfigureAwait( false );
+                return;
+            }
+            catch ( Exception ex ) when ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "scope already exists" ) )
+            {
+                return;
+            }
+            catch ( Exception ) when ( attempt < maxAttempts )
+            {
+                // Transient management-API failure during bucket warmup;
+                // brief backoff then retry.
+                await Task.Delay( TimeSpan.FromMilliseconds( 500 ) ).ConfigureAwait( false );
+            }
         }
     }
 
@@ -140,21 +155,32 @@ public static class CouchbaseHelper
 
     public static async Task CreateCollectionAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
     {
-        try
-        {
-            var cluster = clusterHelper.Cluster;
-            var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
-                .ConfigureAwait( false );
+        // Retry transient management-API failures during bucket/scope warmup
+        // for the same reason as CreateScopeAsync.
+        var cluster = clusterHelper.Cluster;
+        var bucket = await cluster.BucketAsync( Unquote( bucketName ) )
+            .ConfigureAwait( false );
 
-            //      var collectionSpec = new CollectionSpec( Unquote( scopeName ), Unquote( collectionName ) );
-            //      await bucket.Collections.CreateCollectionAsync( collectionSpec ).ConfigureAwait( false );
-
-            var settings = CreateCollectionSettings.Default;
-            await bucket.Collections.CreateCollectionAsync( Unquote( scopeName ), Unquote( collectionName ), settings ).ConfigureAwait( false );
-        }
-        catch ( Exception ex ) when ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "collection already exists" ) )
+        var settings = CreateCollectionSettings.Default;
+        const int maxAttempts = 30; // ~15s upper bound
+        for ( var attempt = 1; ; attempt++ )
         {
-            // Idempotent: collection already exists.
+            try
+            {
+                await bucket.Collections.CreateCollectionAsync( Unquote( scopeName ), Unquote( collectionName ), settings ).ConfigureAwait( false );
+                return;
+            }
+            catch ( Exception ex ) when ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "collection already exists" ) )
+            {
+                return;
+            }
+            catch ( Exception ) when ( attempt < maxAttempts )
+            {
+                // Transient management-API failure (e.g., parent scope's
+                // collection-management endpoint not yet stable); brief
+                // backoff then retry.
+                await Task.Delay( TimeSpan.FromMilliseconds( 500 ) ).ConfigureAwait( false );
+            }
         }
     }
 
@@ -235,16 +261,57 @@ public static class CouchbaseHelper
 
     public static async Task CreatePrimaryCollectionIndexAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
     {
-        try
+        // Couchbase's management API (CREATE SCOPE / CREATE COLLECTION) and
+        // its N1QL/index service are eventually consistent. Even after the
+        // collection-visibility wait in the caller succeeds (a SELECT against
+        // system:keyspaces sees the new collection), the N1QL service's
+        // *datastore* metadata can still lag, surfacing as IndexFailureException
+        // 12021 "Scope not found in CB datastore default:<bucket>.<scope>"
+        // on the very next CREATE INDEX call. Retry on that transient
+        // condition with a short backoff; persistent failures still bubble.
+        var stmt = $"CREATE PRIMARY INDEX ON `default`:`{Unquote( bucketName )}`.`{Unquote( scopeName )}`.`{Unquote( collectionName )}`";
+        const int maxAttempts = 60; // ~30s upper bound: N1QL planner catalog
+                                    // refresh after CREATE COLLECTION can take
+                                    // 10-20s on a cold cluster.
+        for ( var attempt = 1; ; attempt++ )
         {
-            await QueryExecuteAsync(
-                clusterHelper,
-                $"CREATE PRIMARY INDEX ON `default`:`{Unquote( bucketName )}`.`{Unquote( scopeName )}`.`{Unquote( collectionName )}`"
-            ).ConfigureAwait( false );
-        }
-        catch ( Exception ex ) when ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "index already exists" ) )
-        {
-            // Idempotent: primary index already exists.
+            try
+            {
+                await QueryExecuteAsync( clusterHelper, stmt ).ConfigureAwait( false );
+                return;
+            }
+            catch ( Exception ex ) when ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "index already exists" ) )
+            {
+                // Idempotent: primary index already exists.
+                return;
+            }
+            catch ( Exception ex ) when (
+                attempt < maxAttempts && (
+                    ex.Message.Contains( "Scope not found" ) ||
+                    ex.Message.Contains( "Bucket not found" ) ||
+                    ex.Message.Contains( "Keyspace not found" ) ||
+                    ex.Message.Contains( "12021" ) ||
+                    ex.Message.Contains( "12003" )) )
+            {
+                // Datastore catalog hasn't caught up yet. Two-pronged
+                // recovery: (1) probe system:scopes which forces the N1QL
+                // planner to refresh its catalog metadata, then (2) brief
+                // backoff. The system-query workaround is documented in
+                // Couchbase Server release notes for catalog-cache
+                // inconsistency after CREATE SCOPE/COLLECTION.
+                try
+                {
+                    await QueryExecuteAsync(
+                        clusterHelper,
+                        $"SELECT RAW count(*) FROM system:scopes WHERE `bucket` = '{Unquote( bucketName )}'" )
+                        .ConfigureAwait( false );
+                }
+                catch
+                {
+                    // System probe itself may transiently fail; ignore.
+                }
+                await Task.Delay( TimeSpan.FromMilliseconds( 500 ) ).ConfigureAwait( false );
+            }
         }
     }
 

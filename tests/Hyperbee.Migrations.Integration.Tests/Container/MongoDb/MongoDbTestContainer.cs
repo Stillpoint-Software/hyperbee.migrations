@@ -25,12 +25,18 @@ public class MongoDbTestContainer
         await network.CreateAsync( cancellationToken )
             .ConfigureAwait( false );
 
+        // Mapped public port (not a fixed 28017 binding). Fixed bindings on
+        // Windows/WSL2 get retained by HNS after Docker container teardown
+        // and surface as "port is already allocated" on the next test run.
+        // Mapped ports are allocated fresh per container and avoid the
+        // retention path entirely; downstream consumers read via
+        // MongoDbTestContainer.ConnectionString rather than assuming a
+        // fixed host:port.
         var mongoDbContainer = new MongoDbBuilder()
             .WithNetwork( network )
             .WithNetworkAliases( "db" )
             .WithUsername( "test" )
             .WithPassword( "test" )
-            .WithPortBinding( 28017, 27017 )
             .WithCleanUp( true )
             .WithWaitStrategy( DotNet.Testcontainers.Builders.Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable( 27017 ) )
             .Build();

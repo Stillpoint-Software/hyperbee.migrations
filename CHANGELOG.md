@@ -149,16 +149,50 @@ Docker runtime cost.
   Testcontainers impl; a second `(IEphemeralProvisioner)` ctor accepts
   a caller-supplied provisioner for integration tests and third-party
   embeddings. Per ADR-0024 audit Week 2 + Week 4 completion.
-- **5 end-to-end SquashCliProvider integration tests.** One per provider
-  (Postgres, Aerospike, OpenSearch, MongoDB, Couchbase). Each test loads
-  the corresponding sample assembly by path (`Assembly.LoadFrom`),
+- **5 end-to-end SquashCliProvider integration tests + CLI binary E2E.**
+  One SquashCliProvider integration test per provider (Postgres,
+  Aerospike, OpenSearch, MongoDB, Couchbase). Each test loads the
+  corresponding sample assembly by path (`Assembly.LoadFrom`),
   discovers `IMigrationHost`, builds a `SquashCliContext`, and invokes
   `provider.GenerateAsync` end-to-end. Determinism gate (C12): the
   Postgres variant runs `GenerateAsync` twice against the same sample
-  and asserts byte-equal output. Plus `CliBinaryEndToEndTests` spawns
-  the actual `hyperbee-migrations.exe` child process against the
-  Postgres sample + a live Postgres Testcontainer and verifies the
-  emitted `.sql`, `.metadata.json`, and `.summary.md` artifacts.
+  and asserts byte-equal output. Couchbase tagged `LocalOnly` per F-1
+  v3.0.1 follow-up (sibling-container model). `CliBinaryEndToEndTests`
+  spawns the actual `hyperbee-migrations.exe` child process against
+  the Postgres sample + a live Postgres Testcontainer and verifies the
+  emitted `.sql`, `.metadata.json`, and `.summary.md` artifacts. All
+  pass on net8.0, net9.0, and net10.0.
+- **Plugin-style `AssemblyLoadContext` isolation for the CLI binary**
+  (ADR-0024 A2). `MigrationAssemblyLoader` now defers shared-type
+  identity to the Default ALC (so `IServiceCollection`,
+  `IServiceProvider`, etc. type-match across the host/plugin boundary)
+  AND probes the NuGet cache directly via the migration assembly's
+  `.deps.json` for transitive packages that library projects don't
+  carry in their bin folder. `CliProviderRegistry.Discover`
+  supplements the metadata reference closure with a directory scan so
+  `<ProjectReference>` packages whose types the migration project
+  doesn't directly use (a common shape for the SquashCli packages)
+  still surface through discovery. Without this, the CLI binary
+  reported "Discovered providers: <none>" or threw
+  `MissingMethodException` at the first cross-ALC call. Set
+  `HYPERBEE_CLI_ALC_TRACE=1` to surface every plugin-ALC resolution
+  step on stderr when diagnosing an operator's load failure.
+- **OpenSearch resource-runner: leaf-filename dashes preserved.**
+  `OpenSearchResourceRunner.LoadBodyFromResource` no longer over-
+  sanitizes leaf filenames. MSBuild's manifest-name rule converts
+  dashes to underscores in folder segments but preserves them in leaf
+  filenames; the prior shared-helper sanitization treated all dashes
+  uniformly and silently failed to find resources like
+  `WITH BODY @bodies/common-mappings-component.json` whose embedded
+  manifest entry is `...bodies.common-mappings-component.json`.
+- **MongoDB test container: mapped public port (not fixed 28017).**
+  `MongoDbTestContainer` previously bound `28017:27017` as a fixed
+  host port; the binding got retained by Windows HNS after Docker
+  container teardown and surfaced as "port is already allocated" on
+  the next test run. Mapped ports are allocated fresh per container
+  and avoid the retention path entirely; downstream consumers read
+  via `MongoDbTestContainer.ConnectionString` rather than assuming a
+  fixed host:port.
 - **OpenSearch ISM lifecycle DSL — `DROP POLICY` + `DETACH POLICY FROM INDEX`.**
   Closes the CREATE/APPLY/DETACH/DROP symmetry for ISM policy management
   (R-17 per ADR-0024 audit follow-up). `DROP POLICY <id> [IF EXISTS]` deletes

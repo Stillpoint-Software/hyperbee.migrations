@@ -235,6 +235,42 @@ validated by every provider's implementation, not just one. v3.0 ships
 **without any ADR-0019 amendments** across the four non-Postgres provider
 phases -- the 5-interface contract held intact.
 
+### Ephemeral container provisioning
+
+Each provider's snapshot capture round provisions a clean ephemeral
+container, applies the migration range against it, and reads the
+canonical schema state. The provisioning lifecycle goes through
+`IEphemeralProvisioner` (in `Hyperbee.Migrations.Squash.Cli`):
+
+```csharp
+public interface IEphemeralProvisioner
+{
+    Task<IEphemeralFixture> ProvisionAsync(
+        IReadOnlyDictionary<string, string> hints,
+        CancellationToken cancellationToken);
+}
+```
+
+Every per-provider SquashCli package ships:
+
+- A default Testcontainers-backed provisioner that the
+  `{Provider}SquashCliProvider` default constructor consumes.
+- A `(IEphemeralProvisioner)` constructor on
+  `{Provider}SquashCliProvider` so callers can supply an alternate
+  provisioner. Useful for integration tests that need to pre-stage a
+  container, for embedding the squash codegen in a long-running host,
+  or for third-party provisioning shapes (sibling-container, podman,
+  remote Docker daemon).
+
+Couchbase additionally ships `CouchbaseSiblingContainerProvisioner`
+for the case where the CLI itself runs inside a Docker container.
+The sibling-container variant provisions Couchbase on the same Docker
+network as the CLI's parent container and returns the fixture with
+`network-alias` metadata; the snapshot capture client routes via the
+alias instead of through the operator's host network. Operators
+running the CLI from a non-containerized workstation use the default
+Testcontainers provisioner without thinking about it.
+
 ### Transitivity caveat (Aerospike v3.0)
 
 The `IMigrationRecordStore.IntersectWithSquashedAsync` per-provider
