@@ -31,7 +31,7 @@ public sealed class IsolatedCouchbaseContainer : IAsyncDisposable
         string bucketName,
         CancellationToken cancellationToken = default )
     {
-        var container = new CouchbaseBuilder( "couchbase:community-7.6.3" )
+        var container = new CouchbaseBuilder( "couchbase:community-7.6.2" )
             .WithCleanUp( true )
             .Build();
 

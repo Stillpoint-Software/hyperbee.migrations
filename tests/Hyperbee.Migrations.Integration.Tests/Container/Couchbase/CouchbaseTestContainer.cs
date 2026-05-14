@@ -24,14 +24,14 @@ public class CouchbaseTestContainer
         await network.CreateAsync( cancellationToken )
             .ConfigureAwait( false );
 
-        // Image pin: couchbase:community-7.6.3 (2024-12). The
+        // Image pin: couchbase:community-7.6.2 (2024-12). The
         // Testcontainers default of community-7.0.2 (2021-09) has a
         // known N1QL planner-catalog refresh issue for new scopes /
         // collections that surfaces as IndexFailureException 12021
         // "Scope not found in CB datastore" minutes after CREATE
         // SCOPE / CREATE COLLECTION completed via the management API.
         // 7.6.x ships the catalog-invalidation fix.
-        var couchbaseContainer = new CouchbaseBuilder( "couchbase:community-7.6.3" )
+        var couchbaseContainer = new CouchbaseBuilder( "couchbase:community-7.6.2" )
             .WithCleanUp( true )
             .WithNetwork( network )
             .WithNetworkAliases( "db" )
