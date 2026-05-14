@@ -24,6 +24,15 @@ public class PostgresTestContainer
         await network.CreateAsync( cancellationToken )
             .ConfigureAwait( false );
 
+        // No WaitStrategy override -- use the Testcontainers.PostgreSql
+        // default, which runs `pg_isready` until success. The previous
+        // UntilExternalTcpPortIsAvailable check is weaker than pg_isready:
+        // Postgres opens its TCP port early in startup (before initdb's
+        // postgres role + database creation completes), so a connect via
+        // the TCP-port check can succeed and immediately get "Connection
+        // reset by peer" during the SCRAM handshake. On a heavily loaded
+        // CI runner the gap is wide enough to surface as test flakiness;
+        // pg_isready waits for postgres to actually accept logins.
         var postgresContainer = new PostgreSqlBuilder()
             .WithNetwork( network )
             .WithNetworkAliases( "db" )
@@ -31,7 +40,6 @@ public class PostgresTestContainer
             .WithUsername( "test" )
             .WithPassword( "test" )
             .WithPortBinding( containerPort: 5432, hostPort: 6543 )
-            .WithWaitStrategy( DotNet.Testcontainers.Builders.Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable( 5432 ) )
             .WithCleanUp( true )
             .Build();
 

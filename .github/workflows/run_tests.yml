@@ -172,10 +172,16 @@ jobs:
             9.0.x
             8.0.x
 
-      - name: Restore + Build integration project (EnableIntegrationTests)
+      - name: Restore + Build solution (EnableIntegrationTests)
+        # Whole-solution build is required: CliBinaryEndToEndTests spawns
+        # runners/Hyperbee.Migrations.Cli/bin/<cfg>/<tfm>/hyperbee-migrations
+        # as a child process and walks the sample assemblies in their own
+        # bin folders. Building only the test project misses those. With
+        # /p:EnableIntegrationTests=true the integration project includes
+        # its INTEGRATIONS-gated source.
         run: |
-          dotnet restore tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj
-          dotnet build tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj \
+          dotnet restore ${{ vars.SOLUTION_NAME }}
+          dotnet build ${{ vars.SOLUTION_NAME }} \
             --no-restore \
             -c ${{ needs.discover.outputs.configuration }} \
             /p:EnableIntegrationTests=true
