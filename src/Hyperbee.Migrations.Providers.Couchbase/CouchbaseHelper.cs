@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Couchbase;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Management.Collections;
+using Couchbase.Management.Query;
 
 namespace Hyperbee.Migrations.Providers.Couchbase;
 
@@ -299,58 +300,23 @@ public static class CouchbaseHelper
 
     public static async Task CreatePrimaryCollectionIndexAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
     {
-        // Couchbase's management API (CREATE SCOPE / CREATE COLLECTION) and
-        // its N1QL/index service are eventually consistent. Even after the
-        // collection-visibility wait in the caller succeeds (a SELECT against
-        // system:keyspaces sees the new collection), the N1QL service's
-        // *datastore* metadata can still lag, surfacing as IndexFailureException
-        // 12021 "Scope not found in CB datastore default:<bucket>.<scope>"
-        // on the very next CREATE INDEX call. Retry on that transient
-        // condition with a short backoff; persistent failures still bubble.
-        var stmt = $"CREATE PRIMARY INDEX ON `default`:`{Unquote( bucketName )}`.`{Unquote( scopeName )}`.`{Unquote( collectionName )}`";
-        const int maxAttempts = 60; // ~30s upper bound: N1QL planner catalog
-                                    // refresh after CREATE COLLECTION can take
-                                    // 10-20s on a cold cluster.
-        for ( var attempt = 1; ; attempt++ )
-        {
-            try
-            {
-                await QueryExecuteAsync( clusterHelper, stmt ).ConfigureAwait( false );
-                return;
-            }
-            catch ( Exception ex ) when ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "index already exists" ) )
-            {
-                // Idempotent: primary index already exists.
-                return;
-            }
-            catch ( Exception ex ) when (
-                attempt < maxAttempts && (
-                    ex.Message.Contains( "Scope not found" ) ||
-                    ex.Message.Contains( "Bucket not found" ) ||
-                    ex.Message.Contains( "Keyspace not found" ) ||
-                    ex.Message.Contains( "12021" ) ||
-                    ex.Message.Contains( "12003" )) )
-            {
-                // Datastore catalog hasn't caught up yet. Two-pronged
-                // recovery: (1) probe system:scopes which forces the N1QL
-                // planner to refresh its catalog metadata, then (2) brief
-                // backoff. The system-query workaround is documented in
-                // Couchbase Server release notes for catalog-cache
-                // inconsistency after CREATE SCOPE/COLLECTION.
-                try
-                {
-                    await QueryExecuteAsync(
-                        clusterHelper,
-                        $"SELECT RAW count(*) FROM system:scopes WHERE `bucket` = '{Unquote( bucketName )}'" )
-                        .ConfigureAwait( false );
-                }
-                catch
-                {
-                    // System probe itself may transiently fail; ignore.
-                }
-                await Task.Delay( TimeSpan.FromMilliseconds( 500 ) ).ConfigureAwait( false );
-            }
-        }
+        // Use the SDK's typed CreatePrimaryIndexAsync with ScopeName +
+        // CollectionName options. This routes through the **management
+        // REST API** for index creation, NOT through the N1QL planner,
+        // bypassing the planner-catalog refresh window entirely. The raw
+        // N1QL `CREATE PRIMARY INDEX ON default:bucket.scope.collection`
+        // approach this method previously used was blocked by Couchbase
+        // Server 7.0.2-community's slow planner-catalog refresh (3+
+        // minutes in CI), even though the management API path completes
+        // in <1s.
+        var options = new CreatePrimaryQueryIndexOptions()
+            .ScopeName( Unquote( scopeName ) )
+            .CollectionName( Unquote( collectionName ) )
+            .IgnoreIfExists( true );
+
+        await clusterHelper.Cluster.QueryIndexes
+            .CreatePrimaryIndexAsync( Unquote( bucketName ), options )
+            .ConfigureAwait( false );
     }
 
     public static async Task<bool> PrimaryCollectionIndexExistsAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
