@@ -259,6 +259,44 @@ public static class CouchbaseHelper
         }
     }
 
+    /// <summary>
+    /// Probes whether the N1QL planner has materialized the given collection
+    /// in its keyspace-to-datastore mapping. <see cref="CollectionExistsQueryAsync"/>
+    /// checks <c>system:keyspaces</c> -- a catalog view -- but the planner's
+    /// datastore-mapping is a separate metadata cache that can lag the
+    /// catalog by 10s of seconds in containerized Couchbase deployments.
+    /// </summary>
+    /// <remarks>
+    /// The signal is: does a query that COMPILES against the keyspace
+    /// succeed? <c>SELECT 1 FROM keyspace LIMIT 0</c> is a planner-only
+    /// query (no rows scanned) that nonetheless requires the planner to
+    /// resolve the keyspace to its datastore. If the planner can compile
+    /// this, <c>CREATE PRIMARY INDEX</c> against the same keyspace will
+    /// succeed. Returns false on the specific planner-not-ready errors
+    /// (Scope/Bucket/Keyspace not found, 12021/12003); rethrows other
+    /// exceptions so genuine query failures surface immediately.
+    /// </remarks>
+    public static async Task<bool> CollectionPlannerReadyAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
+    {
+        try
+        {
+            await QueryExecuteAsync(
+                clusterHelper,
+                $"SELECT 1 FROM `default`:`{Unquote( bucketName )}`.`{Unquote( scopeName )}`.`{Unquote( collectionName )}` LIMIT 0"
+            ).ConfigureAwait( false );
+            return true;
+        }
+        catch ( Exception ex ) when (
+            ex.Message.Contains( "Scope not found" ) ||
+            ex.Message.Contains( "Bucket not found" ) ||
+            ex.Message.Contains( "Keyspace not found" ) ||
+            ex.Message.Contains( "12021" ) ||
+            ex.Message.Contains( "12003" ) )
+        {
+            return false;
+        }
+    }
+
     public static async Task CreatePrimaryCollectionIndexAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
     {
         // Couchbase's management API (CREATE SCOPE / CREATE COLLECTION) and

@@ -160,6 +160,34 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             // Don't throw - proceed with index creation anyway
         }
 
+        // wait for the N1QL planner's keyspace-to-datastore mapping to
+        // catch up. system:keyspaces (the previous wait) and the planner's
+        // datastore-mapping are SEPARATE metadata caches; on containerized
+        // Couchbase Server the planner can lag the catalog by 30s-2min,
+        // and CREATE PRIMARY INDEX is one of the operations that surfaces
+        // the lag as IndexFailureException 12021 "Scope not found in CB
+        // datastore". Probe by issuing a SELECT against the actual
+        // keyspace -- if the planner can compile that, CREATE INDEX will
+        // succeed.
+
+        try
+        {
+            _logger.LogInformation( "Waiting for N1QL planner readiness on ledger collection..." );
+
+            await WaitHelper.WaitUntilAsync(
+                async _ => await clusterHelper.CollectionPlannerReadyAsync( bucketName, scopeName, collectionName ).ConfigureAwait( false ),
+                TimeSpan.FromMinutes( 3 ), // wide upper bound: 7.0.2 community in CI containers needs this
+                new PauseRetryStrategy( TimeSpan.FromSeconds( 1 ) ),
+                cancellationToken
+            );
+
+            _logger.LogInformation( "N1QL planner ready for ledger collection." );
+        }
+        catch ( Exception ex )
+        {
+            _logger.LogWarning( ex, "N1QL planner readiness check timed out for ledger collection `{bucketName}`.`{scopeName}`.`{collectionName}`. Proceeding anyway -- CREATE INDEX will retry.", bucketName, scopeName, collectionName );
+        }
+
         // check for primary index
 
         _logger.LogInformation( "Ensuring ledger primary index `{bucketName}`.`{scopeName}`.`{collectionName}` exists.", bucketName, scopeName, collectionName );
