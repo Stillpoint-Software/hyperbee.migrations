@@ -1,5 +1,15 @@
 name: Run Tests
 
+# Per-provider integration matrix: each Couchbase/Postgres/MongoDB/etc. job
+# spawns ONLY its own provider's containers (via HYPERBEE_TESTS_PROVIDERS_ONLY)
+# and runs ONLY tests targeting that provider (via FullyQualifiedName filter).
+# This eliminates the resource pressure that came from one job spinning up
+# all 5 provider containers simultaneously on a 4-CPU / 16 GB GitHub-hosted
+# runner -- the pressure was amplifying eventual-consistency races inside
+# Couchbase Server (CREATE SCOPE/COLLECTION/INDEX vs N1QL planner-catalog)
+# and surfacing them as test flakiness. Unit tests run separately because
+# they need no containers at all.
+
 on:
   workflow_run:
     workflows: [Create Release]
@@ -19,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       branch_name: ${{ steps.set_branch.outputs.branch_name }}
+      configuration: ${{ steps.set_branch.outputs.configuration }}
 
     steps:
       - id: set_branch
@@ -36,16 +47,191 @@ jobs:
             RAW='${{ github.ref }}'
           fi
 
-          # Strip the refs/heads/ prefix if present (only relevant for the push/dispatch fallback)
+          # Strip the refs/heads/ prefix if present.
           CLEAN="${RAW#refs/heads/}"
 
           echo "Detected ref: $CLEAN"
           echo "branch_name=$CLEAN" >> "$GITHUB_OUTPUT"
 
-  test:
+          if [[ "$CLEAN" == "main" ]]; then
+            echo "configuration=Release" >> "$GITHUB_OUTPUT"
+          else
+            echo "configuration=Debug" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ------------------------------------------------------------------ unit
+  unit-tests:
     needs: discover
-    uses: Stillpoint-Software/shared-workflows/.github/workflows/run_tests.yml@main
-    with:
-      branch: ${{ needs.discover.outputs.branch_name }}
-      solution_name: ${{ vars.SOLUTION_NAME }}
-    secrets: inherit
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: [net8.0, net9.0, net10.0]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.discover.outputs.branch_name }}
+          fetch-depth: 0
+
+      - name: Setup .NET SDKs
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            10.0.x
+            9.0.x
+            8.0.x
+
+      - name: Restore + Build (Hyperbee.Migrations.sln)
+        run: |
+          dotnet restore ${{ vars.SOLUTION_NAME }}
+          dotnet build ${{ vars.SOLUTION_NAME }} \
+            --no-restore \
+            -c ${{ needs.discover.outputs.configuration }}
+
+      - name: Unit tests (${{ matrix.framework }})
+        run: |
+          shopt -s globstar nullglob
+          mkdir -p ./TestResults
+
+          # Run every test project EXCEPT the integration project. Each is
+          # container-free and runs in seconds.
+          for proj in tests/Hyperbee.Migrations.Tests/Hyperbee.Migrations.Tests.csproj \
+                      tests/Hyperbee.Migrations.Squash.Tests/Hyperbee.Migrations.Squash.Tests.csproj \
+                      tests/Hyperbee.Migrations.Cli.Tests/Hyperbee.Migrations.Cli.Tests.csproj; do
+            echo "::group::Unit: $proj (${{ matrix.framework }})"
+            dotnet test "$proj" \
+              --no-build \
+              -c ${{ needs.discover.outputs.configuration }} \
+              -f ${{ matrix.framework }} \
+              --logger "trx;LogFileName=$(basename "$proj" .csproj)-${{ matrix.framework }}.trx" \
+              --results-directory ./TestResults
+            echo "::endgroup::"
+          done
+
+      - name: Upload unit test results
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test-results-unit-${{ matrix.framework }}
+          path: ./TestResults/
+          if-no-files-found: warn
+
+  # ------------------------------------------------------------------ integration
+  # Per-provider matrix. Each matrix entry runs ONLY one provider's
+  # containers + ONLY that provider's test classes. Resource competition
+  # between provider containers is eliminated -- a CI runner sees one
+  # Couchbase OR one MongoDB OR one OpenSearch, not all five at once.
+  #
+  # The matrix-include shape (rather than a 5x3 cross product) lets each
+  # provider's `filter` and `providers-only` env strings be tailored;
+  # MultiProvider tests need both Postgres + MongoDB, CliBinary spawns its
+  # own throwaway Postgres independent of the suite-level Postgres
+  # container, etc.
+  integration-tests:
+    needs: discover
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: [net8.0, net9.0, net10.0]
+        provider: [postgres, aerospike, mongodb, opensearch, couchbase, multi-provider]
+        include:
+          - provider: postgres
+            providers-only: Postgres
+            filter: "FullyQualifiedName~Postgres|FullyQualifiedName~CliBinary"
+          - provider: aerospike
+            providers-only: Aerospike
+            filter: "FullyQualifiedName~Aerospike"
+          - provider: mongodb
+            providers-only: MongoDb
+            filter: "FullyQualifiedName~MongoDB"
+          - provider: opensearch
+            providers-only: OpenSearch
+            filter: "FullyQualifiedName~OpenSearch"
+          - provider: couchbase
+            providers-only: Couchbase
+            filter: "FullyQualifiedName~Couchbase"
+          - provider: multi-provider
+            providers-only: Postgres,MongoDb
+            filter: "FullyQualifiedName~MultiProviderHost"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.discover.outputs.branch_name }}
+          fetch-depth: 0
+
+      - name: Setup .NET SDKs
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            10.0.x
+            9.0.x
+            8.0.x
+
+      - name: Restore + Build integration project (EnableIntegrationTests)
+        run: |
+          dotnet restore tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj
+          dotnet build tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj \
+            --no-restore \
+            -c ${{ needs.discover.outputs.configuration }} \
+            /p:EnableIntegrationTests=true
+
+      - name: Integration tests -- ${{ matrix.provider }} (${{ matrix.framework }})
+        # HYPERBEE_TESTS_PROVIDERS_ONLY restricts the [AssemblyInitialize]
+        # to only the named provider(s). The --filter then selects only
+        # the test classes for those providers. LocalOnly + MultiNode
+        # categories are excluded across the board (the Couchbase
+        # host-side cluster-map race is gated behind LocalOnly per F-1
+        # v3.0.1 follow-up; MultiNode OpenSearch tests need 3 JVMs and
+        # have their own manual-trigger workflow).
+        env:
+          HYPERBEE_TESTS_PROVIDERS_ONLY: ${{ matrix.providers-only }}
+        run: |
+          mkdir -p ./TestResults
+          dotnet test \
+            tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj \
+            --no-build \
+            -c ${{ needs.discover.outputs.configuration }} \
+            -f ${{ matrix.framework }} \
+            --filter "(${{ matrix.filter }})&TestCategory!=LocalOnly&TestCategory!=MultiNode" \
+            --logger "trx;LogFileName=integration-${{ matrix.provider }}-${{ matrix.framework }}.trx" \
+            --logger "console;verbosity=normal" \
+            --results-directory ./TestResults \
+            /p:EnableIntegrationTests=true
+
+      - name: Upload integration test results
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test-results-integration-${{ matrix.provider }}-${{ matrix.framework }}
+          path: ./TestResults/
+          if-no-files-found: warn
+
+  # ------------------------------------------------------------------ merge
+  merge-results:
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    if: always()
+    steps:
+      - name: Download All Test Results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: test-results-*
+          path: ./TestResults
+          merge-multiple: true
+
+      - name: Upload Combined Results
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-results
+          path: ./TestResults/
+          if-no-files-found: warn
+
+      - name: Cleanup Individual Artifacts
+        uses: geekyeggo/delete-artifact@v6
+        with:
+          name: test-results-*

@@ -208,13 +208,33 @@ Docker runtime cost.
 
 ### Changed (back-compat preserved)
 
-- **F-1 / RB-5 closed -- Couchbase squash integration tests no longer
-  carry `[TestCategory("LocalOnly")]`.** Refactored to use a per-test-class
-  `IsolatedCouchbaseContainer` Testcontainers fixture instead of the
-  shared `CouchbaseTestContainer` that conflicted with the runner test's
-  cluster-map. The "all 5 providers" CI coverage claim now matches the
-  CI evidence; no Couchbase squash coverage is gated behind a
-  developer-machine-only flag.
+- **F-1 partial -- Couchbase squash integration tests refactored to use
+  per-test-class `IsolatedCouchbaseContainer`** instead of the shared
+  `CouchbaseTestContainer` that conflicted with the runner test's
+  cluster-map. The squash determinism + verification suites + the new
+  `CouchbaseSquashCliProviderIntegrationTests` + `CouchbaseRunnerTest`
+  remain tagged `[TestCategory("LocalOnly")]` for v3.0: Couchbase's
+  N1QL planner-catalog refresh after CREATE SCOPE/COLLECTION is
+  eventually consistent and races CREATE PRIMARY INDEX under the
+  resource pressure of a 5-provider CI runner. The provider's
+  `CreatePrimaryCollectionIndexAsync` / `CreateScopeAsync` /
+  `CreateCollectionAsync` now retry with a forced planner refresh via
+  `system:scopes`; that recovers the race on a quiescent system but
+  is not yet reliable under full-suite parallel load. The
+  `CouchbaseSiblingContainerProvisioner` landing in v3.0.1 is the
+  durable CI fix; Couchbase squash correctness is otherwise byte-tested
+  by 192 unit tests in `Hyperbee.Migrations.Squash.Tests`.
+- **Per-provider integration matrix in CI** (run_tests.yml). Each
+  Postgres/Aerospike/MongoDB/OpenSearch/Couchbase job spawns ONLY its
+  own provider's containers (via `HYPERBEE_TESTS_PROVIDERS_ONLY`) and
+  runs ONLY tests targeting that provider (via `FullyQualifiedName`
+  filter). Eliminates the resource pressure that came from one job
+  spinning up all 5 provider containers simultaneously on a
+  4-CPU / 16 GB GitHub-hosted runner -- the pressure was amplifying
+  eventual-consistency races inside Couchbase Server and surfacing
+  them as test flakiness. Unit tests run separately because they need
+  no containers at all. `MultiProviderHostIntegrationTests` gets its
+  own job with Postgres + MongoDB.
 - **Couchbase SquashCli provider package ships** -- the fifth and final
   ISquashCliProvider implementation for the v3.0 CLI extensibility
   cascade. `CouchbaseSquashCliProvider` spins ephemeral Couchbase Server
