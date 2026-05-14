@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using Couchbase;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Management.Collections;
-using Couchbase.Management.Query;
 
 namespace Hyperbee.Migrations.Providers.Couchbase;
 
@@ -300,23 +299,26 @@ public static class CouchbaseHelper
 
     public static async Task CreatePrimaryCollectionIndexAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )
     {
-        // Use the SDK's typed CreatePrimaryIndexAsync with ScopeName +
-        // CollectionName options. This routes through the **management
-        // REST API** for index creation, NOT through the N1QL planner,
-        // bypassing the planner-catalog refresh window entirely. The raw
-        // N1QL `CREATE PRIMARY INDEX ON default:bucket.scope.collection`
-        // approach this method previously used was blocked by Couchbase
-        // Server 7.0.2-community's slow planner-catalog refresh (3+
-        // minutes in CI), even though the management API path completes
-        // in <1s.
-        var options = new CreatePrimaryQueryIndexOptions()
-            .ScopeName( Unquote( scopeName ) )
-            .CollectionName( Unquote( collectionName ) )
-            .IgnoreIfExists( true );
-
-        await clusterHelper.Cluster.QueryIndexes
-            .CreatePrimaryIndexAsync( Unquote( bucketName ), options )
-            .ConfigureAwait( false );
+        // Couchbase Server 7.6.3+ refreshes the N1QL planner-catalog
+        // promptly after CREATE SCOPE / CREATE COLLECTION (the catalog
+        // invalidation fix). On older versions (community 7.0.2 -- the
+        // Testcontainers default until we pinned 7.6.3) the planner
+        // could lag for several minutes, surfacing as
+        // IndexFailureException 12021 "Scope not found in CB datastore"
+        // on the very next N1QL CREATE INDEX. The image pin in our
+        // CouchbaseTestContainer + CouchbaseEphemeralProvisioner makes
+        // this method's straight-line N1QL DDL safe again; we keep the
+        // idempotent "already exists" handling because cluster-warm
+        // re-runs are still common.
+        var stmt = $"CREATE PRIMARY INDEX ON `default`:`{Unquote( bucketName )}`.`{Unquote( scopeName )}`.`{Unquote( collectionName )}`";
+        try
+        {
+            await QueryExecuteAsync( clusterHelper, stmt ).ConfigureAwait( false );
+        }
+        catch ( Exception ex ) when ( ex.Message.Contains( "already exists" ) || ex.Message.Contains( "index already exists" ) )
+        {
+            // Idempotent: primary index already exists.
+        }
     }
 
     public static async Task<bool> PrimaryCollectionIndexExistsAsync( this ClusterHelper clusterHelper, string bucketName, string scopeName, string collectionName )

@@ -18,7 +18,7 @@ public sealed class CouchbaseEphemeralProvisioner : IEphemeralProvisioner
         CancellationToken cancellationToken )
     {
         _ = hints; // currently no Couchbase-specific hints; image override TBD
-        var container = new CouchbaseBuilder()
+        var container = new CouchbaseBuilder( "couchbase:community-7.6.3" )
             .WithCleanUp( true )
             .Build();
 
@@ -121,7 +121,7 @@ public sealed class CouchbaseSiblingContainerProvisioner : IEphemeralProvisioner
             .Build();
         await network.CreateAsync( cancellationToken ).ConfigureAwait( false );
 
-        var container = new CouchbaseBuilder()
+        var container = new CouchbaseBuilder( "couchbase:community-7.6.3" )
             .WithCleanUp( true )
             .WithNetwork( network )
             .WithNetworkAliases( alias )
