@@ -30,15 +30,18 @@ namespace Hyperbee.Migrations.Integration.Tests;
 //   6. Capture B.
 //   7. CouchbaseSquashVerifier.VerifyAsync -> expect Success.
 //
-// F-1 closed: the host-side Couchbase cluster-map race that previously
-// kept this suite behind [TestCategory("LocalOnly")] was resource-
-// pressure-induced. The per-provider integration matrix in run_tests.yml
-// isolates each provider's containers, removing the pressure;
-// IsolatedCouchbaseContainer remains the per-test-class fixture so the
-// verifier round-trip (R-P6) runs against a clean environment.
+// F-1 v3.0.1 follow-up: this suite carries [TestCategory("LocalOnly")]
+// for the host-side cluster-map redirect reason. See
+// CouchbaseSquashDeterminismTests for the detailed explanation; the
+// sibling-container provisioner (CouchbaseSiblingContainerProvisioner)
+// or setupAlternateAddresses-on-server are the v3.0.1 paths.
+//
+// Verifier correctness is byte-tested by CouchbaseSquashVerifierTests
+// in the unit suite (192 Couchbase unit tests).
 
 [TestClass]
 [DoNotParallelize]
+[TestCategory( "LocalOnly" )]
 public class CouchbaseSquashVerificationTests
 {
     private IsolatedCouchbaseContainer _container;

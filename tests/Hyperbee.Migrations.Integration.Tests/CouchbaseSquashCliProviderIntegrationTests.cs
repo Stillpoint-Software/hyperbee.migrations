@@ -13,9 +13,17 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // End-to-end coverage for CouchbaseSquashCliProvider per ADR-0024 Week 2.
 // Uses an isolated Couchbase container for the live probe so it doesn't
 // conflict with the shared CouchbaseTestContainer + CouchbaseRunnerTest.
+//
+// F-1 v3.0.1 follow-up: LocalOnly for the host-side cluster-map
+// redirect reason; see CouchbaseSquashDeterminismTests for the
+// detailed explanation. CouchbaseRunnerTest is NOT LocalOnly because
+// it uses the sibling-container model (the migration runner is a
+// container on the same Docker network as Couchbase), which doesn't
+// hit the host-side redirect issue.
 
 [TestClass]
 [DoNotParallelize]
+[TestCategory( "LocalOnly" )]
 public class CouchbaseSquashCliProviderIntegrationTests
 {
     private static Assembly _sampleAssembly;

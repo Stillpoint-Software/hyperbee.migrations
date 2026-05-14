@@ -67,11 +67,18 @@ public class CouchbaseTestContainer
 
     private static async Task ConfigureCouchbaseAsync( CouchbaseContainer container, CancellationToken cancellationToken = default )
     {
+        // retryCount is the real ceiling on WaitStrategy.WaitUntilAsync,
+        // not the timeout. Previously 3 retries at 5-sec interval gave us
+        // a 15-sec budget which was fine for 7.0.2 (admin API up in ~3s)
+        // but tight for 7.6.2 (admin API up in ~12s on a clean runner,
+        // longer under CI load). 60 retries at 5-sec interval gives a
+        // 300-sec budget, bounded by the 5-min timeout, with margin for
+        // slow-starting builds.
         await WaitStrategy.WaitUntilAsync(
                 () => WaitUntilNodeIsReady.UntilAsync( container ),
                 TimeSpan.FromSeconds( 5 ),
-                TimeSpan.FromMinutes( 3 ),
-                3, cancellationToken )
+                TimeSpan.FromMinutes( 5 ),
+                60, cancellationToken )
             .ConfigureAwait( false );
 
         var buckets = new List<string> { "hyperbee" };
@@ -147,7 +154,10 @@ public class CouchbaseTestContainer
             .Build()
             .Last();
 
-        await WaitStrategy.WaitUntilAsync( () => waitUntilBucketIsCreated.UntilAsync( container ), TimeSpan.FromSeconds( 2 ), TimeSpan.FromMinutes( 5 ), 1, cancellationToken )
+        // Same retryCount fix as the admin-API wait above. Was 1 retry,
+        // which capped budget at ~4 sec. 150 retries at 2-sec interval
+        // gives 300-sec budget aligned with the 5-min timeout.
+        await WaitStrategy.WaitUntilAsync( () => waitUntilBucketIsCreated.UntilAsync( container ), TimeSpan.FromSeconds( 2 ), TimeSpan.FromMinutes( 5 ), 150, cancellationToken )
             .ConfigureAwait( false );
     }
 

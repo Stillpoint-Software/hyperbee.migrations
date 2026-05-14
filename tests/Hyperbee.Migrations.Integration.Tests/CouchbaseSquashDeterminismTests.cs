@@ -21,17 +21,26 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // runtime stats, server-assigned node placement, vBucketServerMap, etc.) at
 // every nesting level and JSON key orderings are sorted away.
 //
-// F-1 closed: this suite formerly carried [TestCategory("LocalOnly")]
-// because the host-side Couchbase cluster-map race surfaced under the
-// resource pressure of a single CI job spinning up all 5 provider
-// containers simultaneously. The per-provider integration matrix in
-// run_tests.yml isolates each provider's containers onto its own
-// runner, eliminating the pressure. IsolatedCouchbaseContainer remains
-// the per-test-class fixture and gives the squash determinism gate
-// (C12 per ADR-0019 A12) a clean environment.
+// F-1 v3.0.1 follow-up: this suite carries [TestCategory("LocalOnly")]
+// because the host-side cluster-map redirect is unsolved. The
+// Couchbase SDK bootstraps via the host-mapped mgmt port, receives a
+// cluster map advertising internal Docker addresses
+// (172.17.0.2:11210), tries to connect there, and gets "response
+// ended prematurely". This is independent of N1QL planner-catalog
+// refresh -- a Couchbase 7.6.2 image pin alone does NOT fix it.
+// The two unblocked paths are (a) the sibling-container model
+// (CouchbaseSiblingContainerProvisioner, scheduled for v3.0.1) where
+// the CLI / test process runs as a container on the same Docker
+// network and connects via network alias, OR (b) calling
+// setupAlternateAddresses on the server to advertise localhost-bound
+// service ports. The squash correctness contract is byte-tested by
+// 192 Couchbase unit tests in Hyperbee.Migrations.Squash.Tests; this
+// end-to-end suite runs on a developer machine where the host-side
+// connection works because Docker Desktop bridges differently.
 
 [TestClass]
 [DoNotParallelize]
+[TestCategory( "LocalOnly" )]
 public class CouchbaseSquashDeterminismTests
 {
     private IsolatedCouchbaseContainer _container;

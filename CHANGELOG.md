@@ -208,19 +208,37 @@ Docker runtime cost.
 
 ### Changed (back-compat preserved)
 
-- **F-1 closed -- all Couchbase integration tests run in CI**. The
-  prior LocalOnly gating on `CouchbaseSquashDeterminismTests`,
+- **F-1 partial close -- CouchbaseRunnerTest now runs in CI.** The
+  prior LocalOnly tag on `CouchbaseRunnerTest` is removed; the test
+  now passes in CI on net8/9/10. Two fixes:
+  (1) Pin `couchbase:community-7.6.2` (was: Testcontainers.Couchbase
+  default of 7.0.2-community). 7.0.2 had a planner-catalog refresh
+  issue for new scopes/collections that surfaced as
+  `IndexFailureException 12021 "Scope not found in CB datastore"` on
+  CREATE PRIMARY INDEX; 7.6.x ships the fix.
+  (2) Bump `retryCount` from 3 to 60 on
+  `CouchbaseTestContainer.ConfigureCouchbaseAsync`'s admin-API wait
+  (and from 1 to 150 on the bucket-ready wait). `retryCount` is the
+  real ceiling -- previously capped the budget at 15 seconds, too
+  tight for 7.6.2's ~12s warmup on a CI runner.
+- **F-1 v3.0.1 -- 6 Couchbase squash tests remain LocalOnly** for a
+  SEPARATE issue: the host-side cluster-map redirect. The Couchbase
+  SDK bootstraps via the host-mapped mgmt port, receives a cluster
+  map advertising internal Docker addresses (172.17.0.2:11210), tries
+  to connect there, and gets "response ended prematurely". The
+  `?network=external` query parameter requires
+  `setupAlternateAddresses` to be configured on the server -- the
+  Testcontainers.Couchbase library default setup callback does NOT
+  configure alt-addresses, so host-side SDK connections to an
+  isolated Couchbase container fail. The two unblocked paths are
+  (a) `CouchbaseSiblingContainerProvisioner` (scheduled for v3.0.1)
+  where the test/CLI process runs as a container on the same Docker
+  network, or (b) calling `setupAlternateAddresses` on the server.
+  Tests gated: `CouchbaseSquashDeterminismTests`,
   `CouchbaseSquashVerificationTests`,
-  `CouchbaseSquashCliProviderIntegrationTests`, and `CouchbaseRunnerTest`
-  has been removed. Two complementary fixes close F-1:
-  (1) `CouchbaseHelper.CreateScopeAsync`, `CreateCollectionAsync`, and
-  `CreatePrimaryCollectionIndexAsync` retry transient management-API
-  and N1QL planner-catalog races with a forced catalog refresh via
-  `system:scopes` between attempts; and
-  (2) the per-provider integration matrix in CI isolates each provider's
-  containers onto its own runner, eliminating the resource pressure
-  that was amplifying the eventual-consistency races to test
-  flakiness. F-1 v3.0.1 is no longer needed.
+  `CouchbaseSquashCliProviderIntegrationTests`. Squash correctness
+  is byte-tested by 192 Couchbase unit tests in
+  `Hyperbee.Migrations.Squash.Tests`.
 - **Per-provider integration matrix in CI** (run_tests.yml). Each
   Postgres/Aerospike/MongoDB/OpenSearch/Couchbase job spawns ONLY its
   own provider's containers (via `HYPERBEE_TESTS_PROVIDERS_ONLY`) and
