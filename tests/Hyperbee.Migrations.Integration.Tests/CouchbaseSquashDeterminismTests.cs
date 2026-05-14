@@ -21,24 +21,17 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // runtime stats, server-assigned node placement, vBucketServerMap, etc.) at
 // every nesting level and JSON key orderings are sorted away.
 //
-// F-1 / RB-5 close-out: this suite previously carried
-// [TestCategory("LocalOnly")] because the shared CouchbaseTestContainer
-// + CouchbaseRunnerTest combination forced an alt-addresses configuration
-// that broke the runner test's cluster-map. The audit pass through
-// IsolatedCouchbaseContainer attempted to remove the LocalOnly tag, but
-// the host-side cluster-map race against an isolated Testcontainers
-// Couchbase persists empirically (HTTP "response ended prematurely" /
-// "An error occurred while sending the request" during the topology
-// probe). The squash correctness contract is byte-tested by the
-// Couchbase unit tests in Hyperbee.Migrations.Squash.Tests (192 tests);
-// this end-to-end suite is gated behind LocalOnly until the
-// sibling-container variant (CouchbaseSiblingContainerProvisioner)
-// lands in v3.0.1, per the same v3.0.1 follow-up that gates
-// CouchbaseSquashCliProviderIntegrationTests.
+// F-1 closed: this suite formerly carried [TestCategory("LocalOnly")]
+// because the host-side Couchbase cluster-map race surfaced under the
+// resource pressure of a single CI job spinning up all 5 provider
+// containers simultaneously. The per-provider integration matrix in
+// run_tests.yml isolates each provider's containers onto its own
+// runner, eliminating the pressure. IsolatedCouchbaseContainer remains
+// the per-test-class fixture and gives the squash determinism gate
+// (C12 per ADR-0019 A12) a clean environment.
 
 [TestClass]
 [DoNotParallelize]
-[TestCategory( "LocalOnly" )]
 public class CouchbaseSquashDeterminismTests
 {
     private IsolatedCouchbaseContainer _container;

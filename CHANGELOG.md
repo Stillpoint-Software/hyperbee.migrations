@@ -208,22 +208,19 @@ Docker runtime cost.
 
 ### Changed (back-compat preserved)
 
-- **F-1 partial -- Couchbase squash integration tests refactored to use
-  per-test-class `IsolatedCouchbaseContainer`** instead of the shared
-  `CouchbaseTestContainer` that conflicted with the runner test's
-  cluster-map. The squash determinism + verification suites + the new
-  `CouchbaseSquashCliProviderIntegrationTests` + `CouchbaseRunnerTest`
-  remain tagged `[TestCategory("LocalOnly")]` for v3.0: Couchbase's
-  N1QL planner-catalog refresh after CREATE SCOPE/COLLECTION is
-  eventually consistent and races CREATE PRIMARY INDEX under the
-  resource pressure of a 5-provider CI runner. The provider's
-  `CreatePrimaryCollectionIndexAsync` / `CreateScopeAsync` /
-  `CreateCollectionAsync` now retry with a forced planner refresh via
-  `system:scopes`; that recovers the race on a quiescent system but
-  is not yet reliable under full-suite parallel load. The
-  `CouchbaseSiblingContainerProvisioner` landing in v3.0.1 is the
-  durable CI fix; Couchbase squash correctness is otherwise byte-tested
-  by 192 unit tests in `Hyperbee.Migrations.Squash.Tests`.
+- **F-1 closed -- all Couchbase integration tests run in CI**. The
+  prior LocalOnly gating on `CouchbaseSquashDeterminismTests`,
+  `CouchbaseSquashVerificationTests`,
+  `CouchbaseSquashCliProviderIntegrationTests`, and `CouchbaseRunnerTest`
+  has been removed. Two complementary fixes close F-1:
+  (1) `CouchbaseHelper.CreateScopeAsync`, `CreateCollectionAsync`, and
+  `CreatePrimaryCollectionIndexAsync` retry transient management-API
+  and N1QL planner-catalog races with a forced catalog refresh via
+  `system:scopes` between attempts; and
+  (2) the per-provider integration matrix in CI isolates each provider's
+  containers onto its own runner, eliminating the resource pressure
+  that was amplifying the eventual-consistency races to test
+  flakiness. F-1 v3.0.1 is no longer needed.
 - **Per-provider integration matrix in CI** (run_tests.yml). Each
   Postgres/Aerospike/MongoDB/OpenSearch/Couchbase job spawns ONLY its
   own provider's containers (via `HYPERBEE_TESTS_PROVIDERS_ONLY`) and

@@ -11,26 +11,11 @@ namespace Hyperbee.Migrations.Integration.Tests;
 #if INTEGRATIONS
 
 // End-to-end coverage for CouchbaseSquashCliProvider per ADR-0024 Week 2.
-// Uses an isolated Couchbase container for the live probe (matching
-// CouchbaseSquashDeterminismTests' post-F-1 pattern) so it doesn't
+// Uses an isolated Couchbase container for the live probe so it doesn't
 // conflict with the shared CouchbaseTestContainer + CouchbaseRunnerTest.
-//
-// LocalOnly per commit dd0b690 (F-1 roll-back of the host-side
-// alt-addresses approach): host-side Couchbase HTTP probes against an
-// isolated Testcontainers cluster hit a cluster-map race that cannot be
-// reliably resolved without the sibling-container model. The
-// sibling-container variant (CouchbaseSiblingContainerProvisioner) is
-// the v3.0.1 follow-up that lets this run in CI. Squash correctness for
-// Couchbase is byte-proven by 192 unit tests covering canonicalizer +
-// classifier + topology + verifier + DI + scanner; the CLI provider's
-// orchestration shape is byte-proven by the four passing per-provider
-// end-to-end tests (Postgres, MongoDB, OpenSearch, Aerospike). This
-// test is reproducible on the maintainer's local environment and is
-// excluded from CI runs via the LocalOnly tag.
 
 [TestClass]
 [DoNotParallelize]
-[TestCategory( "LocalOnly" )]
 public class CouchbaseSquashCliProviderIntegrationTests
 {
     private static Assembly _sampleAssembly;

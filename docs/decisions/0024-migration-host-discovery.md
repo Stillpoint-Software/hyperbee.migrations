@@ -221,5 +221,5 @@ Couchbase additionally ships `CouchbaseSiblingContainerProvisioner` — when the
 
 - Proposed: 2026-05-12.
 - Implementation: Week 2 Day 1 of Path A (see `docs/research/0009-v3-release-readiness-assessment.md`).
-- Accepted: 2026-05-13 — all 5 providers ship a working `IMigrationHost` host class; CLI binary E2E test (`CliBinaryEndToEndTests`) drives Postgres host through the actual `hyperbee-migrations.exe` child process and validates emitted `.sql` + `.metadata.json` + `.summary.md` artifacts; 5 per-provider SquashCliProvider integration tests pass on net8/net9/net10 (Couchbase tagged LocalOnly per F-1 v3.0.1 follow-up).
+- Accepted: 2026-05-13 — all 5 providers ship a working `IMigrationHost` host class; CLI binary E2E test (`CliBinaryEndToEndTests`) drives Postgres host through the actual `hyperbee-migrations.exe` child process and validates emitted `.sql` + `.metadata.json` + `.summary.md` artifacts; 5 per-provider SquashCliProvider integration tests pass on net8/net9/net10 (F-1 closed: per-provider integration matrix + `CouchbaseHelper` planner-catalog retries removed the Couchbase host-side race).
 - Amendments: A1 (`IEphemeralProvisioner` extension, 2026-05-13), A2 (plugin-style ALC isolation, 2026-05-13).
