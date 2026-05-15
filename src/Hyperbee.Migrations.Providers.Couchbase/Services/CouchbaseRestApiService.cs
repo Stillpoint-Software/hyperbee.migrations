@@ -170,9 +170,17 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
             // It exposes a "nodesExt" array where each node carries a
             // "services" object naming the services it runs and an
             // "alternateAddresses.external" block when alt-addresses are
-            // configured. The bucket is ready for SDK consumption when
-            // both KV and N1QL appear on the active node and external
-            // addresses are advertised.
+            // configured at the node level. The bucket is ready for SDK
+            // consumption when both KV and N1QL appear on the active
+            // node AND -- if the node advertises alt-addresses anywhere
+            // in the cluster -- the bucket's terse config also exposes
+            // the alt-address kv + n1ql ports. Returning ready before
+            // the bucket inherits alt-addresses causes the SDK to fall
+            // back to internal Docker IPs and throw
+            // SocketNotAvailableException on KV connection setup.
+            var nodeServicesJson = await FetchNodeServicesAsync( cancellationToken ).ConfigureAwait( false );
+            var clusterHasAltAddresses = NodeHasAlternateAddresses( nodeServicesJson );
+
             var uri = GetUri( RestApi.GetBucketTerseConfig( bucketName ) );
 
             using var response = await Client.GetAsync( uri, cancellationToken ).ConfigureAwait( false );
@@ -193,15 +201,46 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
                 if ( services["kv"] == null || services["n1ql"] == null )
                     continue;
                 var altExternal = node?["alternateAddresses"]?["external"];
-                // alt-addresses are only required when the cluster
-                // advertises them; for in-network or non-Testcontainers
-                // setups they may not be present. If altExternal is null
-                // but the local services are listed, treat as ready.
-                return altExternal == null
-                    || (altExternal["ports"]?["kv"] != null
-                        && altExternal["ports"]?["n1ql"] != null);
+                if ( clusterHasAltAddresses )
+                {
+                    if ( altExternal == null )
+                        return false;
+                    if ( altExternal["ports"]?["kv"] == null || altExternal["ports"]?["n1ql"] == null )
+                        return false;
+                }
+                return true;
             }
 
+            return false;
+        }
+
+        private async Task<JsonNode> FetchNodeServicesAsync( CancellationToken cancellationToken )
+        {
+            try
+            {
+                var uri = GetUri( "pools/default/nodeServices" );
+                using var response = await Client.GetAsync( uri, cancellationToken ).ConfigureAwait( false );
+                if ( !response.IsSuccessStatusCode )
+                    return null;
+                var body = await response.Content.ReadAsStreamAsync( cancellationToken ).ConfigureAwait( false );
+                return JsonNode.Parse( body );
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool NodeHasAlternateAddresses( JsonNode nodeServices )
+        {
+            var nodesExt = nodeServices?["nodesExt"]?.AsArray();
+            if ( nodesExt == null )
+                return false;
+            foreach ( var node in nodesExt )
+            {
+                if ( node?["alternateAddresses"]?["external"] != null )
+                    return true;
+            }
             return false;
         }
 
