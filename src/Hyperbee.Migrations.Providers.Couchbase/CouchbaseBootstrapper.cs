@@ -173,7 +173,15 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
             }
             catch ( UnambiguousTimeoutException )
             {
-                // notify interval timeout
+                // SDK-side notify interval timeout
+                _logger?.LogInformation( "Wait..." );
+            }
+            catch ( Wait.RetryTimeoutException )
+            {
+                // REST-side notify interval timeout (from RestApi waits like
+                // WaitUntilQueryServiceReadyAsync / WaitUntilClusterIdleAsync).
+                // Same semantics: keep polling until the outer cancellation
+                // token (the operator-supplied total timeout) fires.
                 _logger?.LogInformation( "Wait..." );
             }
             catch ( NotSupportedException ex )

@@ -335,10 +335,13 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
 
         public async Task<bool> ClusterIdleAsync( CancellationToken cancellationToken = default )
         {
-            // /pools/default/tasks returns an array of cluster tasks. A
-            // task with status "running" (rebalance, compaction, etc.)
-            // blocks GSI CREATE INDEX with "rebalance in progress".
-            // Idle: every task has status != running (or array is empty).
+            // /pools/default/tasks returns an array of cluster tasks. We
+            // only care about REBALANCE: it is what blocks GSI CREATE INDEX
+            // with "rebalance in progress". Other long-running tasks
+            // (compaction, indexer-builds, xdcr, log collection) do NOT
+            // block index creation and would falsely report the cluster
+            // as never-idle on production deployments.
+            // Idle: no `rebalance` task with status `running`.
             try
             {
                 var uri = GetUri( "pools/default/tasks" );
@@ -351,7 +354,9 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
                     return true;
                 foreach ( var t in tasks )
                 {
-                    if ( t?["status"]?.ToString() == "running" )
+                    var type = t?["type"]?.ToString();
+                    var status = t?["status"]?.ToString();
+                    if ( type == "rebalance" && status == "running" )
                         return false;
                 }
                 return true;
