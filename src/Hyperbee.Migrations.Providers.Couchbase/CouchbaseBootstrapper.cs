@@ -160,6 +160,12 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
                             // cluster. Pinging /admin/ping closes that window
                             // before WaitForBuckets / SystemQueryWarmup runs.
                             await _restApiService.WaitUntilQueryServiceReadyAsync( notifyInterval, operationCancelToken ).ConfigureAwait( false );
+                            // Couchbase rejects CREATE INDEX while a cluster
+                            // task is running. New buckets briefly trigger a
+                            // post-creation rebalance even on single-node
+                            // setups; wait until /pools/default/tasks reports
+                            // nothing running.
+                            await _restApiService.WaitUntilClusterIdleAsync( notifyInterval, operationCancelToken ).ConfigureAwait( false );
                             _logger?.LogInformation( "Cluster is ready." );
                             return;
                         }

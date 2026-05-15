@@ -136,6 +136,10 @@ public sealed class IsolatedCouchbaseContainer : IAsyncDisposable
 
         await restApi.WaitUntilClusterHealthyAsync( TimeSpan.FromMinutes( 2 ), cancellationToken ).ConfigureAwait( false );
         await restApi.WaitUntilBucketReadyAsync( bucketName, TimeSpan.FromMinutes( 2 ), cancellationToken ).ConfigureAwait( false );
+        // Wait for any post-bucket-creation rebalance to complete before
+        // returning. Without this, CREATE INDEX in tests races the
+        // rebalance and gets "rebalance in progress" rejected by GSI.
+        await restApi.WaitUntilClusterIdleAsync( TimeSpan.FromMinutes( 2 ), cancellationToken ).ConfigureAwait( false );
     }
 
     private static async Task WarmupN1qlAsync( ICluster cluster, CancellationToken cancellationToken )

@@ -98,4 +98,20 @@ internal static class CouchbaseRestApiServiceExtensions
             cancellationToken
         );
     }
+
+    /// <summary>
+    /// Waits until no cluster task is in the "running" state. Couchbase
+    /// rejects CREATE INDEX / ALTER REPLICA while a rebalance is active;
+    /// new buckets briefly trigger a post-creation rebalance even on a
+    /// single-node cluster. Calling this gate before migrations or test
+    /// index-creation avoids the "rebalance in progress" error.
+    /// </summary>
+    public static async Task WaitUntilClusterIdleAsync( this ICouchbaseRestApiService restApi, TimeSpan timeout, CancellationToken cancellationToken = default )
+    {
+        await WaitHelper.WaitUntilAsync(
+            async token => await restApi.ClusterIdleAsync( token ).ConfigureAwait( false ),
+            timeout,
+            cancellationToken
+        );
+    }
 }

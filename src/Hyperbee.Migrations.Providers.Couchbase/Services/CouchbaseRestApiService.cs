@@ -47,6 +47,13 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
         // map registers it; pinging it directly is the most reliable
         // signal that planner + REST endpoint are both live.
         Task<bool> QueryServiceReadyAsync( CancellationToken cancellationToken = default );
+
+        // ClusterIdleAsync returns true when no cluster task is running
+        // (no rebalance, compaction, recovery, or xdcr task in flight).
+        // Couchbase rejects CREATE INDEX / ALTER REPLICA while a rebalance
+        // is in progress; new buckets briefly trigger a post-creation
+        // rebalance even on a single-node cluster.
+        Task<bool> ClusterIdleAsync( CancellationToken cancellationToken = default );
     }
 
     public class CouchbaseRestApiService : ICouchbaseRestApiService
@@ -319,6 +326,35 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
                     return response.IsSuccessStatusCode;
                 }
                 return false;
+            }
+            catch ( HttpRequestException )
+            {
+                return false;
+            }
+        }
+
+        public async Task<bool> ClusterIdleAsync( CancellationToken cancellationToken = default )
+        {
+            // /pools/default/tasks returns an array of cluster tasks. A
+            // task with status "running" (rebalance, compaction, etc.)
+            // blocks GSI CREATE INDEX with "rebalance in progress".
+            // Idle: every task has status != running (or array is empty).
+            try
+            {
+                var uri = GetUri( "pools/default/tasks" );
+                using var response = await Client.GetAsync( uri, cancellationToken ).ConfigureAwait( false );
+                if ( !response.IsSuccessStatusCode )
+                    return false;
+                var body = await response.Content.ReadAsStreamAsync( cancellationToken ).ConfigureAwait( false );
+                var tasks = JsonNode.Parse( body )?.AsArray();
+                if ( tasks == null )
+                    return true;
+                foreach ( var t in tasks )
+                {
+                    if ( t?["status"]?.ToString() == "running" )
+                        return false;
+                }
+                return true;
             }
             catch ( HttpRequestException )
             {
