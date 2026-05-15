@@ -40,6 +40,13 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
         Task<JsonNode> GetNodeStatusesAsync( CancellationToken cancellationToken = default );
 
         Task<bool> ManagementReadyAsync( CancellationToken cancellationToken = default );
+
+        // QueryServiceReadyAsync pings the n1ql /admin/ping endpoint on
+        // whichever node serves the query service per the cluster map.
+        // The query process can be slow to start even after the cluster
+        // map registers it; pinging it directly is the most reliable
+        // signal that planner + REST endpoint are both live.
+        Task<bool> QueryServiceReadyAsync( CancellationToken cancellationToken = default );
     }
 
     public class CouchbaseRestApiService : ICouchbaseRestApiService
@@ -274,6 +281,49 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
                 .ConfigureAwait( false );
 
             return JsonNode.Parse( responseBody );
+        }
+
+        public async Task<bool> QueryServiceReadyAsync( CancellationToken cancellationToken = default )
+        {
+            // Resolve the query service host:port from the cluster map.
+            // Honor alt-addresses when the cluster advertises them so we
+            // ping the host-reachable port, not the internal Docker IP.
+            try
+            {
+                var nodeServices = await FetchNodeServicesAsync( cancellationToken ).ConfigureAwait( false );
+                var nodesExt = nodeServices?["nodesExt"]?.AsArray();
+                if ( nodesExt == null || nodesExt.Count == 0 )
+                    return false;
+
+                foreach ( var node in nodesExt )
+                {
+                    var alt = node?["alternateAddresses"]?["external"];
+                    string host;
+                    int? n1qlPort;
+                    if ( alt != null && alt["ports"]?["n1ql"] != null )
+                    {
+                        host = alt["hostname"]?.ToString() ?? ConnectionStringUris.First().Host;
+                        n1qlPort = (int) alt["ports"]["n1ql"];
+                    }
+                    else
+                    {
+                        var services = node?["services"]?.AsObject();
+                        if ( services?["n1ql"] == null )
+                            continue;
+                        host = node?["hostname"]?.ToString() ?? ConnectionStringUris.First().Host;
+                        n1qlPort = (int) services["n1ql"];
+                    }
+
+                    var uri = new Uri( $"http://{host}:{n1qlPort.Value}/admin/ping" );
+                    using var response = await Client.GetAsync( uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken ).ConfigureAwait( false );
+                    return response.IsSuccessStatusCode;
+                }
+                return false;
+            }
+            catch ( HttpRequestException )
+            {
+                return false;
+            }
         }
 
         public async Task<bool> ManagementReadyAsync( CancellationToken cancellationToken = default )

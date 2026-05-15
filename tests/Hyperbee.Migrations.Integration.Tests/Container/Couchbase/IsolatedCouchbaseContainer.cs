@@ -28,6 +28,16 @@ public sealed class IsolatedCouchbaseContainer : IAsyncDisposable
     public ICluster ClusterHandle { get; private set; }
     public string ConnectionString { get; private set; }
     public int MgmtPort { get; private set; }
+    /// <summary>
+    /// Name of the auto-created bucket provided by the Testcontainers
+    /// library wait strategy (its <c>AllServicesEnabledPredicate</c>
+    /// confirms KV + N1QL + Index + Search are running on the bucket).
+    /// Test code should use this name -- creating a separate bucket
+    /// after the cluster handle is open races the SDK's per-bucket
+    /// cluster-map refresh and produces <c>SocketNotAvailableException</c>
+    /// flakes on Linux CI.
+    /// </summary>
+    public string BucketName { get; private set; }
 
     private IsolatedCouchbaseContainer( CouchbaseContainer container )
     {
@@ -35,7 +45,6 @@ public sealed class IsolatedCouchbaseContainer : IAsyncDisposable
     }
 
     public static async Task<IsolatedCouchbaseContainer> StartAsync(
-        string bucketName,
         CancellationToken cancellationToken = default )
     {
         // Library default callback fully provisions the cluster: services,
@@ -52,58 +61,27 @@ public sealed class IsolatedCouchbaseContainer : IAsyncDisposable
         await CouchbaseContainerSetup.PostStartConfigureAsync( container, mgmtPort, cancellationToken: cancellationToken )
             .ConfigureAwait( false );
 
+        // Use the bucket the library wait strategy already validated as
+        // "all services enabled". Creating a separate bucket here races
+        // the SDK's per-bucket cluster-map refresh and produces flaky
+        // SocketNotAvailableException on Linux CI; the library's bucket
+        // has been verified before container.StartAsync returns and is
+        // safe to open immediately.
+        var libraryBucket = container.Buckets.FirstOrDefault();
+        if ( libraryBucket == null )
+            throw new InvalidOperationException( "CouchbaseBuilder did not pre-create a bucket; cannot proceed." );
+
         var instance = new IsolatedCouchbaseContainer( container )
         {
             ConnectionString = "couchbase://" + container.GetConnectionString(),
-            MgmtPort = mgmtPort
+            MgmtPort = mgmtPort,
+            BucketName = libraryBucket.Name
         };
 
-        // Create the bucket via a SHORT-LIVED management cluster handle,
-        // disposed before we open the long-lived SDK handle the tests
-        // will use. The .NET SDK caches per-bucket failure state on
-        // first BucketAsync call: if the bucket's terse config or KV
-        // socket aren't fully online yet, the cached failure persists
-        // until the cluster handle is recreated. Connecting AFTER the
-        // bucket is fully online avoids that cache entirely.
-        await using ( var mgmtCluster = await Cluster.ConnectAsync( new ClusterOptions
-        {
-            ConnectionString = instance.ConnectionString,
-            UserName = CouchbaseBuilder.DefaultUsername,
-            Password = CouchbaseBuilder.DefaultPassword,
-            BootstrapHttpPort = mgmtPort,
-            NetworkResolution = CbNetworkResolution.External
-        } ).ConfigureAwait( false ) )
-        {
-            await mgmtCluster.WaitUntilReadyAsync( TimeSpan.FromMinutes( 2 ) ).ConfigureAwait( false );
-            try
-            {
-                await mgmtCluster.Buckets.CreateBucketAsync( new BucketSettings
-                {
-                    Name = bucketName,
-                    BucketType = BucketType.Couchbase,
-                    RamQuotaMB = 100
-                } ).ConfigureAwait( false );
-            }
-            catch ( BucketExistsException )
-            {
-                // Already exists -- fine.
-            }
-        }
-
-        // Wait for the bucket to be fully online at the REST level
-        // (manager nodes healthy + terse config advertises kv + n1ql)
-        // before opening any SDK handle against it. This uses the
-        // provider's enriched ICouchbaseRestApiService bootstrapper
-        // signal so the test fixture and production share readiness
-        // semantics.
         await WaitForClusterAndBucketHealthyAsync(
-            instance.ConnectionString, mgmtPort, bucketName, cancellationToken )
+            instance.ConnectionString, mgmtPort, instance.BucketName, cancellationToken )
             .ConfigureAwait( false );
 
-        // Fresh long-lived SDK handle. By connecting AFTER the bucket
-        // is fully online, the SDK's initial cluster-map fetch already
-        // includes hyperbee with correct alt-addresses, so BucketAsync
-        // does not hit the persistent-failure cache that bites on CI.
         instance.ClusterHandle = await Cluster.ConnectAsync( new ClusterOptions
         {
             ConnectionString = instance.ConnectionString,
@@ -118,7 +96,7 @@ public sealed class IsolatedCouchbaseContainer : IAsyncDisposable
             new WaitUntilReadyOptions().ServiceTypes( ServiceType.KeyValue, ServiceType.Query ) )
             .ConfigureAwait( false );
 
-        var bucket = await instance.ClusterHandle.BucketAsync( bucketName ).ConfigureAwait( false );
+        var bucket = await instance.ClusterHandle.BucketAsync( instance.BucketName ).ConfigureAwait( false );
         await bucket.WaitUntilReadyAsync( TimeSpan.FromSeconds( 30 ) ).ConfigureAwait( false );
 
         await WarmupN1qlAsync( instance.ClusterHandle, cancellationToken ).ConfigureAwait( false );

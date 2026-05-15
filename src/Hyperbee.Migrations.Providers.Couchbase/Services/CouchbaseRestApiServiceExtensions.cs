@@ -83,4 +83,19 @@ internal static class CouchbaseRestApiServiceExtensions
             cancellationToken
         );
     }
+
+    /// <summary>
+    /// Waits until the n1ql query service /admin/ping endpoint responds
+    /// with success. The query process can lag the cluster map by a few
+    /// seconds; pinging it directly is a stronger signal than relying on
+    /// the SDK's cluster bootstrap alone.
+    /// </summary>
+    public static async Task WaitUntilQueryServiceReadyAsync( this ICouchbaseRestApiService restApi, TimeSpan timeout, CancellationToken cancellationToken = default )
+    {
+        await WaitHelper.WaitUntilAsync(
+            async token => await restApi.QueryServiceReadyAsync( token ).ConfigureAwait( false ),
+            timeout,
+            cancellationToken
+        );
+    }
 }

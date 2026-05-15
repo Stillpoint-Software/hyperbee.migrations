@@ -39,12 +39,10 @@ public class CouchbaseSquashDeterminismTests
     private ICluster _cluster;
     private ICouchbaseRestApiService _restApi;
     private HttpClient _http;
-    private const string TestBucket = "hyperbee";
-
     [TestInitialize]
     public async Task Setup()
     {
-        _container = await IsolatedCouchbaseContainer.StartAsync( TestBucket );
+        _container = await IsolatedCouchbaseContainer.StartAsync();
         _cluster = _container.ClusterHandle;
 
         var options = new ClusterOptions
@@ -94,13 +92,13 @@ public class CouchbaseSquashDeterminismTests
     [TestMethod]
     public async Task PopulatedBucket_TwoRuns_ProduceByteEqualContent()
     {
-        var bucket = await _cluster.BucketAsync( TestBucket );
+        var bucket = await _cluster.BucketAsync( _container.BucketName );
         var queryIndexes = _cluster.QueryIndexes;
 
-        await queryIndexes.CreatePrimaryIndexAsync( TestBucket,
+        await queryIndexes.CreatePrimaryIndexAsync( _container.BucketName,
             new CreatePrimaryQueryIndexOptions().IndexName( "idx_det_primary" ) );
         await queryIndexes.CreateIndexAsync(
-            TestBucket,
+            _container.BucketName,
             "idx_det_email",
             new[] { "email" },
             new CreateQueryIndexOptions() );
@@ -122,11 +120,11 @@ public class CouchbaseSquashDeterminismTests
         // state with different index ids" must canonicalize identically.
         var queryIndexes = _cluster.QueryIndexes;
 
-        await queryIndexes.CreateIndexAsync( TestBucket, "idx_det_phone", new[] { "phone" } );
+        await queryIndexes.CreateIndexAsync( _container.BucketName, "idx_det_phone", new[] { "phone" } );
         var first = await GenerateOnceAsync();
 
-        await queryIndexes.DropIndexAsync( TestBucket, "idx_det_phone" );
-        await queryIndexes.CreateIndexAsync( TestBucket, "idx_det_phone", new[] { "phone" } );
+        await queryIndexes.DropIndexAsync( _container.BucketName, "idx_det_phone" );
+        await queryIndexes.CreateIndexAsync( _container.BucketName, "idx_det_phone", new[] { "phone" } );
         var second = await GenerateOnceAsync();
 
         Assert.AreEqual( first, second,
@@ -142,10 +140,10 @@ public class CouchbaseSquashDeterminismTests
             squashVersion: 2000,
             cluster: _cluster,
             restApi: _restApi,
-            bucketName: TestBucket,
+            bucketName: _container.BucketName,
             captureSnapshotAsync: async ( _, ct ) =>
             {
-                var blob = await CouchbaseSnapshotCapture.CaptureAsync( _cluster, _restApi, TestBucket, ct );
+                var blob = await CouchbaseSnapshotCapture.CaptureAsync( _cluster, _restApi, _container.BucketName, ct );
                 return new SnapshotCaptureResult( blob );
             } );
 
@@ -173,7 +171,7 @@ public class CouchbaseSquashDeterminismTests
         var queryIndexes = _cluster.QueryIndexes;
         foreach ( var name in new[] { "idx_det_primary", "idx_det_email", "idx_det_phone" } )
         {
-            try { await queryIndexes.DropIndexAsync( TestBucket, name ); } catch { }
+            try { await queryIndexes.DropIndexAsync( _container.BucketName, name ); } catch { }
         }
     }
 }

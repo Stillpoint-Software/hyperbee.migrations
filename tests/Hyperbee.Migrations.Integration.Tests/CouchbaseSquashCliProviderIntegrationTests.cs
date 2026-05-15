@@ -23,13 +23,12 @@ public class CouchbaseSquashCliProviderIntegrationTests
 {
     private static Assembly _sampleAssembly;
     private static IsolatedCouchbaseContainer _liveProbeContainer;
-    private const string TestBucket = "hyperbee";
 
     [ClassInitialize( InheritanceBehavior.None )]
     public static async Task ClassSetup( TestContext context )
     {
         _sampleAssembly = LoadSampleAssembly();
-        _liveProbeContainer = await IsolatedCouchbaseContainer.StartAsync( TestBucket );
+        _liveProbeContainer = await IsolatedCouchbaseContainer.StartAsync();
     }
 
     [ClassCleanup( InheritanceBehavior.None )]
@@ -62,7 +61,7 @@ public class CouchbaseSquashCliProviderIntegrationTests
             },
             ProviderOptions = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase )
             {
-                ["bucket-name"] = TestBucket,
+                ["bucket-name"] = _liveProbeContainer.BucketName,
                 ["mgmt-port"] = _liveProbeContainer.MgmtPort.ToString( System.Globalization.CultureInfo.InvariantCulture )
             }
         };

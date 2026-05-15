@@ -21,7 +21,7 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // canonicalized state as applying the GENERATED squash content.
 //
 // Round-trip:
-//   1. Set up GSI indexes in TestBucket.
+//   1. Set up GSI indexes in the test bucket.
 //   2. Capture A via CouchbaseSnapshotCapture (the "historical" snapshot).
 //   3. Run HybridStrategy.GenerateAsync -> Generated.Content.
 //   4. Drop the indexes we created.
@@ -41,13 +41,12 @@ public class CouchbaseSquashVerificationTests
     private ICluster _cluster;
     private ICouchbaseRestApiService _restApi;
     private HttpClient _http;
-    private const string TestBucket = "hyperbee";
     private static readonly string[] CreatedIndexes = { "idx_ver_primary", "idx_ver_email", "idx_ver_phone" };
 
     [TestInitialize]
     public async Task Setup()
     {
-        _container = await IsolatedCouchbaseContainer.StartAsync( TestBucket );
+        _container = await IsolatedCouchbaseContainer.StartAsync();
         _cluster = _container.ClusterHandle;
 
         var options = new ClusterOptions
@@ -92,7 +91,7 @@ public class CouchbaseSquashVerificationTests
         {
             CaptureFromGeneratedAsync = async ( _, _, ct ) =>
             {
-                var blob = await CouchbaseSnapshotCapture.CaptureAsync( _cluster, _restApi, TestBucket, ct );
+                var blob = await CouchbaseSnapshotCapture.CaptureAsync( _cluster, _restApi, _container.BucketName, ct );
                 return new SnapshotCaptureResult( blob );
             }
         };
@@ -110,9 +109,9 @@ public class CouchbaseSquashVerificationTests
     {
         var queryIndexes = _cluster.QueryIndexes;
 
-        await queryIndexes.CreatePrimaryIndexAsync( TestBucket,
+        await queryIndexes.CreatePrimaryIndexAsync( _container.BucketName,
             new CreatePrimaryQueryIndexOptions().IndexName( "idx_ver_primary" ) );
-        await queryIndexes.CreateIndexAsync( TestBucket, "idx_ver_email", new[] { "email" } );
+        await queryIndexes.CreateIndexAsync( _container.BucketName, "idx_ver_email", new[] { "email" } );
 
         var ctx = MakeContext();
         var generated = await GenerateAsync( ctx );
@@ -128,7 +127,7 @@ public class CouchbaseSquashVerificationTests
                 // Reset bucket index state, then apply the generated squash.
                 await DropTestArtifactsAsync();
                 await ApplyGeneratedAsync( content, ct );
-                var blob = await CouchbaseSnapshotCapture.CaptureAsync( _cluster, _restApi, TestBucket, ct );
+                var blob = await CouchbaseSnapshotCapture.CaptureAsync( _cluster, _restApi, _container.BucketName, ct );
                 return new SnapshotCaptureResult( blob );
             }
         };
@@ -148,10 +147,10 @@ public class CouchbaseSquashVerificationTests
         squashVersion: 2000,
         cluster: _cluster,
         restApi: _restApi,
-        bucketName: TestBucket,
+        bucketName: _container.BucketName,
         captureSnapshotAsync: async ( _, ct ) =>
         {
-            var blob = await CouchbaseSnapshotCapture.CaptureAsync( _cluster, _restApi, TestBucket, ct );
+            var blob = await CouchbaseSnapshotCapture.CaptureAsync( _cluster, _restApi, _container.BucketName, ct );
             return new SnapshotCaptureResult( blob );
         } );
 
@@ -177,7 +176,7 @@ public class CouchbaseSquashVerificationTests
 
     // Walk the canonical content's [indexes] section; recreate each index
     // via the SDK. Buckets + scopes + collections are not recreated here
-    // because the test fixture's TestBucket already exists -- buckets are
+    // because the test fixture's _container.BucketName already exists -- buckets are
     // applied via the REST API in the full Phase 5 CLI apply path.
     private async Task ApplyGeneratedAsync( string content, CancellationToken ct )
     {
@@ -209,7 +208,7 @@ public class CouchbaseSquashVerificationTests
 
             if ( isPrimary )
             {
-                await queryIndexes.CreatePrimaryIndexAsync( TestBucket,
+                await queryIndexes.CreatePrimaryIndexAsync( _container.BucketName,
                     new CreatePrimaryQueryIndexOptions().IndexName( name ).IgnoreIfExists( true ) );
                 continue;
             }
@@ -223,7 +222,7 @@ public class CouchbaseSquashVerificationTests
                     keys.Add( k.GetString() );
 
             if ( keys.Count > 0 )
-                await queryIndexes.CreateIndexAsync( TestBucket, name, keys, new CreateQueryIndexOptions().IgnoreIfExists( true ) );
+                await queryIndexes.CreateIndexAsync( _container.BucketName, name, keys, new CreateQueryIndexOptions().IgnoreIfExists( true ) );
         }
     }
 
@@ -232,7 +231,7 @@ public class CouchbaseSquashVerificationTests
         var queryIndexes = _cluster.QueryIndexes;
         foreach ( var name in CreatedIndexes )
         {
-            try { await queryIndexes.DropIndexAsync( TestBucket, name ); } catch { }
+            try { await queryIndexes.DropIndexAsync( _container.BucketName, name ); } catch { }
         }
     }
 

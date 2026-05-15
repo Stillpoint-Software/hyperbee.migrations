@@ -154,6 +154,12 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
                             var cluster = await _clusterProvider.GetClusterAsync().ConfigureAwait( false );
                             var waitOptions = new WaitUntilReadyOptions().CancellationToken( operationCancelToken );
                             await cluster.WaitUntilReadyAsync( notifyInterval, waitOptions ).ConfigureAwait( false );
+                            // n1ql /admin/ping. The SDK's cluster.WaitUntilReadyAsync
+                            // attests services are bootstrapped, but the query
+                            // process can lag a few seconds on a freshly-started
+                            // cluster. Pinging /admin/ping closes that window
+                            // before WaitForBuckets / SystemQueryWarmup runs.
+                            await _restApiService.WaitUntilQueryServiceReadyAsync( notifyInterval, operationCancelToken ).ConfigureAwait( false );
                             _logger?.LogInformation( "Cluster is ready." );
                             return;
                         }
@@ -221,7 +227,7 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
                 {
                     await bucket.WaitUntilReadyAsync( notifyInterval ).ConfigureAwait( false );
                     _logger?.LogInformation( "Bucket {bucketName} is ready.", bucketName );
-                    return;
+                    break;
                 }
                 catch ( UnambiguousTimeoutException )
                 {
@@ -234,24 +240,43 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
 
     private async Task SystemQueryWarmupAsync( CancellationToken operationCancelToken )
     {
-        operationCancelToken.ThrowIfCancellationRequested();
-
-        // the first select against `system:*` returns unpredictable results
-        // after a hard shutdown. this is spooky but a sacrificial query
-        // seems to fix it.
-
+        // The first `system:*` query after a fresh bootstrap is unreliable
+        // -- the n1ql planner / metadata catalog can be cold for a few
+        // seconds after cluster.WaitUntilReadyAsync returns. We treat the
+        // sacrificial query as an explicit readiness gate: retry on
+        // failure until it succeeds or the outer timeout cancels us.
+        // Without the retry the bootstrapper occasionally surfaces a
+        // ServiceNotAvailableException from the FIRST end-user query
+        // after startup.
         var clusterHelper = await _clusterProvider.GetClusterHelperAsync()
             .ConfigureAwait( false );
 
-        var result = await clusterHelper.Cluster.QueryAsync<int>( "SELECT RAW count(*) FROM system:indexes WHERE is_primary" )
-            .ConfigureAwait( false );
-
-        await foreach ( var row in result.Rows
-            .WithCancellation( operationCancelToken )
-            .ConfigureAwait( false ) )
+        Exception last = null;
+        while ( !operationCancelToken.IsCancellationRequested )
         {
-            _ = row;
-            break;
+            try
+            {
+                var result = await clusterHelper.Cluster.QueryAsync<int>(
+                    "SELECT RAW count(*) FROM system:indexes WHERE is_primary" )
+                    .ConfigureAwait( false );
+
+                await foreach ( var row in result.Rows
+                    .WithCancellation( operationCancelToken )
+                    .ConfigureAwait( false ) )
+                {
+                    _ = row;
+                    break;
+                }
+                return;
+            }
+            catch ( Exception ex ) when ( ex is not OperationCanceledException )
+            {
+                last = ex;
+                _logger?.LogInformation( "Waiting for n1ql planner..." );
+                await Task.Delay( TimeSpan.FromSeconds( 1 ), operationCancelToken ).ConfigureAwait( false );
+            }
         }
+        operationCancelToken.ThrowIfCancellationRequested();
+        throw new InvalidOperationException( "n1ql planner did not become reachable.", last );
     }
 }

@@ -36,6 +36,16 @@ public class CouchbaseMigrationsHost : IMigrationHost
             mgmtPortHint = mgmtPort;
         }
 
+        // bucket-name hint plumbed in by CouchbaseSquashCliProvider so
+        // a caller can override the sample default ("hyperbee") --
+        // useful when the live cluster uses the Testcontainers library
+        // auto-created bucket (a GUID name) instead of a fixed one.
+        var bucketNameHint = context.ProviderHints != null
+            && context.ProviderHints.TryGetValue( "bucket-name", out var bn )
+            && !string.IsNullOrWhiteSpace( bn )
+            ? bn
+            : "hyperbee";
+
         services.AddCouchbase( opts =>
         {
             opts.ConnectionString = context.ConnectionString;
@@ -47,7 +57,7 @@ public class CouchbaseMigrationsHost : IMigrationHost
 
         services.AddCouchbaseMigrations( opts =>
         {
-            opts.BucketName = "hyperbee";
+            opts.BucketName = bucketNameHint;
             // LockName has no default in CouchbaseMigrationOptions
             // (the runner appsettings.json sets it explicitly via
             // Lock.Name). Hosts driving the runner programmatically
