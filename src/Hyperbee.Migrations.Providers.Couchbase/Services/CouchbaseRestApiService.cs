@@ -24,6 +24,18 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
         Task<JsonNode> GetClusterDetailsAsync( CancellationToken cancellationToken = default );
 
         Task<bool> BucketHealthyAsync( string bucketName, CancellationToken cancellationToken = default );
+
+        // BucketServicesReadyAsync hits the terse per-bucket config
+        // (/pools/default/b/<bucket>) the SDK uses to build its
+        // cluster topology. Returns true once kv + n1ql appear in
+        // nodesExt[].services and external alt-addresses are
+        // advertised. BucketHealthyAsync flips first (nodes go
+        // status=healthy as soon as the manager finishes provisioning)
+        // but the per-bucket service propagation lags; opening
+        // BucketAsync before this returns true throws
+        // SocketNotAvailableException on the KV socket.
+        Task<bool> BucketServicesReadyAsync( string bucketName, CancellationToken cancellationToken = default );
+
         Task<JsonNode> GetBucketDetailsAsync( string bucketName, CancellationToken cancellationToken = default );
         Task<JsonNode> GetNodeStatusesAsync( CancellationToken cancellationToken = default );
 
@@ -41,6 +53,7 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
             public static string GetClusterInfo() => "pools";
             public static string GetClusterDetails() => "pools/default";
             public static string GetBucketDetails( string bucketName ) => $"pools/default/buckets/{bucketName}";
+            public static string GetBucketTerseConfig( string bucketName ) => $"pools/default/b/{bucketName}";
             public static string GetNodeStatuses() => "nodeStatuses";
 
             // uris of interest
@@ -73,15 +86,25 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
                 ? "https"
                 : "http";
 
-            var defaultPort = options.EnableTls.GetValueOrDefault( false )
+            // REST always uses BootstrapHttpPort (8091 default) /
+            // BootstrapHttpPortTls (18091 default). The Couchbase SDK
+            // connection-string convention puts the KV port (11210)
+            // in `couchbase://host:port` URIs because the SDK speaks
+            // binary KV protocol there during bootstrap. The REST API
+            // lives on the management HTTP port entirely separately;
+            // using the URI's port for REST calls produces "response
+            // ended prematurely" when the URI carries the KV port
+            // (mapped Testcontainers ports, Capella connection strings,
+            // etc.) because we send HTTP to a binary protocol port.
+            var httpPort = options.EnableTls.GetValueOrDefault( false )
                 ? options.BootstrapHttpPortTls // expected 18091
                 : options.BootstrapHttpPort; // expected 8091
 
             ConnectionStringUris = match.Groups["hosts"].Value.Split( ',' )
                 .Select( value =>
                 {
-                    var (host, port) = HostEndpoint.Parse( value.Trim() );
-                    return new Uri( $"{scheme}://{host}:{port.GetValueOrDefault( defaultPort )}" );
+                    var (host, _) = HostEndpoint.Parse( value.Trim() );
+                    return new Uri( $"{scheme}://{host}:{httpPort}" );
                 } )
                 .ToList();
         }
@@ -138,6 +161,48 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
         {
             var result = await GetBucketDetailsAsync( bucketName, cancellationToken ).ConfigureAwait( false );
             return NodesAreHealthy( result );
+        }
+
+        public async Task<bool> BucketServicesReadyAsync( string bucketName, CancellationToken cancellationToken = default )
+        {
+            // The terse per-bucket config (/pools/default/b/<bucket>) is
+            // what the SDK consumes through its cluster-map machinery.
+            // It exposes a "nodesExt" array where each node carries a
+            // "services" object naming the services it runs and an
+            // "alternateAddresses.external" block when alt-addresses are
+            // configured. The bucket is ready for SDK consumption when
+            // both KV and N1QL appear on the active node and external
+            // addresses are advertised.
+            var uri = GetUri( RestApi.GetBucketTerseConfig( bucketName ) );
+
+            using var response = await Client.GetAsync( uri, cancellationToken ).ConfigureAwait( false );
+            if ( !response.IsSuccessStatusCode )
+                return false;
+
+            var responseBody = await response.Content.ReadAsStreamAsync( cancellationToken ).ConfigureAwait( false );
+            var json = JsonNode.Parse( responseBody );
+            var nodesExt = json?["nodesExt"]?.AsArray();
+            if ( nodesExt == null || nodesExt.Count == 0 )
+                return false;
+
+            foreach ( var node in nodesExt )
+            {
+                var services = node?["services"]?.AsObject();
+                if ( services == null )
+                    continue;
+                if ( services["kv"] == null || services["n1ql"] == null )
+                    continue;
+                var altExternal = node?["alternateAddresses"]?["external"];
+                // alt-addresses are only required when the cluster
+                // advertises them; for in-network or non-Testcontainers
+                // setups they may not be present. If altExternal is null
+                // but the local services are listed, treat as ready.
+                return altExternal == null
+                    || (altExternal["ports"]?["kv"] != null
+                        && altExternal["ports"]?["n1ql"] != null);
+            }
+
+            return false;
         }
 
         public async Task<JsonNode> GetBucketDetailsAsync( string bucketName, CancellationToken cancellationToken = default )

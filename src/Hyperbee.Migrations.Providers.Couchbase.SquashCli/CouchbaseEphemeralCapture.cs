@@ -19,10 +19,10 @@ namespace Hyperbee.Migrations.Providers.Couchbase.SquashCli;
 public sealed class CouchbaseEphemeralCapture : IAsyncDisposable
 {
     private readonly IEphemeralProvisioner _provisioner;
-    private readonly Func<string, long, CancellationToken, Task> _applyMigrations;
+    private readonly Func<string, long, IReadOnlyDictionary<string, string>, CancellationToken, Task> _applyMigrations;
 
     public CouchbaseEphemeralCapture(
-        Func<string, long, CancellationToken, Task> applyMigrations,
+        Func<string, long, IReadOnlyDictionary<string, string>, CancellationToken, Task> applyMigrations,
         IEphemeralProvisioner provisioner = null )
     {
         _applyMigrations = applyMigrations ?? throw new ArgumentNullException( nameof( applyMigrations ) );
@@ -67,14 +67,26 @@ public sealed class CouchbaseEphemeralCapture : IAsyncDisposable
             password = ReadMetadata( rawFixture, "password" ) ?? "password";
         }
 
-        await _applyMigrations( rawFixture.ConnectionString, request.UpToVersion, cancellationToken )
+        // Hand the mapped mgmt port to the apply callback so the host's
+        // ClusterOptions.BootstrapHttpPort can be set correctly. The
+        // ephemeral container's mgmt port is randomly assigned by Docker;
+        // without this the host's CouchbaseRestApiService defaults to
+        // 8091 and 404s on /pools/default/buckets/<name>.
+        var hostHints = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase )
+        {
+            ["mgmt-port"] = mgmtPort.ToString( System.Globalization.CultureInfo.InvariantCulture ),
+            ["mgmt-host"] = mgmtHost
+        };
+
+        await _applyMigrations( rawFixture.ConnectionString, request.UpToVersion, hostHints, cancellationToken )
             .ConfigureAwait( false );
 
         var clusterOptions = new ClusterOptions
         {
             ConnectionString = rawFixture.ConnectionString,
             UserName = username,
-            Password = password
+            Password = password,
+            BootstrapHttpPort = mgmtPort
         };
 
         var cluster = await Cluster.ConnectAsync( clusterOptions ).ConfigureAwait( false );

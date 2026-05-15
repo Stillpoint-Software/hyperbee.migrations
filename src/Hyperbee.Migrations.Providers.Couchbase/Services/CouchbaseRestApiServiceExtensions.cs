@@ -33,6 +33,40 @@ internal static class CouchbaseRestApiServiceExtensions
         );
     }
 
+    /// <summary>
+    /// Waits until the bucket reports healthy AND the terse per-bucket
+    /// config advertises KV + N1QL services in the SDK-consumable shape.
+    /// The two signals can diverge briefly after bucket creation; opening
+    /// the bucket via the SDK before this returns can throw
+    /// SocketNotAvailableException.
+    /// </summary>
+    public static async Task WaitUntilBucketReadyAsync( this ICouchbaseRestApiService restApi, string bucketName, TimeSpan timeout, CancellationToken cancellationToken = default )
+    {
+        await WaitHelper.WaitUntilAsync(
+            async token =>
+            {
+                if ( !await restApi.BucketHealthyAsync( bucketName, token ).ConfigureAwait( false ) )
+                    return false;
+                return await restApi.BucketServicesReadyAsync( bucketName, token ).ConfigureAwait( false );
+            },
+            timeout,
+            cancellationToken
+        );
+    }
+
+    public static async Task WaitUntilBucketReadyAsync( this ICouchbaseRestApiService restApi, string bucketName, CancellationToken cancellationToken = default )
+    {
+        await WaitHelper.WaitUntilAsync(
+            async token =>
+            {
+                if ( !await restApi.BucketHealthyAsync( bucketName, token ).ConfigureAwait( false ) )
+                    return false;
+                return await restApi.BucketServicesReadyAsync( bucketName, token ).ConfigureAwait( false );
+            },
+            cancellationToken
+        );
+    }
+
     public static async Task WaitUntilClusterHealthyAsync( this ICouchbaseRestApiService restApi, TimeSpan timeout, CancellationToken cancellationToken = default )
     {
         await WaitHelper.WaitUntilAsync(

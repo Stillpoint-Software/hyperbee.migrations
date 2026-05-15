@@ -190,6 +190,27 @@ internal class CouchbaseBootstrapper : ICouchbaseBootstrapper
 
         foreach ( var (bucketName, _) in await cluster.Buckets.GetAllBucketsAsync() )
         {
+            // Wait for the per-bucket REST signal first: the manager's
+            // /pools/default/buckets/<bucket> nodes flip to "healthy" and
+            // the terse config /pools/default/b/<bucket> advertises KV +
+            // N1QL services with external alt-addresses (when applicable).
+            // These two signals can diverge briefly after bucket creation;
+            // opening the bucket through the SDK before both are true
+            // can throw SocketNotAvailableException.
+            while ( true )
+            {
+                operationCancelToken.ThrowIfCancellationRequested();
+                try
+                {
+                    await _restApiService.WaitUntilBucketReadyAsync( bucketName, notifyInterval, operationCancelToken ).ConfigureAwait( false );
+                    break;
+                }
+                catch ( UnambiguousTimeoutException )
+                {
+                    _logger?.LogInformation( "Wait..." );
+                }
+            }
+
             var bucket = await cluster.BucketAsync( bucketName );
 
             while ( true )

@@ -14,16 +14,11 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // Uses an isolated Couchbase container for the live probe so it doesn't
 // conflict with the shared CouchbaseTestContainer + CouchbaseRunnerTest.
 //
-// F-1 v3.0.1 follow-up: LocalOnly for the host-side cluster-map
-// redirect reason; see CouchbaseSquashDeterminismTests for the
-// detailed explanation. CouchbaseRunnerTest is NOT LocalOnly because
-// it uses the sibling-container model (the migration runner is a
-// container on the same Docker network as Couchbase), which doesn't
-// hit the host-side redirect issue.
+// F-1 closed: IsolatedCouchbaseContainer configures
+// setupAlternateAddresses so host-side SDK connections work cleanly.
 
 [TestClass]
 [DoNotParallelize]
-[TestCategory( "LocalOnly" )]
 public class CouchbaseSquashCliProviderIntegrationTests
 {
     private static Assembly _sampleAssembly;
@@ -67,7 +62,8 @@ public class CouchbaseSquashCliProviderIntegrationTests
             },
             ProviderOptions = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase )
             {
-                ["bucket-name"] = TestBucket
+                ["bucket-name"] = TestBucket,
+                ["mgmt-port"] = _liveProbeContainer.MgmtPort.ToString( System.Globalization.CultureInfo.InvariantCulture )
             }
         };
 

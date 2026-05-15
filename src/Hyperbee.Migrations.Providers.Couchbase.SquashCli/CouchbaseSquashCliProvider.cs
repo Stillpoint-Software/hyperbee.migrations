@@ -52,11 +52,12 @@ public sealed class CouchbaseSquashCliProvider : ISquashCliProvider
                 "--provider-option bucket-name=<name>." );
 
         var capture = new CouchbaseEphemeralCapture(
-            applyMigrations: async ( connStr, upTo, ct ) =>
+            applyMigrations: async ( connStr, upTo, hints, ct ) =>
                 await ApplyMigrationsViaHostAsync(
                     context.MigrationHost,
                     connStr,
                     upTo,
+                    hints,
                     ct ).ConfigureAwait( false ),
             provisioner: _provisioner );
 
@@ -82,6 +83,19 @@ public sealed class CouchbaseSquashCliProvider : ISquashCliProvider
             UserName = username,
             Password = password
         };
+
+        // Optional mgmt-port override. Required when the connection
+        // string uses non-default Testcontainers-style mapped ports
+        // (the KV port in the URI is conventionally what the SDK uses
+        // for bootstrap, but the REST management port lives elsewhere
+        // and CouchbaseRestApiService reads it from BootstrapHttpPort
+        // when the URI doesn't carry it).
+        if ( context.ProviderOptions != null
+            && context.ProviderOptions.TryGetValue( "mgmt-port", out var mgmtPortRaw )
+            && int.TryParse( mgmtPortRaw, out var mgmtPort ) )
+        {
+            liveOptions.BootstrapHttpPort = mgmtPort;
+        }
         var liveCluster = await Cluster.ConnectAsync( liveOptions ).ConfigureAwait( false );
         try
         {
@@ -205,13 +219,15 @@ public sealed class CouchbaseSquashCliProvider : ISquashCliProvider
         IMigrationHost host,
         string connectionString,
         long upToVersion,
+        IReadOnlyDictionary<string, string> providerHints,
         CancellationToken cancellationToken )
     {
         ArgumentNullException.ThrowIfNull( host );
 
         var ctx = new MigrationHostContext( connectionString )
         {
-            OverrideOptions = opts => opts.ToVersion = upToVersion
+            OverrideOptions = opts => opts.ToVersion = upToVersion,
+            ProviderHints = providerHints
         };
 
         var serviceProvider = await host.ConfigureAsync( ctx, cancellationToken ).ConfigureAwait( false );

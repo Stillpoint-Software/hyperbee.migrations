@@ -1,4 +1,6 @@
-﻿using Couchbase;
+﻿using System.Net.Http.Headers;
+using System.Text;
+using Couchbase;
 using Hyperbee.Migrations.Squash.Cli;
 using Testcontainers.Couchbase;
 
@@ -18,14 +20,25 @@ public sealed class CouchbaseEphemeralProvisioner : IEphemeralProvisioner
         CancellationToken cancellationToken )
     {
         _ = hints; // currently no Couchbase-specific hints; image override TBD
+
+        // The Testcontainers.Couchbase library default startup callback
+        // fully provisions the cluster (services, alt-addresses, default
+        // bucket, credentials). We only need to bump the data-service RAM
+        // quota above the 256 MB library default and set the GSI indexer
+        // storage mode to `forestdb` (required on Community Edition);
+        // both happen after StartAsync returns via PostStartConfigureAsync.
         var container = new CouchbaseBuilder( "couchbase:community-7.6.2" )
             .WithCleanUp( true )
             .Build();
 
         await container.StartAsync( cancellationToken ).ConfigureAwait( false );
 
-        var connectionString = container.GetConnectionString() + "?network=external";
         var mgmtPort = container.GetMappedPublicPort( CouchbaseBuilder.MgmtPort );
+
+        await CouchbaseContainerSetup.PostStartConfigureAsync( container, mgmtPort, cancellationToken: cancellationToken )
+            .ConfigureAwait( false );
+
+        var connectionString = container.GetConnectionString() + "?network=external";
 
         return new CouchbaseEphemeralFixture(
             container,
@@ -135,6 +148,9 @@ public sealed class CouchbaseSiblingContainerProvisioner : IEphemeralProvisioner
         // this network.
         var connectionString = $"couchbase://{alias}";
         var mgmtPort = container.GetMappedPublicPort( CouchbaseBuilder.MgmtPort );
+
+        await CouchbaseContainerSetup.PostStartConfigureAsync( container, mgmtPort, cancellationToken: cancellationToken )
+            .ConfigureAwait( false );
 
         return new CouchbaseSiblingContainerFixture(
             container,
