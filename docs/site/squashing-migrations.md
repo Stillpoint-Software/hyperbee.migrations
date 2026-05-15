@@ -240,7 +240,7 @@ phases -- the 5-interface contract held intact.
 Each provider's snapshot capture round provisions a clean ephemeral
 container, applies the migration range against it, and reads the
 canonical schema state. The provisioning lifecycle goes through
-`IEphemeralProvisioner` (in `Hyperbee.Migrations.Squash.Cli`):
+`IEphemeralProvisioner` (in `Hyperbee.Migrations.Squash`):
 
 ```csharp
 public interface IEphemeralProvisioner
@@ -251,12 +251,12 @@ public interface IEphemeralProvisioner
 }
 ```
 
-Every per-provider SquashCli package ships:
+Every per-provider Squash package ships:
 
 - A default Testcontainers-backed provisioner that the
-  `{Provider}SquashCliProvider` default constructor consumes.
+  `{Provider}SquashProvider` default constructor consumes.
 - A `(IEphemeralProvisioner)` constructor on
-  `{Provider}SquashCliProvider` so callers can supply an alternate
+  `{Provider}SquashProvider` so callers can supply an alternate
   provisioner. Useful for integration tests that need to pre-stage a
   container, for embedding the squash codegen in a long-running host,
   or for third-party provisioning shapes (sibling-container, podman,

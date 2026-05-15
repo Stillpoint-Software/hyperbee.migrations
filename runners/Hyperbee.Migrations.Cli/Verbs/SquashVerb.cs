@@ -3,14 +3,13 @@ using System.Text.Json;
 using Hyperbee.Migrations;
 using Hyperbee.Migrations.Cli.FleetManifest;
 using Hyperbee.Migrations.Squash;
-using Hyperbee.Migrations.Squash.Cli;
 
 namespace Hyperbee.Migrations.Cli.Verbs;
 
 /// <summary>
 /// <c>hyperbee-migrations squash</c> -- generates a destructive squash
 /// migration per ADR-0019. Thin dispatch shell over the
-/// <see cref="ISquashCliProvider"/> contract (per ADR-0024): the CLI
+/// <see cref="ISquashProvider"/> contract (per ADR-0024): the CLI
 /// assembly references no provider packages; per-provider implementations
 /// are discovered via the migration assembly's reference closure.
 /// </summary>
@@ -139,19 +138,19 @@ internal static class SquashVerb
         using var _loader = loader;
         var migrationAssembly = loader.Assembly;
 
-        // Discover ISquashCliProvider implementations from the migration
+        // Discover ISquashProvider implementations from the migration
         // assembly's reference closure (per ADR-0024). NuGet package presence
         // IS the registration: the migration project references e.g.
-        // Hyperbee.Migrations.Providers.Postgres.SquashCli, which contains
-        // PostgresSquashCliProvider, and we find it transitively.
-        IReadOnlyDictionary<string, ISquashCliProvider> providers;
+        // Hyperbee.Migrations.Providers.Postgres.Squash, which contains
+        // PostgresSquashProvider, and we find it transitively.
+        IReadOnlyDictionary<string, ISquashProvider> providers;
         try
         {
-            providers = CliProviderRegistry.Discover( migrationAssembly );
+            providers = SquashProviderRegistry.Discover( migrationAssembly );
         }
         catch ( Exception ex )
         {
-            return Fail( $"ISquashCliProvider discovery failed: {ex.Message}" );
+            return Fail( $"ISquashProvider discovery failed: {ex.Message}" );
         }
 
         if ( !providers.TryGetValue( provider, out var cliProvider ) )
@@ -160,9 +159,9 @@ internal static class SquashVerb
                 ? "<none>"
                 : string.Join( ", ", providers.Keys.OrderBy( k => k, StringComparer.OrdinalIgnoreCase ) );
             Console.Error.WriteLine(
-                $"hyperbee-migrations squash: provider `{provider}` has no ISquashCliProvider registered " +
+                $"hyperbee-migrations squash: provider `{provider}` has no ISquashProvider registered " +
                 $"in the migration assembly's reference closure. Discovered providers: {known}. " +
-                $"Add a package reference to Hyperbee.Migrations.Providers.{Capitalize( provider )}.SquashCli " +
+                $"Add a package reference to Hyperbee.Migrations.Providers.{Capitalize( provider )}.Squash " +
                 $"(or the equivalent for your provider) to the migration project." );
             return 4;
         }
@@ -198,7 +197,7 @@ internal static class SquashVerb
         }
         if ( !string.IsNullOrWhiteSpace( scanSource ) )
         {
-            // R-8: per-provider scanner dispatch via the ISquashCliProvider
+            // R-8: per-provider scanner dispatch via the ISquashProvider
             // contract. Postgres uses the existing Roslyn scanner; other
             // providers may have different heuristics (Aerospike's
             // call-site form, OpenSearch's REST-call patterns, etc.).
@@ -324,7 +323,7 @@ internal static class SquashVerb
             Console.WriteLine( $"[squash] {flagOverrides.Count} stranding entry(ies) supplied via CLI flags." );
         }
 
-        var cliCtx = new SquashCliContext
+        var cliCtx = new SquashRequest
         {
             SquashName = name,
             FromVersion = fromVersion,
@@ -396,7 +395,7 @@ internal static class SquashVerb
     private static async Task EmitArtifactsAsync(
         string output,
         string name,
-        ISquashCliProvider provider,
+        ISquashProvider provider,
         SquashGenerationResult.Generated gen,
         long fromVersion,
         long toVersion,
@@ -639,10 +638,10 @@ internal static class SquashVerb
             "         [--strand-ticket-id FLEET-1234 --strand-owner ops@example.com] \\\n" +
             "         [--remove-originals [--confirm-delete] [--regenerate]]\n" +
             "\n" +
-            "  The CLI dispatches to the ISquashCliProvider registered in the\n" +
-            "  migration assembly's reference closure. Add the relevant SquashCli\n" +
+            "  The CLI dispatches to the ISquashProvider registered in the\n" +
+            "  migration assembly's reference closure. Add the relevant Squash\n" +
             "  package to the migration project (e.g.\n" +
-            "  `Hyperbee.Migrations.Providers.Postgres.SquashCli`) to enable\n" +
+            "  `Hyperbee.Migrations.Providers.Postgres.Squash`) to enable\n" +
             "  per-provider codegen. v3.0 ships all 5 providers; no provider is\n" +
             "  hardcoded in the CLI.\n" +
             "\n" +

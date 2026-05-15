@@ -24,7 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Hyperbee.Migrations.Providers.MongoDB\Hyperbee.Migrations.Providers.MongoDB.csproj" />
-    <ProjectReference Include="..\..\..\src\Hyperbee.Migrations.Providers.MongoDB.SquashCli\Hyperbee.Migrations.Providers.MongoDB.SquashCli.csproj" />
+    <ProjectReference Include="..\..\..\src\Hyperbee.Migrations.Providers.MongoDB.Squash\Hyperbee.Migrations.Providers.MongoDB.Squash.csproj" />
     <ProjectReference Include="..\..\..\src\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
   </ItemGroup>
 

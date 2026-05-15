@@ -42,7 +42,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Hyperbee.Migrations.Providers.OpenSearch\Hyperbee.Migrations.Providers.OpenSearch.csproj" />
-    <ProjectReference Include="..\..\..\src\Hyperbee.Migrations.Providers.OpenSearch.SquashCli\Hyperbee.Migrations.Providers.OpenSearch.SquashCli.csproj" />
+    <ProjectReference Include="..\..\..\src\Hyperbee.Migrations.Providers.OpenSearch.Squash\Hyperbee.Migrations.Providers.OpenSearch.Squash.csproj" />
     <ProjectReference Include="..\..\..\src\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
   </ItemGroup>
 

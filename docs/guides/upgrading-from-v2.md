@@ -297,8 +297,8 @@ coverage state:
 | MongoDB    | yes  | yes              | INTEGRATIONS-gated suite                                                                                                             |
 | Couchbase  | yes  | yes (v3.0)       | F-1 / RB-5 closed by `IsolatedCouchbaseContainer` per-test ephemeral fixture; squash determinism + verification suites run in CI now |
 
-The five SquashCli packages
-(`Hyperbee.Migrations.Providers.{Provider}.SquashCli`) carry their own
+The five Squash packages
+(`Hyperbee.Migrations.Providers.{Provider}.Squash`) carry their own
 end-to-end integration coverage via the standard provider integration
 suites plus the contract-pin tests in `Hyperbee.Migrations.Squash.Tests`.
 

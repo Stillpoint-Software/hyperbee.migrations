@@ -81,16 +81,16 @@ internal sealed class MigrationAssemblyLoader : IDisposable
         {
             // Defer SHARED types to the Default ALC. The CLI binary's own
             // load context already holds `Hyperbee.Migrations` (which
-            // defines `ISquashCliProvider`, `IMigrationHost`, etc.) and any
+            // defines `ISquashProvider`, `IMigrationHost`, etc.) and any
             // framework assemblies it references. If we loaded a second
             // copy into this collectible ALC, plugin types would implement
             // a different *type identity* of those interfaces and
-            // CliProviderRegistry.Discover would silently report zero
+            // SquashProviderRegistry.Discover would silently report zero
             // providers despite the DLLs being present on disk.
             //
             // Probe the migration project's output directory only for
             // assemblies the Default ALC does NOT already have loaded.
-            // Provider packages (Hyperbee.Migrations.Providers.*.SquashCli,
+            // Provider packages (Hyperbee.Migrations.Providers.*.Squash,
             // operator-specific helpers, etc.) live here and DO load into
             // the collectible ALC so they can unload cleanly.
             Trace( $"Load({assemblyName.Name})" );

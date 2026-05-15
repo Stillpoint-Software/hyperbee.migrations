@@ -170,7 +170,7 @@ Migration project authors who used the legacy pattern delete the static method a
 
 ### A1 (2026-05-13) — `IEphemeralProvisioner` extension
 
-`{Provider}SquashCliProvider.GenerateAsync` originally bound its container provisioning inline (each provider's snapshot capture orchestrator constructed its `Testcontainers.*Container` directly inside the capture method). A1 lifts that into a small abstraction so the lifecycle is replaceable:
+`{Provider}SquashProvider.GenerateAsync` originally bound its container provisioning inline (each provider's snapshot capture orchestrator constructed its `Testcontainers.*Container` directly inside the capture method). A1 lifts that into a small abstraction so the lifecycle is replaceable:
 
 ```csharp
 public interface IEphemeralProvisioner
@@ -187,10 +187,10 @@ public interface IEphemeralFixture : IAsyncDisposable
 }
 ```
 
-Each per-provider SquashCli package ships:
-- A default Testcontainers-backed provisioner (`{Provider}EphemeralProvisioner`) consumed by `{Provider}SquashCliProvider`'s default constructor.
+Each per-provider Squash package ships:
+- A default Testcontainers-backed provisioner (`{Provider}EphemeralProvisioner`) consumed by `{Provider}SquashProvider`'s default constructor.
 - A typed fixture (`{Provider}EphemeralFixture : IEphemeralFixture`) carrying any provider-specific handles (e.g., `PostgreSqlContainer` for the `pg_dump --schema-only` exec path) alongside the connection string.
-- A second `{Provider}SquashCliProvider(IEphemeralProvisioner)` constructor so integration tests and third-party embeddings can substitute their own provisioner.
+- A second `{Provider}SquashProvider(IEphemeralProvisioner)` constructor so integration tests and third-party embeddings can substitute their own provisioner.
 
 Couchbase additionally ships `CouchbaseSiblingContainerProvisioner` — when the CLI itself runs inside a Docker container, the sibling pattern provisions Couchbase as a sibling container on the same Docker network rather than a child Testcontainers instance. The provisioner returns the fixture with `network-alias` metadata so the snapshot capture client can route via the alias.
 
@@ -211,9 +211,9 @@ Couchbase additionally ships `CouchbaseSiblingContainerProvisioner` — when the
 
 2. **NuGet-cache probe via deps.json.** Library projects (migration assemblies) don't ship a `runtimeconfig.json`, so `AssemblyDependencyResolver` returns null for NuGet packages. The loader parses the migration assembly's `.deps.json` directly to find each package's NuGet path (`<name>/<version>`) and the runtime DLL path (`lib/<tfm>/<dll>`), then composes the absolute path under `~/.nuget/packages` (or `NUGET_PACKAGES` if set).
 
-3. **Directory scan for build-side-effect references.** `CliProviderRegistry.Discover` augments the metadata-driven reference closure with a scan of every managed DLL in the migration assembly's directory. The C# compiler strips unused references from assembly metadata, so a sample that has a `<ProjectReference>` to `Hyperbee.Migrations.Providers.*.SquashCli` but never *uses* a type from it drops out of the metadata closure. The directory scan catches these and loads them via the migration ALC so their `ISquashCliProvider` types share identity with the host's `ISquashCliProvider` interface.
+3. **Directory scan for build-side-effect references.** `SquashProviderRegistry.Discover` augments the metadata-driven reference closure with a scan of every managed DLL in the migration assembly's directory. The C# compiler strips unused references from assembly metadata, so a sample that has a `<ProjectReference>` to `Hyperbee.Migrations.Providers.*.Squash` but never *uses* a type from it drops out of the metadata closure. The directory scan catches these and loads them via the migration ALC so their `ISquashProvider` types share identity with the host's `ISquashProvider` interface.
 
-**Why:** The v1 CLI worked because Postgres-only didn't need the SquashCli DLL at runtime (the static-method convention only required `NpgsqlDataSource`). The v3.0 plug-in model puts the provider's actual `ISquashCliProvider` implementation on the discovery path, which surfaces all three of these previously-latent load-context concerns.
+**Why:** The v1 CLI worked because Postgres-only didn't need the Squash DLL at runtime (the static-method convention only required `NpgsqlDataSource`). The v3.0 plug-in model puts the provider's actual `ISquashProvider` implementation on the discovery path, which surfaces all three of these previously-latent load-context concerns.
 
 **Compliance:** ADR-0019 unaffected. ADR-0023 unaffected. The host/plugin shared-type contract is unstated in this ADR's original body — A2 codifies it as a requirement of the discovery mechanism.
 
@@ -221,5 +221,5 @@ Couchbase additionally ships `CouchbaseSiblingContainerProvisioner` — when the
 
 - Proposed: 2026-05-12.
 - Implementation: Week 2 Day 1 of Path A (see `docs/research/0009-v3-release-readiness-assessment.md`).
-- Accepted: 2026-05-13 — all 5 providers ship a working `IMigrationHost` host class; CLI binary E2E test (`CliBinaryEndToEndTests`) drives Postgres host through the actual `hyperbee-migrations.exe` child process and validates emitted `.sql` + `.metadata.json` + `.summary.md` artifacts; 5 per-provider SquashCliProvider integration tests pass on net8/net9/net10 (F-1 closed: per-provider integration matrix + `CouchbaseHelper` planner-catalog retries removed the Couchbase host-side race).
+- Accepted: 2026-05-13 — all 5 providers ship a working `IMigrationHost` host class; CLI binary E2E test (`CliBinaryEndToEndTests`) drives Postgres host through the actual `hyperbee-migrations.exe` child process and validates emitted `.sql` + `.metadata.json` + `.summary.md` artifacts; 5 per-provider SquashProvider integration tests pass on net8/net9/net10 (F-1 closed: per-provider integration matrix + `CouchbaseHelper` planner-catalog retries removed the Couchbase host-side race).
 - Amendments: A1 (`IEphemeralProvisioner` extension, 2026-05-13), A2 (plugin-style ALC isolation, 2026-05-13).

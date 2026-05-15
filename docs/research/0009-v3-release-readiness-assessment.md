@@ -6,7 +6,7 @@
 **Method:** `/nop:assess` — Pre-mortem + Mechanism Design + Performance Audit discovery, Red-Blue convergence, Independent Review, Red-Blue₂.
 **Verdict:** **NOT READY FOR v3.0.0 TAG. Path A locked 2026-05-12.** Five release-blocking findings + 17 Redesign items (+1 post-assessment addition for OpenSearch ISM lifecycle). Tag after the blocking set is closed AND the integration suite reflects the marketing claim. Estimated 3-4 weeks of focused work.
 
-**Path A vs Path B decision:** Path A locked. The CLI ships as a thin dispatch shell over an `ISquashCliProvider` extensibility contract — no hardcoded provider list in the CLI assembly. Each provider package implements the contract; CLI discovers via assembly reference-closure scan. Third-party providers consume the same surface as the 5 first-party providers. The marketing claim "all 5 providers ship" is honored at all tiers (library, CLI, integration tests).
+**Path A vs Path B decision:** Path A locked. The CLI ships as a thin dispatch shell over an `ISquashProvider` extensibility contract — no hardcoded provider list in the CLI assembly. Each provider package implements the contract; CLI discovers via assembly reference-closure scan. Third-party providers consume the same surface as the 5 first-party providers. The marketing claim "all 5 providers ship" is honored at all tiers (library, CLI, integration tests).
 
 ---
 
@@ -14,7 +14,7 @@
 
 The strategy libraries for all 5 providers shipped clean and contract-correct (zero ADR-0019 amendments across 4 non-Postgres providers — strong evidence the abstraction is sound). However, the **CLI surface was never updated past v1 (Postgres-only)** and contradicts the v3.0 marketing claims in CHANGELOG.md, Program.cs, and README. The "all 5 providers" claim is true at the library tier and was false at the CLI tier.
 
-Path A is locked: the CLI is being rewritten as a thin dispatch shell over an `ISquashCliProvider` contract that each provider package implements. CLI discovers providers via assembly reference-closure scan — no hardcoded provider list. This unifies the 5 first-party providers and any future third-party provider under the same extensibility surface. Plus 17 Redesign items + safety-default flips + the OpenSearch ISM lifecycle DSL completion (R-17) ship together.
+Path A is locked: the CLI is being rewritten as a thin dispatch shell over an `ISquashProvider` contract that each provider package implements. CLI discovers providers via assembly reference-closure scan — no hardcoded provider list. This unifies the 5 first-party providers and any future third-party provider under the same extensibility surface. Plus 17 Redesign items + safety-default flips + the OpenSearch ISM lifecycle DSL completion (R-17) ship together.
 
 Estimated 3-4 weeks single-developer focused work to tag.
 
@@ -145,18 +145,18 @@ The library-tier work is solid. The CLI tier is being rewritten properly, not pa
 
 ## Recommended sequencing before tag (Path A — locked 2026-05-12)
 
-**Path B (downgrade marketing claim) was considered and rejected.** The locked release rule "all 5 providers ship or do not ship" is honored. CLI is wired for all 5 providers via an extensibility contract (`ISquashCliProvider`) — no hardcoded provider list in the CLI assembly.
+**Path B (downgrade marketing claim) was considered and rejected.** The locked release rule "all 5 providers ship or do not ship" is honored. CLI is wired for all 5 providers via an extensibility contract (`ISquashProvider`) — no hardcoded provider list in the CLI assembly.
 
 ### Architecture decision (2026-05-12): CLI as thin dispatch shell
 
-The CLI references **zero** provider packages directly. It dispatches via the `ISquashCliProvider` contract that each provider package implements. Discovery is via assembly scan of the migration project's reference closure. NuGet package presence IS the registration — no `register-provider` / `unregister-provider` commands. Third-party providers consume the same extensibility surface as the 5 first-party providers.
+The CLI references **zero** provider packages directly. It dispatches via the `ISquashProvider` contract that each provider package implements. Discovery is via assembly scan of the migration project's reference closure. NuGet package presence IS the registration — no `register-provider` / `unregister-provider` commands. Third-party providers consume the same extensibility surface as the 5 first-party providers.
 
 ### Phased plan (4 weeks single-developer focused)
 
 **Week 1 — Independent fixes that unblock CLI work:**
 - RB-2 — `recover from-mid-range` persistence decision + implementation (~0.5-2 days)
 - RB-3 — `FleetReadinessCheck` reads schema/table from options (~0.5 day after the CLI cascade exposes the per-provider FleetReadinessCheck shape)
-- RB-4 — Document the apply-path convention as part of the new `ISquashCliProvider` contract (the apply path moves into the contract — dissolves as a release-blocker)
+- RB-4 — Document the apply-path convention as part of the new `ISquashProvider` contract (the apply path moves into the contract — dissolves as a release-blocker)
 - R-1 — Default `LockingEnabled = true` (~2 hours)
 - R-6 — `--scan-source` required (~0.5 day)
 - R-7 — `--fleet-manifest` required or warn-loud (~0.5 day)
@@ -174,17 +174,17 @@ The CLI references **zero** provider packages directly. It dispatches via the `I
 Week 1 total: ~6-8 days of work spread across the surface. Closes 4 release-blockers (or near-blockers) and 14 Redesigns.
 
 **Week 2 — CLI extensibility contract + Postgres reference:**
-- Day 1: Define `ISquashCliProvider`, `IEphemeralProvisioner`, `EphemeralFixture`, `IEphemeralFixtureRequest` in core. Build `CliProviderRegistry.Discover` (reference-closure scan). Build `TestcontainersEphemeralProvisioner` skeleton.
-- Day 2-3: Migrate existing Postgres CLI code (`runners/Hyperbee.Migrations.Cli/Postgres/`) into `PostgresSquashCliProvider` in the Postgres provider package. CLI csproj loses Postgres-specific references. Verb dispatcher becomes single dictionary lookup.
-- Day 4-5: Aerospike `ISquashCliProvider` implementation + `AerospikeFixtureRequest` + Testcontainers handler. Integration test.
+- Day 1: Define `ISquashProvider`, `IEphemeralProvisioner`, `EphemeralFixture`, `IEphemeralFixtureRequest` in core. Build `SquashProviderRegistry.Discover` (reference-closure scan). Build `TestcontainersEphemeralProvisioner` skeleton.
+- Day 2-3: Migrate existing Postgres CLI code (`runners/Hyperbee.Migrations.Cli/Postgres/`) into `PostgresSquashProvider` in the Postgres provider package. CLI csproj loses Postgres-specific references. Verb dispatcher becomes single dictionary lookup.
+- Day 4-5: Aerospike `ISquashProvider` implementation + `AerospikeFixtureRequest` + Testcontainers handler. Integration test.
 
 **Week 3 — OpenSearch + MongoDB:**
-- Day 1-3: OpenSearch `ISquashCliProvider` + `OpenSearchFixtureRequest` + handler. Per-provider FleetReadinessCheck (RB-3 for OpenSearch). Integration test.
-- Day 4-5: MongoDB `ISquashCliProvider` + handler + FleetReadinessCheck (RB-3 for MongoDB). Integration test.
+- Day 1-3: OpenSearch `ISquashProvider` + `OpenSearchFixtureRequest` + handler. Per-provider FleetReadinessCheck (RB-3 for OpenSearch). Integration test.
+- Day 4-5: MongoDB `ISquashProvider` + handler + FleetReadinessCheck (RB-3 for MongoDB). Integration test.
 - R-16 — Couchbase `IntersectWithAppliedAsync` rewrite to N1QL `USE KEYS` (~0.5 day, fits here).
 
 **Week 4 — Couchbase (sibling-container) + RB-5 + verify + tag:**
-- Day 1-3: Couchbase `ISquashCliProvider` with sibling-container provisioner variant. The Couchbase fixture request asks the provisioner for a sibling-container fixture (because host-side connection conflicts with the existing `CouchbaseRunnerTest`). Integration test. Closes RB-5 + F-1.
+- Day 1-3: Couchbase `ISquashProvider` with sibling-container provisioner variant. The Couchbase fixture request asks the provisioner for a sibling-container fixture (because host-side connection conflicts with the existing `CouchbaseRunnerTest`). Integration test. Closes RB-5 + F-1.
 - Day 4: D-1 through D-5 documentation. M-1 through M-6 release notes.
 - Day 5: Full multi-target test pass (net8/9/10). Plan/CHANGELOG closing. `dotnet pack` dry run. PR to main. CI green. Tag v3.0.0.
 
@@ -212,11 +212,11 @@ Week 1 total: ~6-8 days of work spread across the surface. Closes 4 release-bloc
 
 ## Final recommendation (locked 2026-05-12)
 
-**Path A is the path.** "All 5 providers ship or do not ship" is honored. The CLI is rewritten as a thin dispatch shell over the new `ISquashCliProvider` extensibility contract. No hardcoded provider list. Third-party providers (a future Cassandra, DynamoDB, etc.) consume the same surface.
+**Path A is the path.** "All 5 providers ship or do not ship" is honored. The CLI is rewritten as a thin dispatch shell over the new `ISquashProvider` extensibility contract. No hardcoded provider list. Third-party providers (a future Cassandra, DynamoDB, etc.) consume the same surface.
 
 The 17-item Redesign cleanup ships with the CLI rewrite. R-17 (OpenSearch ISM lifecycle DSL completion — `DROP POLICY` + `DETACH POLICY FROM INDEX`) is non-optional per consumer-team PR demand.
 
-Timeline: 3-4 weeks single-developer focused. Week 1 closes most of the independent Redesigns + the safety-default flips + R-17. Weeks 2-4 build out the per-provider `ISquashCliProvider` implementations (Postgres reference first, then Aerospike, OpenSearch, MongoDB, Couchbase-with-sibling-container) + per-provider FleetReadinessCheck + per-provider integration test.
+Timeline: 3-4 weeks single-developer focused. Week 1 closes most of the independent Redesigns + the safety-default flips + R-17. Weeks 2-4 build out the per-provider `ISquashProvider` implementations (Postgres reference first, then Aerospike, OpenSearch, MongoDB, Couchbase-with-sibling-container) + per-provider FleetReadinessCheck + per-provider integration test.
 
 Tag v3.0.0 after the full plan completes and all suites are green.
 

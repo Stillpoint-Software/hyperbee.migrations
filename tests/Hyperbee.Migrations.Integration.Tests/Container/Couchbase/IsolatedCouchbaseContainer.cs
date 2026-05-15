@@ -4,7 +4,7 @@ using Couchbase;
 using Couchbase.Diagnostics;
 using Couchbase.Management.Buckets;
 using Hyperbee.Migrations.Providers.Couchbase.Services;
-using Hyperbee.Migrations.Providers.Couchbase.SquashCli;
+using Hyperbee.Migrations.Providers.Couchbase.Squash;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Testcontainers.Couchbase;

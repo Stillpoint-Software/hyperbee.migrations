@@ -173,9 +173,9 @@ public class CliBinaryEndToEndTests
         var cfg = Path.GetFileName( Path.GetDirectoryName( testDir.TrimEnd( Path.DirectorySeparatorChar ) ) );
         var repoRoot = Path.GetFullPath( Path.Combine( testDir, "..", "..", "..", "..", ".." ) );
 
-        // The sample build output sits next to the SquashCli package's
+        // The sample build output sits next to the Squash package's
         // DLLs (via project-reference build ordering). We use the sample's
-        // own bin directory so the SquashCli + IMigrationHost types
+        // own bin directory so the Squash + IMigrationHost types
         // travel with it on the AssemblyLoadContext probe path.
         var samplesPath = Path.Combine( repoRoot,
             "runners", "samples", "Hyperbee.Migrations.Postgres.Samples", "bin", cfg!, tfm!,

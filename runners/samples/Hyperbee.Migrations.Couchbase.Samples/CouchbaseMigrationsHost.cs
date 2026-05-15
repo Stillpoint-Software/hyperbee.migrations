@@ -21,7 +21,7 @@ public class CouchbaseMigrationsHost : IMigrationHost
         services.AddSingleton<IConfiguration>( new ConfigurationBuilder().Build() );
         services.AddLogging();
 
-        // mgmt-port hint plumbed in by CouchbaseSquashCliProvider when
+        // mgmt-port hint plumbed in by CouchbaseSquashProvider when
         // the ephemeral container's management port differs from the
         // 8091 default (any Testcontainers-style mapped-port deployment).
         // CouchbaseRestApiService now always uses BootstrapHttpPort for
@@ -36,7 +36,7 @@ public class CouchbaseMigrationsHost : IMigrationHost
             mgmtPortHint = mgmtPort;
         }
 
-        // bucket-name hint plumbed in by CouchbaseSquashCliProvider so
+        // bucket-name hint plumbed in by CouchbaseSquashProvider so
         // a caller can override the sample default ("hyperbee") --
         // useful when the live cluster uses the Testcontainers library
         // auto-created bucket (a GUID name) instead of a fixed one.

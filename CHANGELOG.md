@@ -23,8 +23,8 @@ The full release-readiness audit
 (`docs/research/0009-v3-release-readiness-assessment.md`) is closed: 5
 release-blockers + 17 Redesigns + the F-tier deferred items are resolved.
 Library tier ships at 1335 unit tests per target framework (.NET 8, 9, 10);
-the five SquashCli provider packages
-(`Hyperbee.Migrations.Providers.{Provider}.SquashCli`) ship as separate
+the five Squash provider packages
+(`Hyperbee.Migrations.Providers.{Provider}.Squash`) ship as separate
 NuGet packages so production deployments do not pay the Testcontainers /
 Docker runtime cost.
 
@@ -140,20 +140,20 @@ Docker runtime cost.
 - **`IEphemeralProvisioner` abstraction (+ Couchbase sibling-container variant).**
   The per-provider squash CLI capture orchestrators consume an
   `IEphemeralProvisioner` for container provisioning, decoupling lifecycle
-  from the apply/capture pipeline. Each SquashCli package ships a default
+  from the apply/capture pipeline. Each Squash package ships a default
   Testcontainers-backed provisioner; the Couchbase package additionally
   ships `CouchbaseSiblingContainerProvisioner` for the case where the CLI
   itself runs inside a Docker container (CI pipelines, containerized
   operator tooling). Provider provisioners are DI-overridable: the
-  default `{Provider}SquashCliProvider()` ctor wires the default
+  default `{Provider}SquashProvider()` ctor wires the default
   Testcontainers impl; a second `(IEphemeralProvisioner)` ctor accepts
   a caller-supplied provisioner for integration tests and third-party
   embeddings. Per ADR-0024 audit Week 2 + Week 4 completion.
-- **5 end-to-end SquashCliProvider integration tests + CLI binary E2E.**
-  One SquashCliProvider integration test per provider (Postgres,
+- **5 end-to-end SquashProvider integration tests + CLI binary E2E.**
+  One SquashProvider integration test per provider (Postgres,
   Aerospike, OpenSearch, MongoDB, Couchbase). Each test loads the
   corresponding sample assembly by path (`Assembly.LoadFrom`),
-  discovers `IMigrationHost`, builds a `SquashCliContext`, and invokes
+  discovers `IMigrationHost`, builds a `SquashRequest`, and invokes
   `provider.GenerateAsync` end-to-end. Determinism gate (C12): the
   Postgres variant runs `GenerateAsync` twice against the same sample
   and asserts byte-equal output. Couchbase tagged `LocalOnly` per F-1
@@ -168,10 +168,10 @@ Docker runtime cost.
   `IServiceProvider`, etc. type-match across the host/plugin boundary)
   AND probes the NuGet cache directly via the migration assembly's
   `.deps.json` for transitive packages that library projects don't
-  carry in their bin folder. `CliProviderRegistry.Discover`
+  carry in their bin folder. `SquashProviderRegistry.Discover`
   supplements the metadata reference closure with a directory scan so
   `<ProjectReference>` packages whose types the migration project
-  doesn't directly use (a common shape for the SquashCli packages)
+  doesn't directly use (a common shape for the Squash packages)
   still surface through discovery. Without this, the CLI binary
   reported "Discovered providers: <none>" or threw
   `MissingMethodException` at the first cross-ALC call. Set
@@ -236,7 +236,7 @@ Docker runtime cost.
   network, or (b) calling `setupAlternateAddresses` on the server.
   Tests gated: `CouchbaseSquashDeterminismTests`,
   `CouchbaseSquashVerificationTests`,
-  `CouchbaseSquashCliProviderIntegrationTests`. Squash correctness
+  `CouchbaseSquashProviderIntegrationTests`. Squash correctness
   is byte-tested by 192 Couchbase unit tests in
   `Hyperbee.Migrations.Squash.Tests`.
 - **Per-provider integration matrix in CI** (run_tests.yml). Each
@@ -250,9 +250,9 @@ Docker runtime cost.
   them as test flakiness. Unit tests run separately because they need
   no containers at all. `MultiProviderHostIntegrationTests` gets its
   own job with Postgres + MongoDB.
-- **Couchbase SquashCli provider package ships** -- the fifth and final
-  ISquashCliProvider implementation for the v3.0 CLI extensibility
-  cascade. `CouchbaseSquashCliProvider` spins ephemeral Couchbase Server
+- **Couchbase Squash provider package ships** -- the fifth and final
+  ISquashProvider implementation for the v3.0 CLI extensibility
+  cascade. `CouchbaseSquashProvider` spins ephemeral Couchbase Server
   containers via `Testcontainers.Couchbase`, applies migrations through
   the discovered `IMigrationHost`, and captures via the shared
   `CouchbaseSnapshotCapture` helper. RB-3 fleet readiness probe runs
@@ -261,7 +261,7 @@ Docker runtime cost.
   topology overrides. `--provider-option bucket-name=<name>` required
   for codegen (the snapshot scope is the bucket).
   `CouchbaseRestApiService` is promoted from internal to public so the
-  SquashCli package can construct it without InternalsVisibleTo coupling.
+  Squash package can construct it without InternalsVisibleTo coupling.
 - **CLI uses collectible `AssemblyLoadContext` for the migration assembly.**
   Previously used `Assembly.LoadFrom`, which loads into the default ALC
   and prevents unload. The collectible ALC (`MigrationAssemblyLoader`)
@@ -276,10 +276,10 @@ Docker runtime cost.
   The new path issues `SELECT RAW META(d).id FROM <keyspace> d USE KEYS $ids`
   for a primary-key index hit; semantically identical, one round-trip,
   no fan-out. Per ADR-0024 audit follow-up (R-16).
-- **MongoDB + OpenSearch SquashCli provider packages** ship as part of the
-  five-provider CLI extensibility cascade. `MongoDBSquashCliProvider`
+- **MongoDB + OpenSearch Squash provider packages** ship as part of the
+  five-provider CLI extensibility cascade. `MongoDBSquashProvider`
   spins ephemeral `mongo:7` containers via `Testcontainers.MongoDb`;
-  `OpenSearchSquashCliProvider` spins ephemeral
+  `OpenSearchSquashProvider` spins ephemeral
   `opensearchproject/opensearch:2.18.0` containers via the generic
   `Testcontainers` package. Both route migration apply through the
   discovered `IMigrationHost` and emit `.statements` script form per
@@ -287,13 +287,13 @@ Docker runtime cost.
   N1QL-style aggregation over the migration ledger collection;
   OpenSearch: `_search` against the ledger index extracting the max
   version from record_id).
-- **CLI is a thin dispatch shell over `ISquashCliProvider`** (per ADR-0024
+- **CLI is a thin dispatch shell over `ISquashProvider`** (per ADR-0024
   Week 2). The CLI assembly references zero provider packages; per-provider
   CLI implementations are discovered via the migration assembly's reference
   closure. NuGet package presence IS the registration: a migration project
-  adds `Hyperbee.Migrations.Providers.{Provider}.SquashCli` to enable
+  adds `Hyperbee.Migrations.Providers.{Provider}.Squash` to enable
   `hyperbee-migrations squash --provider {provider}` codegen. v3.0 ships
-  `PostgresSquashCliProvider` and `AerospikeSquashCliProvider` (Week 2);
+  `PostgresSquashProvider` and `AerospikeSquashProvider` (Week 2);
   MongoDB / OpenSearch / Couchbase follow in Week 3-4.
 - **RB-4 (apply-path reflection) closed.** Provider CLI implementations
   route migration apply through the discovered `IMigrationHost`
@@ -301,11 +301,11 @@ Docker runtime cost.
   reflection convention. The host class is the single supported
   integration point.
 - **R-5 (output file extension)**: emitted squash artifact filename uses
-  `ISquashCliProvider.SquashFileExtension` instead of a hardcoded `.sql`.
+  `ISquashProvider.SquashFileExtension` instead of a hardcoded `.sql`.
   Postgres -> `.sql`; the four NoSQL providers -> `.statements` (per
   ADR-0022 script form).
 - **R-8 (per-provider source scanner dispatch)**: scanner dispatch routes
-  through `ISquashCliProvider.ScanSource` instead of hardcoding
+  through `ISquashProvider.ScanSource` instead of hardcoding
   `PostgresMigrationSourceScanner.Scan`. Each provider's package exposes
   its own Roslyn scanner with provider-specific data-op heuristics.
 - **R-4 (`--remove-originals` default to dry-run)**: the flag now LISTS
@@ -315,7 +315,7 @@ Docker runtime cost.
   (`Squash_1000.cs` does not match when squashing version 100).
 - **RB-3 (fleet readiness probe per-provider)**: `FleetReadinessProbe`
   (replaces v1's Postgres-only `FleetReadinessCheck`) dispatches to
-  `ISquashCliProvider.ProbeLastAppliedVersionAsync`. Each provider's
+  `ISquashProvider.ProbeLastAppliedVersionAsync`. Each provider's
   implementation reads schema / table / namespace / set / index names
   from the fleet manifest's `topology:` overrides; no more hardcoded
   `public.migrations`.

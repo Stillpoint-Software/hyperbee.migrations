@@ -28,7 +28,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Hyperbee.Migrations.Providers.Aerospike\Hyperbee.Migrations.Providers.Aerospike.csproj" />
-    <ProjectReference Include="..\..\..\src\Hyperbee.Migrations.Providers.Aerospike.SquashCli\Hyperbee.Migrations.Providers.Aerospike.SquashCli.csproj" />
+    <ProjectReference Include="..\..\..\src\Hyperbee.Migrations.Providers.Aerospike.Squash\Hyperbee.Migrations.Providers.Aerospike.Squash.csproj" />
     <ProjectReference Include="..\..\..\src\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
   </ItemGroup>
 

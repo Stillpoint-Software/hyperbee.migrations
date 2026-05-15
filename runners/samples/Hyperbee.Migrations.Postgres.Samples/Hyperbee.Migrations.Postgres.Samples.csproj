@@ -19,9 +19,9 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Hyperbee.Migrations.Providers.Postgres\Hyperbee.Migrations.Providers.Postgres.csproj" />
-    <!-- ADR-0024 Week 2: SquashCli reference enables hyperbee-migrations
+    <!-- ADR-0024 Week 2: Squash reference enables hyperbee-migrations
          squash provider=postgres discovery for this assembly. -->
-    <ProjectReference Include="..\..\..\src\Hyperbee.Migrations.Providers.Postgres.SquashCli\Hyperbee.Migrations.Providers.Postgres.SquashCli.csproj" />
+    <ProjectReference Include="..\..\..\src\Hyperbee.Migrations.Providers.Postgres.Squash\Hyperbee.Migrations.Providers.Postgres.Squash.csproj" />
     <ProjectReference Include="..\..\..\src\Hyperbee.Migrations\Hyperbee.Migrations.csproj" />
   </ItemGroup>
 

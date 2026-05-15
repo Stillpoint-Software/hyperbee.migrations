@@ -1,12 +1,11 @@
 ﻿using Hyperbee.Migrations.Squash;
-using Hyperbee.Migrations.Squash.Cli;
 
 namespace Hyperbee.Migrations.Cli.FleetManifest;
 
 /// <summary>
 /// Provider-agnostic fleet readiness probe (per ADR-0024 audit Week 2).
 /// Walks every environment in the manifest in parallel, dispatches the
-/// last-applied-version probe to the supplied <see cref="ISquashCliProvider"/>,
+/// last-applied-version probe to the supplied <see cref="ISquashProvider"/>,
 /// then invokes <see cref="SquashFleetGate.EnsureGenerable"/> to refuse if
 /// any member is mid-range. Replaces the v1 Postgres-only
 /// <c>FleetReadinessCheck</c> -- RB-3 + per-provider dispatch are folded in
@@ -17,7 +16,7 @@ public static class FleetReadinessProbe
     private const int MaxParallelism = 8;
 
     public static async Task<IReadOnlyDictionary<string, long>> EnsureGenerableAsync(
-        ISquashCliProvider cliProvider,
+        ISquashProvider cliProvider,
         FleetManifestModel manifest,
         long proposedFromVersion,
         long proposedToVersion,

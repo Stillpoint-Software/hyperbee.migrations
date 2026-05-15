@@ -44,15 +44,15 @@
     <Project Path="tests/Hyperbee.Migrations.Tests/Hyperbee.Migrations.Tests.csproj" />
   </Folder>
   <Project Path="src/Hyperbee.Migrations.Providers.Aerospike/Hyperbee.Migrations.Providers.Aerospike.csproj" />
-  <Project Path="src/Hyperbee.Migrations.Providers.Aerospike.SquashCli/Hyperbee.Migrations.Providers.Aerospike.SquashCli.csproj" />
+  <Project Path="src/Hyperbee.Migrations.Providers.Aerospike.Squash/Hyperbee.Migrations.Providers.Aerospike.Squash.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.Couchbase/Hyperbee.Migrations.Providers.Couchbase.csproj" />
-  <Project Path="src/Hyperbee.Migrations.Providers.Couchbase.SquashCli/Hyperbee.Migrations.Providers.Couchbase.SquashCli.csproj" />
+  <Project Path="src/Hyperbee.Migrations.Providers.Couchbase.Squash/Hyperbee.Migrations.Providers.Couchbase.Squash.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.OpenSearch/Hyperbee.Migrations.Providers.OpenSearch.csproj" />
-  <Project Path="src/Hyperbee.Migrations.Providers.OpenSearch.SquashCli/Hyperbee.Migrations.Providers.OpenSearch.SquashCli.csproj" />
+  <Project Path="src/Hyperbee.Migrations.Providers.OpenSearch.Squash/Hyperbee.Migrations.Providers.OpenSearch.Squash.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.OpenSearch.Aws/Hyperbee.Migrations.Providers.OpenSearch.Aws.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.MongoDB/Hyperbee.Migrations.Providers.MongoDB.csproj" />
-  <Project Path="src/Hyperbee.Migrations.Providers.MongoDB.SquashCli/Hyperbee.Migrations.Providers.MongoDB.SquashCli.csproj" />
+  <Project Path="src/Hyperbee.Migrations.Providers.MongoDB.Squash/Hyperbee.Migrations.Providers.MongoDB.Squash.csproj" />
   <Project Path="src/Hyperbee.Migrations.Providers.Postgres/Hyperbee.Migrations.Providers.Postgres.csproj" />
-  <Project Path="src/Hyperbee.Migrations.Providers.Postgres.SquashCli/Hyperbee.Migrations.Providers.Postgres.SquashCli.csproj" />
+  <Project Path="src/Hyperbee.Migrations.Providers.Postgres.Squash/Hyperbee.Migrations.Providers.Postgres.Squash.csproj" />
   <Project Path="src/Hyperbee.Migrations/Hyperbee.Migrations.csproj" />
 </Solution>
