@@ -58,6 +58,52 @@ public sealed class IsolatedCouchbaseContainer : IAsyncDisposable
             MgmtPort = mgmtPort
         };
 
+        // Create the bucket via a SHORT-LIVED management cluster handle,
+        // disposed before we open the long-lived SDK handle the tests
+        // will use. The .NET SDK caches per-bucket failure state on
+        // first BucketAsync call: if the bucket's terse config or KV
+        // socket aren't fully online yet, the cached failure persists
+        // until the cluster handle is recreated. Connecting AFTER the
+        // bucket is fully online avoids that cache entirely.
+        await using ( var mgmtCluster = await Cluster.ConnectAsync( new ClusterOptions
+        {
+            ConnectionString = instance.ConnectionString,
+            UserName = CouchbaseBuilder.DefaultUsername,
+            Password = CouchbaseBuilder.DefaultPassword,
+            BootstrapHttpPort = mgmtPort,
+            NetworkResolution = CbNetworkResolution.External
+        } ).ConfigureAwait( false ) )
+        {
+            await mgmtCluster.WaitUntilReadyAsync( TimeSpan.FromMinutes( 2 ) ).ConfigureAwait( false );
+            try
+            {
+                await mgmtCluster.Buckets.CreateBucketAsync( new BucketSettings
+                {
+                    Name = bucketName,
+                    BucketType = BucketType.Couchbase,
+                    RamQuotaMB = 100
+                } ).ConfigureAwait( false );
+            }
+            catch ( BucketExistsException )
+            {
+                // Already exists -- fine.
+            }
+        }
+
+        // Wait for the bucket to be fully online at the REST level
+        // (manager nodes healthy + terse config advertises kv + n1ql)
+        // before opening any SDK handle against it. This uses the
+        // provider's enriched ICouchbaseRestApiService bootstrapper
+        // signal so the test fixture and production share readiness
+        // semantics.
+        await WaitForClusterAndBucketHealthyAsync(
+            instance.ConnectionString, mgmtPort, bucketName, cancellationToken )
+            .ConfigureAwait( false );
+
+        // Fresh long-lived SDK handle. By connecting AFTER the bucket
+        // is fully online, the SDK's initial cluster-map fetch already
+        // includes hyperbee with correct alt-addresses, so BucketAsync
+        // does not hit the persistent-failure cache that bites on CI.
         instance.ClusterHandle = await Cluster.ConnectAsync( new ClusterOptions
         {
             ConnectionString = instance.ConnectionString,
@@ -72,35 +118,7 @@ public sealed class IsolatedCouchbaseContainer : IAsyncDisposable
             new WaitUntilReadyOptions().ServiceTypes( ServiceType.KeyValue, ServiceType.Query ) )
             .ConfigureAwait( false );
 
-        try
-        {
-            await instance.ClusterHandle.Buckets.CreateBucketAsync( new BucketSettings
-            {
-                Name = bucketName,
-                BucketType = BucketType.Couchbase,
-                RamQuotaMB = 100
-            } ).ConfigureAwait( false );
-        }
-        catch ( BucketExistsException )
-        {
-            // Already exists -- fine.
-        }
-
-        // Use the provider's CouchbaseRestApiService.ClusterHealthyAsync
-        // + BucketHealthyAsync to drive the readiness signal. The bucket
-        // appears in the cluster manager before its KV warmup is
-        // complete; opening BucketAsync before status flips from
-        // "warmup" to "healthy" throws SocketNotAvailableException.
-        await WaitForClusterAndBucketHealthyAsync(
-            instance.ConnectionString, mgmtPort, bucketName, cancellationToken )
-            .ConfigureAwait( false );
-
-        // Drive SDK-side per-bucket cluster-map refresh + KV socket
-        // opening. BucketAsync can throw SocketNotAvailableException
-        // briefly even after the cluster manager has propagated the
-        // bucket's service list, so retry. Then warm up n1ql via a
-        // sacrificial system:indexes query.
-        var bucket = await OpenBucketWithRetryAsync( instance.ClusterHandle, bucketName, cancellationToken ).ConfigureAwait( false );
+        var bucket = await instance.ClusterHandle.BucketAsync( bucketName ).ConfigureAwait( false );
         await bucket.WaitUntilReadyAsync( TimeSpan.FromSeconds( 30 ) ).ConfigureAwait( false );
 
         await WarmupN1qlAsync( instance.ClusterHandle, cancellationToken ).ConfigureAwait( false );
@@ -140,33 +158,6 @@ public sealed class IsolatedCouchbaseContainer : IAsyncDisposable
 
         await restApi.WaitUntilClusterHealthyAsync( TimeSpan.FromMinutes( 2 ), cancellationToken ).ConfigureAwait( false );
         await restApi.WaitUntilBucketReadyAsync( bucketName, TimeSpan.FromMinutes( 2 ), cancellationToken ).ConfigureAwait( false );
-    }
-
-    private static async Task<IBucket> OpenBucketWithRetryAsync( ICluster cluster, string bucketName, CancellationToken cancellationToken )
-    {
-        // SDK's internal cluster-config cache can lag the REST signal:
-        // the per-bucket terse config (which the wait above verified)
-        // is correct, but the SDK's in-memory snapshot doesn't see the
-        // new bucket / alt-addresses until its next poll (~2.5 s).
-        // Nudge the SDK by enumerating buckets, then retry up to 3 min.
-        try { await cluster.Buckets.GetAllBucketsAsync().ConfigureAwait( false ); } catch { }
-
-        var deadline = DateTime.UtcNow + TimeSpan.FromMinutes( 3 );
-        Exception last = null;
-        while ( DateTime.UtcNow < deadline )
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                return await cluster.BucketAsync( bucketName ).ConfigureAwait( false );
-            }
-            catch ( Exception ex )
-            {
-                last = ex;
-                await Task.Delay( TimeSpan.FromSeconds( 2 ), cancellationToken ).ConfigureAwait( false );
-            }
-        }
-        throw new InvalidOperationException( $"Bucket {bucketName} could not be opened within 3 min.", last );
     }
 
     private static async Task WarmupN1qlAsync( ICluster cluster, CancellationToken cancellationToken )
