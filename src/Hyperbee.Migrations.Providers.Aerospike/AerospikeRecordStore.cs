@@ -23,7 +23,7 @@ internal class AerospikeRecordStore : IMigrationRecordStore
         _logger = logger;
     }
 
-    public Task InitializeAsync( CancellationToken cancellationToken = default )
+    public async Task InitializeAsync( CancellationToken cancellationToken = default )
     {
         _logger.LogDebug( "Running {action}", nameof( InitializeAsync ) );
 
@@ -35,7 +35,44 @@ internal class AerospikeRecordStore : IMigrationRecordStore
             throw new MigrationException( $"Aerospike client is not connected. Verify the cluster is available and the namespace '{_options.Namespace}' is configured." );
         }
 
-        return Task.CompletedTask;
+        // Readiness gate. `_client.Connected` flips true as soon as the seed
+        // node answers -- before partitions are master-assigned. Without a
+        // gate, the first ledger op on the lock-disabled path (ExistsAsync /
+        // ReadAsync / WriteAsync) can hit a transient cluster error and
+        // false-fail the run. Probe with a side-effect-free Get of a
+        // non-existent sentinel key, retrying only on transient cluster
+        // errors (same predicate + bound as CreateLockAsync). A non-existent
+        // key returns null on a converged cluster; a still-converging cluster
+        // throws INVALID_NODE / SERVER_NOT_AVAILABLE / CLUSTER_KEY_MISMATCH /
+        // FORBIDDEN_OP. Genuine misconfig (e.g. INVALID_NAMESPACE) is NOT
+        // transient and surfaces immediately rather than hanging.
+        var probeKey = new Key( _options.Namespace, _options.MigrationSet, "__migrations_readiness_probe__" );
+        AerospikeException lastTransient = null;
+        try
+        {
+            await WaitHelper.WaitUntilAsync(
+                async _ =>
+                {
+                    try
+                    {
+                        await _client.Get( null, CancellationToken.None, probeKey ).ConfigureAwait( false );
+                        return true;
+                    }
+                    catch ( AerospikeException ex ) when ( IsTransientClusterError( ex ) )
+                    {
+                        lastTransient = ex;
+                        return false;
+                    }
+                },
+                timeout: TimeSpan.FromSeconds( 60 ) ).ConfigureAwait( false );
+        }
+        catch ( RetryTimeoutException )
+        {
+            _logger.LogError( lastTransient, "{action} cluster not ready after retries (last error: {result})", nameof( InitializeAsync ), lastTransient?.Result );
+            throw new MigrationException(
+                $"Aerospike cluster did not become ready within 60s (namespace '{_options.Namespace}'). Last transient error: {lastTransient?.Result}.",
+                lastTransient );
+        }
     }
 
     public async Task<IDisposable> CreateLockAsync()

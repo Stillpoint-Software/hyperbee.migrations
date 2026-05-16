@@ -13,6 +13,38 @@ A versioned, journaled migration framework for .NET that supports relational and
 
 Database schema and data evolve over the life of an application. Hyperbee.Migrations gives you a structured, version-controlled way to evolve them across every environment -- local, test, staging, production -- with the same discipline you bring to source code. Migrations live in your repo as C# classes (or as embedded resource files), are discovered by reflection at runtime, and execute exactly once per environment.
 
+## What's new in v3.0
+
+v3.0 adds **migration squashing** across all five providers, plus the
+tooling and discovery surface that supports it:
+
+- **Migration squashing (ADR-0019).** Collapse a long run of historical
+  migrations `[N..M]` into a single equivalent squash migration. Mature
+  environments auto-mark the squash via the `Replaces` graph (no re-run);
+  fresh installs run the squash body. Squashes are up-only (ADR-0020) and
+  carry a content checksum + `Kind`/`Replaces` ledger metadata (ADR-0021).
+- **The `hyperbee-migrations` CLI.** Generates squash artifacts against an
+  ephemeral, topology-matched container, runs a verification round, and
+  emits the squash body + sidecar metadata + summary. Also hosts the
+  `recover from-mid-range` verb for the documented mid-range recovery
+  path. The CLI references zero provider packages -- it discovers
+  providers through the migration assembly's reference closure.
+- **Five `.Squash` provider packages.** `Hyperbee.Migrations.Providers.<P>.Squash`
+  (Postgres, Aerospike, MongoDB, OpenSearch, Couchbase) each implement the
+  shared `ISquashProvider` contract (provider-specific snapshot capture +
+  canonicalization + verification). Install the `.Squash` package
+  alongside the provider package to enable `hyperbee-migrations squash
+  --provider <p>` for that store.
+- **`IMigrationHost` discovery (ADR-0024).** A migration project exposes
+  exactly one `IMigrationHost` that builds a configured service provider
+  for an arbitrary connection. The CLI, the recovery verb, and the runner
+  all consume the same host through a single reflection scan -- the v1
+  Postgres-only static-method convention is gone.
+
+**Upgrading from v2:** existing v2 migrations continue to work unchanged;
+squash is additive. See the [v2 -> v3 upgrade guide](docs/guides/upgrading-from-v2.md)
+and the [squashing migrations guide](https://stillpoint-software.github.io/hyperbee.migrations/squashing-migrations.html).
+
 ## Supported providers
 
 | Provider       | Package                                    | Statement format | Locking                         |

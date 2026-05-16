@@ -382,6 +382,7 @@ finalized for the hardening pass; plan archived; INDEX updated.
 | 2026-05-16 | decision | Phase 0 gated decisions resolved by user. **NullSquashStrategy: RETAIN** as public extension point (ADR-0025) — Phase 4.1 is doc-only, no delete. **EnsureDeployable: CUT** (ADR-0026). Baseline confirmed: CI 25953176574 = 23/23 on c221fd4. |
 | 2026-05-16 | decision | ADR-0026 rationale re-substantiated after challenge + runtime trace. The P0 (ADR-0019 A2) silent-stranding concern is **already** addressed by the WIRED `MigrationRunner` `MidRangeSquashException` reconciliation path + `recover from-mid-range` + ADR-0021 integrity — `EnsureDeployable` is redundant unwired defense-in-depth, never connected. Cutting removes a misleading net, not protection. Industry survey: no mainstream migration tool ships a deploy-time fleet-staleness gate (all use recoverability-from-history + operator discipline). Lesson: verify whether a P0's *outcome* is already met by a different wired mechanism before treating its unwired implementation as load-bearing. |
 | 2026-05-16 | style | Phase 1: doc claims must be diff-checked against source contracts, not prior docs. Ground truth pulled from `SquashVerb`/`RecoverVerb` (flag contracts), `AerospikeRecordStore:309-361` (IntersectWithSquashedAsync IS fully implemented — the CHANGELOG "follow-up" bullet was the stale side of the contradiction; "Changed/R-15" was correct). `docs/site` ASCII enforced via a glob sweep, now part of the Phase-1 done-gate. |
+| 2026-05-16 | positive | Phase 2 riskiest task (Aerospike readiness gate) landed clean by *exact* style-conformance: reused the in-file `CreateLockAsync` shape (`WaitHelper.WaitUntilAsync` + `IsTransientClusterError` filter + 60s bound + `RetryTimeoutException`→clear `MigrationException`) rather than inventing a readiness abstraction. Side-effect-free probe = Get of a non-existent sentinel key. 4 NSubstitute tests pin: not-connected throws; healthy = exactly 1 probe (no latency regression); transient window absorbed; non-transient fails fast in 128ms (no 60s hang). No ADR needed — implements an audit-identified gap, doesn't cross a contract. |
 
 ---
 
@@ -390,16 +391,18 @@ finalized for the hardening pass; plan archived; INDEX updated.
 | Phase | Status |
 |-------|--------|
 | 0 — Baseline + Gated Decisions | **Done** (2026-05-16) — baseline confirmed; ADR-0025 (retain NullSquashStrategy) + ADR-0026 (cut EnsureDeployable) written; committed |
-| 1 — Documentation Ship-Blockers | **Done** (2026-05-16) — squashing-migrations.md factual fixes + ADR-0026 two-refusal-points model; CHANGELOG Aerospike contradiction resolved; docs/site ASCII-clean |
-| 2 — README + Aerospike Readiness Gate | Not Started |
+| 1 — Documentation Ship-Blockers | **Done** (2026-05-16) — squashing-migrations.md factual fixes + ADR-0026 two-refusal-points model; CHANGELOG Aerospike contradiction resolved; docs/site ASCII-clean; committed d12156c |
+| 2 — README + Aerospike Readiness Gate | **Done** (2026-05-16) — README v3.0 section (names cross-checked vs src/); Aerospike `InitializeAsync` readiness gate (reuses `IsTransientClusterError`, 60s bound, side-effect-free probe); 4 new gate tests; 417 core + 884 squash green; solution builds clean. Awaiting commit + CI. |
 | 3 — DRY Consolidation + Dead-Code Removal | Not Started |
 | 4 — Gated-Decision Execution + Drift Cleanup | Not Started |
 | 5 — Release Prep | Not Started |
 
-**Current task:** Phase 1 complete — awaiting user check-in before Phase 2.
-**Next action:** user approves Phase 1 commit; then `/nop:implement` Phase 2
-(README v3.0 section + Aerospike readiness gate — riskiest task).
-**Blockers:** none.
+**Current task:** Phase 2 complete (code+tests green locally) — awaiting
+user check-in + commit + CI before Phase 3.
+**Next action:** user approves Phase 2 commit; push + CI 23/23; then
+`/nop:implement` Phase 3 (DRY consolidation + dead-code removal).
+**Blockers:** none. Phase 2 changed real code (Aerospike `InitializeAsync`)
+so the full CI matrix must be green before Phase 2 is truly closed.
 
 **Riskiest task:** Task 2.2 — Aerospike readiness gate (changes
 `AerospikeRecordStore.InitializeAsync`, the per-run hot path). A wrong gate
