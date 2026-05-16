@@ -1,4 +1,4 @@
-using Couchbase.Core.Exceptions;
+﻿using Couchbase.Core.Exceptions;
 
 namespace Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
 
