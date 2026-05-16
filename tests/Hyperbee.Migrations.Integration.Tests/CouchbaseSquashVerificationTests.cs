@@ -109,9 +109,11 @@ public class CouchbaseSquashVerificationTests
     {
         var queryIndexes = _cluster.QueryIndexes;
 
-        await queryIndexes.CreatePrimaryIndexAsync( _container.BucketName,
-            new CreatePrimaryQueryIndexOptions().IndexName( "idx_ver_primary" ) );
-        await queryIndexes.CreateIndexAsync( _container.BucketName, "idx_ver_email", new[] { "email" } );
+        await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
+            queryIndexes.CreatePrimaryIndexAsync( _container.BucketName,
+                new CreatePrimaryQueryIndexOptions().IndexName( "idx_ver_primary" ) ) );
+        await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
+            queryIndexes.CreateIndexAsync( _container.BucketName, "idx_ver_email", new[] { "email" } ) );
 
         var ctx = MakeContext();
         var generated = await GenerateAsync( ctx );
@@ -208,8 +210,9 @@ public class CouchbaseSquashVerificationTests
 
             if ( isPrimary )
             {
-                await queryIndexes.CreatePrimaryIndexAsync( _container.BucketName,
-                    new CreatePrimaryQueryIndexOptions().IndexName( name ).IgnoreIfExists( true ) );
+                await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
+                    queryIndexes.CreatePrimaryIndexAsync( _container.BucketName,
+                        new CreatePrimaryQueryIndexOptions().IndexName( name ).IgnoreIfExists( true ) ) );
                 continue;
             }
 
@@ -222,7 +225,8 @@ public class CouchbaseSquashVerificationTests
                     keys.Add( k.GetString() );
 
             if ( keys.Count > 0 )
-                await queryIndexes.CreateIndexAsync( _container.BucketName, name, keys, new CreateQueryIndexOptions().IgnoreIfExists( true ) );
+                await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
+                    queryIndexes.CreateIndexAsync( _container.BucketName, name, keys, new CreateQueryIndexOptions().IgnoreIfExists( true ) ) );
         }
     }
 

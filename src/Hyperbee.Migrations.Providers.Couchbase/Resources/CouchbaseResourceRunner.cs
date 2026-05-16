@@ -316,7 +316,30 @@ public class CouchbaseResourceRunner<TMigration>
         var kind = item.StatementType == StatementType.CreatePrimaryIndex ? "PRIMARY INDEX" : "INDEX";
 
         _logger?.LogInformation( "CREATE {kind} {indexName} ON {keyspace}", kind, item.Name, item.Keyspace );
-        await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
+
+        // Couchbase may reject CREATE INDEX with
+        // InternalServerFailureException "rebalance in progress" when
+        // the index service is mid-rebalance from a prior CREATE INDEX
+        // or a bucket-creation-triggered cluster rebalance. The
+        // condition is transient (rebalances are short on a healthy
+        // cluster); retry with backoff before surfacing the failure.
+        const int maxAttempts = 30;
+        for ( var attempt = 1; ; attempt++ )
+        {
+            try
+            {
+                await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
+                return;
+            }
+            catch ( InternalServerFailureException ex )
+                when ( ex.Message?.Contains( "rebalance in progress", StringComparison.OrdinalIgnoreCase ) == true
+                    && attempt < maxAttempts )
+            {
+                _logger?.LogInformation( "CREATE {kind} {indexName} blocked by rebalance; retrying ({attempt}/{maxAttempts}).",
+                    kind, item.Name, attempt, maxAttempts );
+                await Task.Delay( TimeSpan.FromSeconds( 2 ) ).ConfigureAwait( false );
+            }
+        }
     }
 
     private async Task UpdateStatementAsync( ClusterHelper clusterHelper, StatementItem item )

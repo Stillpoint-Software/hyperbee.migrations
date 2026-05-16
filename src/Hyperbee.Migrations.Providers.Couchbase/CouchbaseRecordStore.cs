@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Couchbase.Core.Exceptions;
 using Couchbase.Core.Exceptions.KeyValue;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
@@ -88,12 +89,19 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
 
             await _restApiService.WaitUntilBucketHealthyAsync( bucketName, _options.ClusterReadyTimeout, cancellationToken ).ConfigureAwait( false );
             await _restApiService.WaitUntilClusterHealthyAsync( _options.ClusterReadyTimeout, cancellationToken ).ConfigureAwait( false );
+            // Wait for any post-bucket-creation rebalance to finish
+            // before issuing CREATE INDEX. Couchbase rejects index
+            // creation with "rebalance in progress" while a rebalance
+            // task is active.
+            await _restApiService.WaitUntilClusterIdleAsync( _options.ClusterReadyTimeout, cancellationToken ).ConfigureAwait( false );
 
             // now it is safe to create the indexes
             _logger.LogInformation( "Creating ledger bucket indexes." );
 
-            await cluster.QueryIndexes.CreatePrimaryIndexAsync( bucketName ).ConfigureAwait( false );
-            await cluster.QueryIndexes.CreateIndexAsync( bucketName, "ix_type", new[] { "type" } ).ConfigureAwait( false );
+            await CreateIndexWithRebalanceRetryAsync(
+                () => cluster.QueryIndexes.CreatePrimaryIndexAsync( bucketName ) ).ConfigureAwait( false );
+            await CreateIndexWithRebalanceRetryAsync(
+                () => cluster.QueryIndexes.CreateIndexAsync( bucketName, "ix_type", new[] { "type" } ) ).ConfigureAwait( false );
         }
 
         // check for scope
@@ -376,5 +384,30 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         await collection.UpsertAsync( record.Id, record,
             options => options.CancellationToken( cancellationToken ) ).ConfigureAwait( false );
         return WriteOutcome.Created;
+    }
+
+    // CREATE INDEX is rejected by GSI as "rebalance in progress" while
+    // the index service is processing a prior CREATE INDEX or a
+    // bucket-creation-triggered cluster rebalance. The error is
+    // transient (rebalances complete in seconds on a healthy cluster);
+    // retry with backoff before surfacing the failure.
+    private async Task CreateIndexWithRebalanceRetryAsync( Func<Task> create )
+    {
+        const int maxAttempts = 30;
+        for ( var attempt = 1; ; attempt++ )
+        {
+            try
+            {
+                await create().ConfigureAwait( false );
+                return;
+            }
+            catch ( InternalServerFailureException ex )
+                when ( ex.Message?.Contains( "rebalance in progress", StringComparison.OrdinalIgnoreCase ) == true
+                    && attempt < maxAttempts )
+            {
+                _logger?.LogInformation( "CREATE INDEX blocked by rebalance; retrying ({attempt}/{maxAttempts}).", attempt, maxAttempts );
+                await Task.Delay( TimeSpan.FromSeconds( 2 ) ).ConfigureAwait( false );
+            }
+        }
     }
 }

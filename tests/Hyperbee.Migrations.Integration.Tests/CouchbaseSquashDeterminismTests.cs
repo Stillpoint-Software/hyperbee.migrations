@@ -95,13 +95,15 @@ public class CouchbaseSquashDeterminismTests
         var bucket = await _cluster.BucketAsync( _container.BucketName );
         var queryIndexes = _cluster.QueryIndexes;
 
-        await queryIndexes.CreatePrimaryIndexAsync( _container.BucketName,
-            new CreatePrimaryQueryIndexOptions().IndexName( "idx_det_primary" ) );
-        await queryIndexes.CreateIndexAsync(
-            _container.BucketName,
-            "idx_det_email",
-            new[] { "email" },
-            new CreateQueryIndexOptions() );
+        await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
+            queryIndexes.CreatePrimaryIndexAsync( _container.BucketName,
+                new CreatePrimaryQueryIndexOptions().IndexName( "idx_det_primary" ) ) );
+        await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
+            queryIndexes.CreateIndexAsync(
+                _container.BucketName,
+                "idx_det_email",
+                new[] { "email" },
+                new CreateQueryIndexOptions() ) );
 
         var content1 = await GenerateOnceAsync();
         var content2 = await GenerateOnceAsync();
@@ -120,11 +122,13 @@ public class CouchbaseSquashDeterminismTests
         // state with different index ids" must canonicalize identically.
         var queryIndexes = _cluster.QueryIndexes;
 
-        await queryIndexes.CreateIndexAsync( _container.BucketName, "idx_det_phone", new[] { "phone" } );
+        await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
+            queryIndexes.CreateIndexAsync( _container.BucketName, "idx_det_phone", new[] { "phone" } ) );
         var first = await GenerateOnceAsync();
 
         await queryIndexes.DropIndexAsync( _container.BucketName, "idx_det_phone" );
-        await queryIndexes.CreateIndexAsync( _container.BucketName, "idx_det_phone", new[] { "phone" } );
+        await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
+            queryIndexes.CreateIndexAsync( _container.BucketName, "idx_det_phone", new[] { "phone" } ) );
         var second = await GenerateOnceAsync();
 
         Assert.AreEqual( first, second,
