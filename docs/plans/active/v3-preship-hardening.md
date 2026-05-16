@@ -304,6 +304,73 @@ no unused-symbol warnings for the removed members.
 > and `EnsureDeployable` are executed in Phase 4 per their Phase 0 ADRs — not
 > here.
 
+### Task 3.3 — Couchbase `CREATE INDEX [WAIT]` grammar parity (root-cause flake fix)
+
+**Why this exists.** The recurring CI "rebalance in progress" failure is
+NOT acceptable flakiness — it is a real defect: the runner issues
+`CREATE INDEX` statements back-to-back against a cold, CPU-throttled
+single-node Couchbase whose GSI indexer is still building the prior
+index. The Task 3.1 retry is a band-aid that on slow runners exhausts
+its 3-min budget. Aerospike already solved this correctly with a
+cross-provider pattern Couchbase never adopted; Couchbase is the
+inconsistent outlier.
+
+**Established Aerospike precedent (verified, mirror it exactly):**
+- `AerospikeStatementParser` Parlot grammar:
+  `CREATE INDEX [IF NOT EXISTS] [RECREATE] [WAIT] name ON ns.set(bin) [TYPE]`
+- `AerospikeResourceRunner` passes the parsed `waitReady` into the create
+  -> `AerospikeClientExtensions.WaitForIndexReadyAsync`.
+- `AerospikeSnapshotCanonicalizer` **emits `CREATE INDEX WAIT ...` for
+  every generated index** -> squash scripts are self-healing + still
+  byte-stable (Aerospike's C12 determinism gate passes with the constant
+  `WAIT` token).
+
+**No reinvention (verified):** CouchbaseNetClient 3.8.1 ships
+`IQueryIndexManager.WatchIndexesAsync(IEnumerable<string>, TimeSpan,
+WatchQueryIndexOptions)` (+ `WatchPrimary`/`Timeout`, and
+`BuildDeferredIndexesAsync`). `WaitForIndexAsync` is a thin delegate to
+`WatchIndexesAsync` — no hand-rolled `/indexStatus` REST.
+
+**CORRECTED (user decision "A", after investigation).** The original
+grammar-`WAIT`-everywhere design rested on a false analogy:
+`AerospikeSnapshotCanonicalizer` emits `CREATE INDEX WAIT ...` because
+the Aerospike squash *body is a statement script*. The Couchbase squash
+body is **canonical JSON snapshot** (`CouchbaseSnapshotCanonicalizer`
+preserves captured `state:deferred` JSON; it never emits `CREATE INDEX`
+text). So there is no canonicalizer emission to mirror, and the
+generated-squash path already uses deferred-build + `BUILD INDEX`
+batching correctly. The collision is purely in (a) applying **authored**
+index statements through `CouchbaseResourceRunner` and (b) **fixture
+SDK** `QueryIndexes` calls. Couchbase replays raw statement text via a
+*partial* parser, so a grammar `WAIT` would need parse-and-strip — extra
+scope for an author ergonomic that isn't required to fix the flake.
+
+**Subtasks:**
+- [ ] Add `CouchbaseIndexRetry.WaitForIndexReadyAsync` delegating to the
+      SDK `IQueryIndexManager.WatchIndexesAsync` (no hand-rolled
+      `/indexStatus`). Handle named index, named-primary, and unnamed
+      `#primary` (`WatchPrimary`).
+- [ ] `CouchbaseResourceRunner.CreateIndexAsync`: after a successful
+      CREATE, wait for that index Online **by default** (implicit; no
+      grammar/script change). The existing `CouchbaseIndexRetry`
+      rebalance-retry stays wrapping the CREATE as a backstop only.
+- [ ] Test fixtures (`CouchbaseSquashDeterminismTests` /
+      `VerificationTests`): after each SDK `Create[Primary]IndexAsync`,
+      call `WaitForIndexReadyAsync` (these don't touch the grammar).
+- [ ] No grammar change. No canonicalizer change. No squash-output byte
+      change -> C12 determinism unaffected by construction (output is
+      JSON snapshot, untouched).
+
+**Test strategy:** Couchbase squash determinism + verification + runner
+integration green locally (determinism gate unaffected since squash
+output bytes are unchanged); CI Couchbase jobs no longer hit the
+rebalance flake.
+
+**ADR note:** no new ADR. This is an internal correctness fix at the
+runner/fixture layer; squash output unchanged. Grammar `WAIT` parity
+with Aerospike is deferred as a post-v3.0 author-ergonomic follow-up
+(tracked, not in this plan).
+
 ---
 
 ## Phase 4 — Gated-Decision Execution + Drift Cleanup
@@ -383,6 +450,9 @@ finalized for the hardening pass; plan archived; INDEX updated.
 | 2026-05-16 | decision | ADR-0026 rationale re-substantiated after challenge + runtime trace. The P0 (ADR-0019 A2) silent-stranding concern is **already** addressed by the WIRED `MigrationRunner` `MidRangeSquashException` reconciliation path + `recover from-mid-range` + ADR-0021 integrity — `EnsureDeployable` is redundant unwired defense-in-depth, never connected. Cutting removes a misleading net, not protection. Industry survey: no mainstream migration tool ships a deploy-time fleet-staleness gate (all use recoverability-from-history + operator discipline). Lesson: verify whether a P0's *outcome* is already met by a different wired mechanism before treating its unwired implementation as load-bearing. |
 | 2026-05-16 | style | Phase 1: doc claims must be diff-checked against source contracts, not prior docs. Ground truth pulled from `SquashVerb`/`RecoverVerb` (flag contracts), `AerospikeRecordStore:309-361` (IntersectWithSquashedAsync IS fully implemented — the CHANGELOG "follow-up" bullet was the stale side of the contradiction; "Changed/R-15" was correct). `docs/site` ASCII enforced via a glob sweep, now part of the Phase-1 done-gate. |
 | 2026-05-16 | positive | Phase 2 riskiest task (Aerospike readiness gate) landed clean by *exact* style-conformance: reused the in-file `CreateLockAsync` shape (`WaitHelper.WaitUntilAsync` + `IsTransientClusterError` filter + 60s bound + `RetryTimeoutException`→clear `MigrationException`) rather than inventing a readiness abstraction. Side-effect-free probe = Get of a non-existent sentinel key. 4 NSubstitute tests pin: not-connected throws; healthy = exactly 1 probe (no latency regression); transient window absorbed; non-transient fails fast in 128ms (no 60s hang). No ADR needed — implements an audit-identified gap, doesn't cross a contract. |
+| 2026-05-16 | positive | Phase 3: rebalance-retry de-triplicated into `Hyperbee.Migrations.Providers.Couchbase.CouchbaseIndexRetry` (single source of truth for the 60x3s bound + message filter). RecordStore + ResourceRunner call it; the integration-test `CouchbaseIndexRetry` is now a 3-line facade delegating to the production type (provider already grants InternalsVisibleTo to Integration.Tests) — runtime and tests now share ONE policy, killing the re-tune-drift hazard. Dead-code: removed `GetNodeStatusesAsync`(+impl+`RestApi.GetNodeStatuses`), `GetClusterInfoAsync`(+impl; kept `RestApi.GetClusterInfo` — still used by `ManagementReadyAsync`), the no-timeout `WaitUntilBucketReadyAsync` overload. Scope guard held: NullSquashStrategy + EnsureDeployable untouched (Phase 4). |
+| 2026-05-16 | process | Phase 2 CI 25972839690 = 22/23; net10-couchbase = known rebalance flake (each failed test burned the full 3m22s retry budget; pattern varies by TFM run-to-run; Aerospike + other Couchbase TFMs green so not a Phase-2 regression). Decision: do not burn a separate re-run; fold Phase 2 re-validation into the Phase 3 CI (commits are sequential on the branch). Per Style Reference, a lone known-flake Couchbase job is retried, not a regression. |
+| 2026-05-16 | negative->fixed | Root cause of the "known Couchbase flake" pinned: the runner/fixtures fired `CREATE INDEX` back-to-back; on CPU-throttled CI the GSI indexer was still building the prior index, so the next CREATE hit "rebalance in progress" and the Task 3.1 retry exhausted its 3-min budget. The retry was a band-aid. Fix (Task 3.3): wait for each index `Ready` (SDK `WatchIndexesAsync`) before the next CREATE -> collision impossible by construction. Key correction during impl: my initial "mirror Aerospike's canonicalizer-emits-`CREATE INDEX WAIT`" plan was a FALSE ANALOGY — Aerospike squash body is a statement script; Couchbase squash body is JSON snapshot. User caught the over-scoping; corrected to a runner/fixture-layer wait, no grammar/canonicalizer change, zero squash-output byte change. SDK gotchas found by compiler/XML: bucket-level `WatchIndexesAsync` is 3-arg (timeout on options), `WatchQueryIndexOptions` has no `WatchPrimary` (watch unnamed primary by catalog name `#primary`). Lesson: verify cross-provider "do it like X" analogies at the artifact-format level before planning subtasks. |
 
 ---
 
@@ -392,17 +462,20 @@ finalized for the hardening pass; plan archived; INDEX updated.
 |-------|--------|
 | 0 — Baseline + Gated Decisions | **Done** (2026-05-16) — baseline confirmed; ADR-0025 (retain NullSquashStrategy) + ADR-0026 (cut EnsureDeployable) written; committed |
 | 1 — Documentation Ship-Blockers | **Done** (2026-05-16) — squashing-migrations.md factual fixes + ADR-0026 two-refusal-points model; CHANGELOG Aerospike contradiction resolved; docs/site ASCII-clean; committed d12156c |
-| 2 — README + Aerospike Readiness Gate | **Done** (2026-05-16) — README v3.0 section (names cross-checked vs src/); Aerospike `InitializeAsync` readiness gate (reuses `IsTransientClusterError`, 60s bound, side-effect-free probe); 4 new gate tests; 417 core + 884 squash green; solution builds clean. Awaiting commit + CI. |
-| 3 — DRY Consolidation + Dead-Code Removal | Not Started |
+| 2 — README + Aerospike Readiness Gate | **Done** (2026-05-16) — committed 8c78cbe. CI 25972839690 = 22/23; lone failure net10 couchbase was the KNOWN rebalance flake (3m22s retry-budget exhaustion, varies by TFM), NOT a regression: Aerospike jobs all green (gate sound), other 2 Couchbase TFMs green. Phase 2 re-validation folded into Phase 3 CI (sequential commits). |
+| 3 — DRY Consolidation + Dead-Code Removal + root-cause flake fix | **Done** (2026-05-16) — 3.1 rebalance-retry consolidated; 3.2 three dead members removed; **3.3 `WaitForIndexReadyAsync` (SDK `WatchIndexesAsync`) — runner waits-for-ready by default after each CREATE (skips deferred), fixtures use `CreateThenWaitReadyAsync`, retry demoted to backstop.** Local validation: full solution builds clean (3 TFMs), 417 core + 884 squash unit, **all 8 Couchbase integration green incl. the 3 previously-flaky tests**; determinism gate unaffected (squash output is JSON, untouched). Awaiting commit + CI. |
 | 4 — Gated-Decision Execution + Drift Cleanup | Not Started |
 | 5 — Release Prep | Not Started |
 
-**Current task:** Phase 2 complete (code+tests green locally) — awaiting
-user check-in + commit + CI before Phase 3.
-**Next action:** user approves Phase 2 commit; push + CI 23/23; then
-`/nop:implement` Phase 3 (DRY consolidation + dead-code removal).
-**Blockers:** none. Phase 2 changed real code (Aerospike `InitializeAsync`)
-so the full CI matrix must be green before Phase 2 is truly closed.
+**Current task:** Phase 3 complete incl. Task 3.3 root-cause flake fix;
+**all 8 Couchbase integration tests green locally** (the 3 tests that
+exhausted the 3-min retry budget on CI now pass deterministically).
+Awaiting commit + one CI that re-validates Phase 2 + Phase 3.
+**Next action:** user approves Phase 3 commit; push + CI; then Phase 4
+(gated-decision execution + drift cleanup).
+**Blockers:** none. The CI rebalance flake is addressed at the root
+(wait-for-ready, not retry); CI should now show the Couchbase jobs
+green without the 3-min retry-budget exhaustion.
 
 **Riskiest task:** Task 2.2 — Aerospike readiness gate (changes
 `AerospikeRecordStore.InitializeAsync`, the per-run hot path). A wrong gate

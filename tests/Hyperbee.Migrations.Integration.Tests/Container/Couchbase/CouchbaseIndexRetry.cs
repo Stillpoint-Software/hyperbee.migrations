@@ -1,36 +1,32 @@
-﻿using Couchbase.Core.Exceptions;
+using Couchbase;
+using ProviderIndexRetry = Hyperbee.Migrations.Providers.Couchbase.CouchbaseIndexRetry;
 
 namespace Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
 
 /// <summary>
-/// Retry helper for GSI CREATE INDEX calls in integration tests.
-/// Couchbase rejects CREATE INDEX with InternalServerFailureException
-/// "rebalance in progress" while the index service is processing a
-/// prior CREATE INDEX or a bucket-creation-triggered cluster
-/// rebalance. The condition is transient; this helper retries with
-/// backoff so tests don't flake on a race they cannot control.
+/// Thin test-side facade over the production
+/// <see cref="ProviderIndexRetry"/> so integration tests share the exact
+/// same GSI index-DDL resilience (rebalance-retry backstop +
+/// wait-until-Ready) as the runtime, rather than re-declaring it. The
+/// policy lives in the Couchbase provider; this type only keeps the
+/// test call-sites stable.
 /// </summary>
 internal static class CouchbaseIndexRetry
 {
-    public static async Task WithRebalanceRetryAsync( Func<Task> create )
+    public static Task WithRebalanceRetryAsync( Func<Task> create ) =>
+        ProviderIndexRetry.WithRebalanceRetryAsync( create );
+
+    /// <summary>
+    /// Create an index (rebalance-retry backstop) then wait until it is
+    /// Ready before returning -- the root-cause fix that serializes
+    /// fixture index DDL so the next create cannot collide.
+    /// </summary>
+    public static async Task CreateThenWaitReadyAsync(
+        ICluster cluster, string bucketName, string indexName,
+        bool watchPrimaryUnnamed, Func<Task> create )
     {
-        // Net9 CI runners can stay in "rebalance in progress" for over a
-        // minute even on a single-node Testcontainers cluster. 60 attempts
-        // x 3 s = 3 min ceiling.
-        const int maxAttempts = 60;
-        for ( var attempt = 1; ; attempt++ )
-        {
-            try
-            {
-                await create().ConfigureAwait( false );
-                return;
-            }
-            catch ( InternalServerFailureException ex )
-                when ( ex.Message?.Contains( "rebalance in progress", StringComparison.OrdinalIgnoreCase ) == true
-                    && attempt < maxAttempts )
-            {
-                await Task.Delay( TimeSpan.FromSeconds( 3 ) ).ConfigureAwait( false );
-            }
-        }
+        await ProviderIndexRetry.WithRebalanceRetryAsync( create ).ConfigureAwait( false );
+        await ProviderIndexRetry.WaitForIndexReadyAsync(
+            cluster, bucketName, indexName, watchPrimaryUnnamed ).ConfigureAwait( false );
     }
 }

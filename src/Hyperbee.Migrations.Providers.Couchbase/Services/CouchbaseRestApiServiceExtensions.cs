@@ -54,19 +54,6 @@ internal static class CouchbaseRestApiServiceExtensions
         );
     }
 
-    public static async Task WaitUntilBucketReadyAsync( this ICouchbaseRestApiService restApi, string bucketName, CancellationToken cancellationToken = default )
-    {
-        await WaitHelper.WaitUntilAsync(
-            async token =>
-            {
-                if ( !await restApi.BucketHealthyAsync( bucketName, token ).ConfigureAwait( false ) )
-                    return false;
-                return await restApi.BucketServicesReadyAsync( bucketName, token ).ConfigureAwait( false );
-            },
-            cancellationToken
-        );
-    }
-
     public static async Task WaitUntilClusterHealthyAsync( this ICouchbaseRestApiService restApi, TimeSpan timeout, CancellationToken cancellationToken = default )
     {
         await WaitHelper.WaitUntilAsync(

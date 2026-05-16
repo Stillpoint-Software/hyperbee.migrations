@@ -20,7 +20,6 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
     public interface ICouchbaseRestApiService
     {
         Task<bool> ClusterHealthyAsync( CancellationToken cancellationToken = default );
-        Task<JsonNode> GetClusterInfoAsync( CancellationToken cancellationToken = default );
         Task<JsonNode> GetClusterDetailsAsync( CancellationToken cancellationToken = default );
 
         Task<bool> BucketHealthyAsync( string bucketName, CancellationToken cancellationToken = default );
@@ -37,7 +36,6 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
         Task<bool> BucketServicesReadyAsync( string bucketName, CancellationToken cancellationToken = default );
 
         Task<JsonNode> GetBucketDetailsAsync( string bucketName, CancellationToken cancellationToken = default );
-        Task<JsonNode> GetNodeStatusesAsync( CancellationToken cancellationToken = default );
 
         Task<bool> ManagementReadyAsync( CancellationToken cancellationToken = default );
 
@@ -68,7 +66,6 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
             public static string GetClusterDetails() => "pools/default";
             public static string GetBucketDetails( string bucketName ) => $"pools/default/buckets/{bucketName}";
             public static string GetBucketTerseConfig( string bucketName ) => $"pools/default/b/{bucketName}";
-            public static string GetNodeStatuses() => "nodeStatuses";
 
             // uris of interest
             // http://localhost:8091/pools/default/nodeServices lists services and ports
@@ -135,24 +132,6 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
         {
             var result = await GetClusterDetailsAsync( cancellationToken ).ConfigureAwait( false );
             return NodesAreHealthy( result );
-        }
-
-        public async Task<JsonNode> GetClusterInfoAsync( CancellationToken cancellationToken = default )
-        {
-            // retrieve cluster information
-            var uri = GetUri( RestApi.GetClusterInfo() );
-
-            var response = await Client.GetAsync( uri, cancellationToken )
-                .ConfigureAwait( false );
-
-            response.EnsureSuccessStatusCode();
-
-            var responseBody = await response.Content.ReadAsStreamAsync( cancellationToken )
-                .ConfigureAwait( false );
-
-            var node = JsonNode.Parse( responseBody );
-
-            return node;
         }
 
         public async Task<JsonNode> GetClusterDetailsAsync( CancellationToken cancellationToken = default )
@@ -262,22 +241,6 @@ namespace Hyperbee.Migrations.Providers.Couchbase.Services
         {
             // retrieve bucket details
             var uri = GetUri( RestApi.GetBucketDetails( bucketName ) );
-
-            var response = await Client.GetAsync( uri, cancellationToken )
-                .ConfigureAwait( false );
-
-            response.EnsureSuccessStatusCode();
-
-            var responseBody = await response.Content.ReadAsStreamAsync( cancellationToken )
-                .ConfigureAwait( false );
-
-            return JsonNode.Parse( responseBody );
-        }
-
-        public async Task<JsonNode> GetNodeStatusesAsync( CancellationToken cancellationToken = default )
-        {
-            // retrieve node statuses
-            var uri = GetUri( RestApi.GetNodeStatuses() );
 
             var response = await Client.GetAsync( uri, cancellationToken )
                 .ConfigureAwait( false );

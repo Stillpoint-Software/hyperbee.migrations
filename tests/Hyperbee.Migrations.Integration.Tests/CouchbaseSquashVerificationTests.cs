@@ -109,11 +109,13 @@ public class CouchbaseSquashVerificationTests
     {
         var queryIndexes = _cluster.QueryIndexes;
 
-        await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
-            queryIndexes.CreatePrimaryIndexAsync( _container.BucketName,
+        await CouchbaseIndexRetry.CreateThenWaitReadyAsync(
+            _cluster, _container.BucketName, "idx_ver_primary", watchPrimaryUnnamed: false,
+            () => queryIndexes.CreatePrimaryIndexAsync( _container.BucketName,
                 new CreatePrimaryQueryIndexOptions().IndexName( "idx_ver_primary" ) ) );
-        await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
-            queryIndexes.CreateIndexAsync( _container.BucketName, "idx_ver_email", new[] { "email" } ) );
+        await CouchbaseIndexRetry.CreateThenWaitReadyAsync(
+            _cluster, _container.BucketName, "idx_ver_email", watchPrimaryUnnamed: false,
+            () => queryIndexes.CreateIndexAsync( _container.BucketName, "idx_ver_email", new[] { "email" } ) );
 
         var ctx = MakeContext();
         var generated = await GenerateAsync( ctx );
@@ -210,8 +212,9 @@ public class CouchbaseSquashVerificationTests
 
             if ( isPrimary )
             {
-                await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
-                    queryIndexes.CreatePrimaryIndexAsync( _container.BucketName,
+                await CouchbaseIndexRetry.CreateThenWaitReadyAsync(
+                    _cluster, _container.BucketName, name, watchPrimaryUnnamed: false,
+                    () => queryIndexes.CreatePrimaryIndexAsync( _container.BucketName,
                         new CreatePrimaryQueryIndexOptions().IndexName( name ).IgnoreIfExists( true ) ) );
                 continue;
             }
@@ -225,8 +228,9 @@ public class CouchbaseSquashVerificationTests
                     keys.Add( k.GetString() );
 
             if ( keys.Count > 0 )
-                await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
-                    queryIndexes.CreateIndexAsync( _container.BucketName, name, keys, new CreateQueryIndexOptions().IgnoreIfExists( true ) ) );
+                await CouchbaseIndexRetry.CreateThenWaitReadyAsync(
+                    _cluster, _container.BucketName, name, watchPrimaryUnnamed: false,
+                    () => queryIndexes.CreateIndexAsync( _container.BucketName, name, keys, new CreateQueryIndexOptions().IgnoreIfExists( true ) ) );
         }
     }
 

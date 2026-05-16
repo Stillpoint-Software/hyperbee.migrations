@@ -317,28 +317,30 @@ public class CouchbaseResourceRunner<TMigration>
 
         _logger?.LogInformation( "CREATE {kind} {indexName} ON {keyspace}", kind, item.Name, item.Keyspace );
 
-        // Couchbase may reject CREATE INDEX with
-        // InternalServerFailureException "rebalance in progress" when
-        // the index service is mid-rebalance from a prior CREATE INDEX
-        // or a bucket-creation-triggered cluster rebalance. The
-        // condition is transient; retry with backoff. 60 attempts x 3 s
-        // = 3 min ceiling -- some CI runners stay in rebalance for >60 s.
-        const int maxAttempts = 60;
-        for ( var attempt = 1; ; attempt++ )
+        // GSI may reject CREATE INDEX with "rebalance in progress" while the
+        // index service is processing a prior CREATE INDEX or a
+        // bucket-creation-triggered cluster rebalance. The shared
+        // CouchbaseIndexRetry owns the single retry policy (backstop only).
+        await CouchbaseIndexRetry.WithRebalanceRetryAsync(
+            () => clusterHelper.QueryExecuteAsync( item.Statement ),
+            _logger,
+            $"{kind} {item.Name}" ).ConfigureAwait( false );
+
+        // Root-cause fix for the rebalance collision: do not let the NEXT
+        // CREATE start until this index is Ready. Skip for deferred-build
+        // indexes -- those stay non-Ready until a later BUILD INDEX (the
+        // squash codegen path), so waiting here would hang.
+        var isDeferred = item.Statement != null
+            && item.Statement.Contains( "defer_build", StringComparison.OrdinalIgnoreCase );
+        if ( !isDeferred )
         {
-            try
-            {
-                await clusterHelper.QueryExecuteAsync( item.Statement ).ConfigureAwait( false );
-                return;
-            }
-            catch ( InternalServerFailureException ex )
-                when ( ex.Message?.Contains( "rebalance in progress", StringComparison.OrdinalIgnoreCase ) == true
-                    && attempt < maxAttempts )
-            {
-                _logger?.LogInformation( "CREATE {kind} {indexName} blocked by rebalance; retrying ({attempt}/{maxAttempts}).",
-                    kind, item.Name, attempt, maxAttempts );
-                await Task.Delay( TimeSpan.FromSeconds( 3 ) ).ConfigureAwait( false );
-            }
+            var watchPrimaryUnnamed = item.StatementType == StatementType.CreatePrimaryIndex
+                && string.IsNullOrWhiteSpace( item.Name );
+            await CouchbaseIndexRetry.WaitForIndexReadyAsync(
+                clusterHelper.Cluster,
+                item.Keyspace.BucketName,
+                item.Name,
+                watchPrimaryUnnamed ).ConfigureAwait( false );
         }
     }
 

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Couchbase.Core.Exceptions;
 using Couchbase.Core.Exceptions.KeyValue;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
@@ -98,10 +97,10 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             // now it is safe to create the indexes
             _logger.LogInformation( "Creating ledger bucket indexes." );
 
-            await CreateIndexWithRebalanceRetryAsync(
-                () => cluster.QueryIndexes.CreatePrimaryIndexAsync( bucketName ) ).ConfigureAwait( false );
-            await CreateIndexWithRebalanceRetryAsync(
-                () => cluster.QueryIndexes.CreateIndexAsync( bucketName, "ix_type", new[] { "type" } ) ).ConfigureAwait( false );
+            await CouchbaseIndexRetry.WithRebalanceRetryAsync(
+                () => cluster.QueryIndexes.CreatePrimaryIndexAsync( bucketName ), _logger ).ConfigureAwait( false );
+            await CouchbaseIndexRetry.WithRebalanceRetryAsync(
+                () => cluster.QueryIndexes.CreateIndexAsync( bucketName, "ix_type", new[] { "type" } ), _logger ).ConfigureAwait( false );
         }
 
         // check for scope
@@ -386,27 +385,4 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         return WriteOutcome.Created;
     }
 
-    // CREATE INDEX is rejected by GSI as "rebalance in progress" while
-    // the index service is processing a prior CREATE INDEX or a
-    // bucket-creation-triggered cluster rebalance. The error is
-    // transient; retry with backoff. 60 attempts x 3 s = 3 min ceiling.
-    private async Task CreateIndexWithRebalanceRetryAsync( Func<Task> create )
-    {
-        const int maxAttempts = 60;
-        for ( var attempt = 1; ; attempt++ )
-        {
-            try
-            {
-                await create().ConfigureAwait( false );
-                return;
-            }
-            catch ( InternalServerFailureException ex )
-                when ( ex.Message?.Contains( "rebalance in progress", StringComparison.OrdinalIgnoreCase ) == true
-                    && attempt < maxAttempts )
-            {
-                _logger?.LogInformation( "CREATE INDEX blocked by rebalance; retrying ({attempt}/{maxAttempts}).", attempt, maxAttempts );
-                await Task.Delay( TimeSpan.FromSeconds( 3 ) ).ConfigureAwait( false );
-            }
-        }
-    }
 }

@@ -95,11 +95,13 @@ public class CouchbaseSquashDeterminismTests
         var bucket = await _cluster.BucketAsync( _container.BucketName );
         var queryIndexes = _cluster.QueryIndexes;
 
-        await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
-            queryIndexes.CreatePrimaryIndexAsync( _container.BucketName,
+        await CouchbaseIndexRetry.CreateThenWaitReadyAsync(
+            _cluster, _container.BucketName, "idx_det_primary", watchPrimaryUnnamed: false,
+            () => queryIndexes.CreatePrimaryIndexAsync( _container.BucketName,
                 new CreatePrimaryQueryIndexOptions().IndexName( "idx_det_primary" ) ) );
-        await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
-            queryIndexes.CreateIndexAsync(
+        await CouchbaseIndexRetry.CreateThenWaitReadyAsync(
+            _cluster, _container.BucketName, "idx_det_email", watchPrimaryUnnamed: false,
+            () => queryIndexes.CreateIndexAsync(
                 _container.BucketName,
                 "idx_det_email",
                 new[] { "email" },
@@ -122,13 +124,15 @@ public class CouchbaseSquashDeterminismTests
         // state with different index ids" must canonicalize identically.
         var queryIndexes = _cluster.QueryIndexes;
 
-        await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
-            queryIndexes.CreateIndexAsync( _container.BucketName, "idx_det_phone", new[] { "phone" } ) );
+        await CouchbaseIndexRetry.CreateThenWaitReadyAsync(
+            _cluster, _container.BucketName, "idx_det_phone", watchPrimaryUnnamed: false,
+            () => queryIndexes.CreateIndexAsync( _container.BucketName, "idx_det_phone", new[] { "phone" } ) );
         var first = await GenerateOnceAsync();
 
         await queryIndexes.DropIndexAsync( _container.BucketName, "idx_det_phone" );
-        await CouchbaseIndexRetry.WithRebalanceRetryAsync( () =>
-            queryIndexes.CreateIndexAsync( _container.BucketName, "idx_det_phone", new[] { "phone" } ) );
+        await CouchbaseIndexRetry.CreateThenWaitReadyAsync(
+            _cluster, _container.BucketName, "idx_det_phone", watchPrimaryUnnamed: false,
+            () => queryIndexes.CreateIndexAsync( _container.BucketName, "idx_det_phone", new[] { "phone" } ) );
         var second = await GenerateOnceAsync();
 
         Assert.AreEqual( first, second,
