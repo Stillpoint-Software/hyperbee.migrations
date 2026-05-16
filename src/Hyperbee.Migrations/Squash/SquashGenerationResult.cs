@@ -6,8 +6,10 @@
 /// success, <see cref="Failed"/> on refusal. The earlier <c>Unsupported</c>
 /// "hand-author" variant was removed in the destructive-model rework
 /// (Assessment 0007 P0-11) because it papered over real provider gaps.
-/// Providers that lack v1 codegen ship a <see cref="NullSquashStrategy"/>
-/// returning <see cref="Failed"/> with a roadmap-pointing message.
+/// A future or third-party provider without codegen yet can ship the
+/// retained <see cref="NullSquashStrategy"/> extension point (ADR-0025),
+/// returning <see cref="Failed"/> with a roadmap-pointing message. All
+/// five first-party providers ship a real strategy.
 /// </summary>
 public abstract record SquashGenerationResult
 {

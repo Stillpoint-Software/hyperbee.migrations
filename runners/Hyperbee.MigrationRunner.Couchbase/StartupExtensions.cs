@@ -24,7 +24,7 @@ internal static partial class StartupExtensions
         return builder
             .AddJsonFile( ConfigurationHelper.EnvironmentAppSettingsName, optional: true );
     }
-    public static IServiceCollection AddProvider( this IServiceCollection services, IConfiguration config, ILogger logger = null )
+    public static IServiceCollection AddCouchbaseProvider( this IServiceCollection services, IConfiguration config, ILogger logger = null )
     {
         var connectionString = config["Couchbase:ConnectionString"]; // from appsettings.<ENV>.json couchbase://localhost
         var userName = config["Couchbase:UserName"]; // from secrets.json or aws:secrets
@@ -51,7 +51,7 @@ internal static partial class StartupExtensions
         return services;
     }
 
-    public static IServiceCollection AddMigrations( this IServiceCollection services, IConfiguration config )
+    public static IServiceCollection AddCouchbaseMigrations( this IServiceCollection services, IConfiguration config )
     {
         var bucketName = config["Migrations:BucketName"];
         var scopeName = config["Migrations:ScopeName"];

@@ -80,6 +80,56 @@ internal static class CouchbaseIndexRetry
             options ).ConfigureAwait( false );
     }
 
+    /// <summary>
+    /// Waits until <paramref name="indexName"/> is gone from the bucket
+    /// (the DROP has fully settled in the index service). A DROP INDEX
+    /// triggers a GSI index-service rebalance the same way CREATE does;
+    /// issuing the next CREATE (e.g. a drop-then-recreate of the same
+    /// name) before the drop settles collides with "rebalance in
+    /// progress". This is the symmetric counterpart to
+    /// <see cref="WaitForIndexReadyAsync"/>.
+    /// </summary>
+    public static async Task WaitForIndexDroppedAsync(
+        ICluster cluster,
+        string bucketName,
+        string indexName,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default )
+    {
+        ArgumentNullException.ThrowIfNull( cluster );
+        ArgumentException.ThrowIfNullOrWhiteSpace( bucketName );
+        ArgumentException.ThrowIfNullOrWhiteSpace( indexName );
+
+        var deadline = DateTime.UtcNow + (timeout ?? DefaultWatchTimeout);
+        while ( true )
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var indexes = await cluster.QueryIndexes
+                .GetAllIndexesAsync( bucketName )
+                .ConfigureAwait( false );
+
+            var stillPresent = false;
+            foreach ( var ix in indexes )
+            {
+                if ( string.Equals( ix.Name, indexName, StringComparison.Ordinal ) )
+                {
+                    stillPresent = true;
+                    break;
+                }
+            }
+
+            if ( !stillPresent )
+                return;
+
+            if ( DateTime.UtcNow >= deadline )
+                throw new System.TimeoutException(
+                    $"Index '{indexName}' on bucket '{bucketName}' was not removed within {(timeout ?? DefaultWatchTimeout)}." );
+
+            await Task.Delay( TimeSpan.FromSeconds( 1 ), cancellationToken ).ConfigureAwait( false );
+        }
+    }
+
     public static async Task WithRebalanceRetryAsync(
         Func<Task> createIndex,
         ILogger logger = null,

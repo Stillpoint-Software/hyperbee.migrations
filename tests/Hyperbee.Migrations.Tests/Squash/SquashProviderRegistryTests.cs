@@ -4,7 +4,7 @@ using Hyperbee.Migrations;
 using Hyperbee.Migrations.Squash;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Hyperbee.Migrations.Tests.Squash.Cli;
+namespace Hyperbee.Migrations.Tests.Squash;
 
 // Per ADR-0024 Week 2: the squash CLI references no provider packages.
 // SquashProviderRegistry walks the migration assembly's reference closure to

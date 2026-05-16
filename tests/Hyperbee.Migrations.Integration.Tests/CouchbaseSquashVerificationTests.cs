@@ -239,7 +239,17 @@ public class CouchbaseSquashVerificationTests
         var queryIndexes = _cluster.QueryIndexes;
         foreach ( var name in CreatedIndexes )
         {
-            try { await queryIndexes.DropIndexAsync( _container.BucketName, name ); } catch { }
+            // Wait until the drop fully settles -- this reset is followed
+            // by ApplyGeneratedAsync recreating indexes; recreating before
+            // the drop's index-service rebalance settles collides with
+            // "rebalance in progress".
+            try
+            {
+                await CouchbaseIndexRetry.DropThenWaitGoneAsync(
+                    _cluster, _container.BucketName, name,
+                    () => queryIndexes.DropIndexAsync( _container.BucketName, name ) );
+            }
+            catch { }
         }
     }
 

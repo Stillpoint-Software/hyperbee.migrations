@@ -32,8 +32,8 @@ internal class Program
                 .ConfigureServices( ( context, services ) =>
                 {
                     services
-                        .AddProvider( context.Configuration, logger )
-                        .AddMigrations( context.Configuration )
+                        .AddCouchbaseProvider( context.Configuration, logger )
+                        .AddCouchbaseMigrations( context.Configuration )
                         .AddHostedService<MainService>();
                 } )
                 .UseSerilog()

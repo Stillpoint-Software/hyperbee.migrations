@@ -129,7 +129,9 @@ public class CouchbaseSquashDeterminismTests
             () => queryIndexes.CreateIndexAsync( _container.BucketName, "idx_det_phone", new[] { "phone" } ) );
         var first = await GenerateOnceAsync();
 
-        await queryIndexes.DropIndexAsync( _container.BucketName, "idx_det_phone" );
+        await CouchbaseIndexRetry.DropThenWaitGoneAsync(
+            _cluster, _container.BucketName, "idx_det_phone",
+            () => queryIndexes.DropIndexAsync( _container.BucketName, "idx_det_phone" ) );
         await CouchbaseIndexRetry.CreateThenWaitReadyAsync(
             _cluster, _container.BucketName, "idx_det_phone", watchPrimaryUnnamed: false,
             () => queryIndexes.CreateIndexAsync( _container.BucketName, "idx_det_phone", new[] { "phone" } ) );

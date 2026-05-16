@@ -1,26 +1,34 @@
 ﻿namespace Hyperbee.Migrations.Squash;
 
 /// <summary>
-/// Stand-in <see cref="ISquashStrategy"/> for providers whose codegen is not
-/// yet shipped (Aerospike, Couchbase, MongoDB, OpenSearch in v1).
-/// <see cref="GenerateAsync"/> always returns
+/// Public extension-point <see cref="ISquashStrategy"/> for a provider that
+/// registers a <see cref="SquashStrategyDescriptor"/> before its squash
+/// codegen exists. <see cref="GenerateAsync"/> always returns
 /// <see cref="SquashGenerationResult.Failed"/> with a message naming the
 /// roadmap phase the operator should expect codegen in (per ADR-0019 A11).
 /// </summary>
 /// <remarks>
 /// <para>
-/// Per ADR-0019 amendment A11 the earlier <c>Unsupported</c> "hand-author"
-/// guidance was removed. Operators who try to squash on a non-v1 provider
-/// should get a clear refusal that points at the roadmap, not a vague
-/// "you figure it out" hint.
+/// <b>No first-party provider uses this.</b> Per the all-5-providers
+/// release rule every shipped provider (Postgres, Aerospike, Couchbase,
+/// MongoDB, OpenSearch) ships a real <see cref="ISquashStrategy"/>. This
+/// type is retained per ADR-0025 as a documented extension point for
+/// future or third-party providers whose codegen is not yet implemented,
+/// so the CLI fails loudly with a roadmap-pointing refusal rather than a
+/// null / NotImplemented.
 /// </para>
 /// <para>
-/// Per ADR-0019 amendment A11 this strategy is shipped paired with the
-/// provider's real <see cref="ITopologySignature"/>,
-/// <see cref="IDataOpClassifier"/>, <see cref="ISquashVerifier"/>, and
-/// <see cref="ISnapshotCanonicalizer"/> implementations; the descriptor's
-/// validation layer ensures the composite is well-formed even when only
-/// the generator is a no-op.
+/// Per ADR-0019 amendment A11 the earlier <c>Unsupported</c> "hand-author"
+/// guidance was removed. A consumer who tries to squash on a
+/// codegen-less provider should get a clear refusal that points at the
+/// roadmap, not a vague "you figure it out" hint.
+/// </para>
+/// <para>
+/// Shipped paired with the provider's real
+/// <see cref="ITopologySignature"/>, <see cref="IDataOpClassifier"/>,
+/// <see cref="ISquashVerifier"/>, and <see cref="ISnapshotCanonicalizer"/>
+/// implementations; the descriptor's validation layer ensures the
+/// composite is well-formed even when only the generator is a no-op.
 /// </para>
 /// </remarks>
 public sealed class NullSquashStrategy : ISquashStrategy

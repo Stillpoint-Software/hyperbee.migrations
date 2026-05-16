@@ -15,10 +15,12 @@
 /// <see cref="EnsureValid"/> method enforces that invariant at construction.
 /// </para>
 /// <para>
-/// Per ADR-0019: providers ship either a real composite (Postgres v1) or a
-/// composite where <see cref="Generator"/> is a <see cref="NullSquashStrategy"/>
-/// returning <see cref="SquashGenerationResult.Failed"/> with a roadmap-pointing
-/// message (Aerospike, Couchbase, MongoDB, OpenSearch in v1).
+/// Per ADR-0019: all five first-party providers ship a real composite
+/// (real <see cref="Generator"/>). Per ADR-0025 a future / third-party
+/// provider without codegen yet may instead ship a composite whose
+/// <see cref="Generator"/> is the retained <see cref="NullSquashStrategy"/>
+/// extension point, returning <see cref="SquashGenerationResult.Failed"/>
+/// with a roadmap-pointing message.
 /// </para>
 /// </remarks>
 public sealed record SquashStrategyDescriptor(

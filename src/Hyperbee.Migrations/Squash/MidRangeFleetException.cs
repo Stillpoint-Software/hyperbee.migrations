@@ -9,8 +9,11 @@
 /// prevent shipping a squash that some members can't auto-mark safely.
 /// </summary>
 /// <remarks>
-/// This is the GENERATION-TIME half of the two-phase fleet readiness gate;
-/// <see cref="StaleFleetMemberException"/> is the DEPLOY-TIME half.
+/// Generation-time fleet readiness gate (ADR-0019 A2). The deploy-time
+/// half was cut per ADR-0026; the equivalent loud, recoverable
+/// apply-time refusal for a mid-range environment is
+/// <c>MidRangeSquashException</c> raised by the wired
+/// <c>MigrationRunner</c> reconciliation path.
 /// </remarks>
 [Serializable]
 public class MidRangeFleetException : MigrationException

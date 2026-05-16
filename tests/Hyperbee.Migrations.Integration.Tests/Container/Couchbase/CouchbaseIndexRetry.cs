@@ -29,4 +29,18 @@ internal static class CouchbaseIndexRetry
         await ProviderIndexRetry.WaitForIndexReadyAsync(
             cluster, bucketName, indexName, watchPrimaryUnnamed ).ConfigureAwait( false );
     }
+
+    /// <summary>
+    /// Drop an index then wait until the DROP has fully settled (the
+    /// index is gone) before returning -- so an immediate recreate of
+    /// the same name cannot collide with the drop's index-service
+    /// rebalance.
+    /// </summary>
+    public static async Task DropThenWaitGoneAsync(
+        ICluster cluster, string bucketName, string indexName, Func<Task> drop )
+    {
+        await drop().ConfigureAwait( false );
+        await ProviderIndexRetry.WaitForIndexDroppedAsync(
+            cluster, bucketName, indexName ).ConfigureAwait( false );
+    }
 }

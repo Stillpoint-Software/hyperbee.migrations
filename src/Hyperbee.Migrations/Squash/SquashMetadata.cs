@@ -2,21 +2,19 @@
 
 /// <summary>
 /// Sidecar metadata emitted alongside a generated squash migration (per
-/// ADR-0019 A2 + Phase 7 Task 7.4). Loaded by the runner at deploy time to
-/// enforce the two-phase fleet readiness gate.
+/// ADR-0019 A2). Generation-time audit record persisted next to the
+/// migration source.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Persisted as JSON to <c>Squash_M.metadata.json</c> next to the migration
-/// source. The runner refuses deploy when the live environment is either:
-/// <list type="bullet">
-///   <item>not present in <see cref="ExpectedFleetVersions"/>
-///         → <see cref="UnregisteredEnvironmentException"/>;</item>
-///   <item>at a version below its recorded minimum AND the squash's
-///         <see cref="MaxStalenessWindow"/> has elapsed since
-///         <see cref="GeneratedAt"/>
-///         → <see cref="StaleFleetMemberException"/>.</item>
-/// </list>
+/// Persisted as JSON to <c>Squash_M.metadata.json</c>. It captures what
+/// the fleet + topology looked like when the squash was generated. There
+/// is no deploy-time fleet-staleness gate (cut per ADR-0026): the
+/// generation-time gate (<see cref="MidRangeFleetException"/>) is the
+/// enforced safety control, and a mid-range environment that reaches a
+/// squash is refused loudly at apply time by the wired
+/// <c>MigrationRunner</c> <c>MidRangeSquashException</c> path. The fields
+/// below are retained for the audit trail and metadata-shape stability.
 /// </para>
 /// </remarks>
 public sealed record SquashMetadata
@@ -37,9 +35,9 @@ public sealed record SquashMetadata
     public required string ProviderId { get; init; }
 
     /// <summary>
-    /// Topology axes captured at generation time (per A14). The deploy-time
-    /// gate matches this against the live environment's signature; mismatch
-    /// is surfaced as a deploy-blocking diagnostic.
+    /// Topology axes captured at generation time (per A14). Recorded as
+    /// part of the generation audit trail; topology compatibility is
+    /// enforced during squash generation/verification, not at deploy time.
     /// </summary>
     public required IReadOnlyDictionary<string, string> Topology { get; init; }
 
@@ -51,18 +49,18 @@ public sealed record SquashMetadata
     public required string CanonicalizerVersion { get; init; }
 
     /// <summary>
-    /// Per-environment minimum version: the squash refuses to deploy if the
-    /// environment is not in this map (UnregisteredEnvironmentException) or
-    /// if the env is below this minimum and outside the staleness window
-    /// (StaleFleetMemberException).
+    /// Per-environment last-applied version snapshot, captured at
+    /// generation time. Audit trail of what the fleet looked like when
+    /// the squash was created; not consulted at deploy time (the
+    /// deploy-time gate was cut per ADR-0026).
     /// </summary>
     public required IReadOnlyDictionary<string, long> ExpectedFleetVersions { get; init; }
 
     /// <summary>
-    /// Maximum acceptable staleness between when this squash was generated
-    /// and when an environment that's below its <see cref="ExpectedFleetVersions"/>
-    /// minimum can still deploy without raising
-    /// <see cref="StaleFleetMemberException"/>. Default 30 days per A15.
+    /// Retained field (default 30 days, originally per A15). The
+    /// deploy-time staleness gate that consumed it was cut per ADR-0026;
+    /// kept for metadata-shape stability and a possible future revival
+    /// under a new ADR.
     /// </summary>
     public TimeSpan MaxStalenessWindow { get; init; } = TimeSpan.FromDays( 30 );
 

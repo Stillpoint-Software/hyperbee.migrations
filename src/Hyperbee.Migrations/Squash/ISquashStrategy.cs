@@ -9,11 +9,14 @@
 /// <c>Replaces</c> auto-mark on mature environments.
 /// </summary>
 /// <remarks>
-/// Postgres ships a real <c>PgDumpSnapshotStrategy</c> in v1 (Phase 6).
-/// Aerospike, Couchbase, MongoDB, and OpenSearch ship
-/// <see cref="NullSquashStrategy"/> in v1 — calls return
+/// All five first-party providers (Postgres, Aerospike, Couchbase,
+/// MongoDB, OpenSearch) ship a real <see cref="ISquashStrategy"/>
+/// (per the all-5-providers release rule).
+/// <see cref="NullSquashStrategy"/> is a retained public extension point
+/// (ADR-0025) for future / third-party providers whose codegen is not
+/// yet implemented -- calls return
 /// <see cref="SquashGenerationResult.Failed"/> with a roadmap-pointing
-/// message naming the per-provider phase (v1.1 / v1.2).
+/// message. No first-party provider uses it.
 /// </remarks>
 public interface ISquashStrategy
 {

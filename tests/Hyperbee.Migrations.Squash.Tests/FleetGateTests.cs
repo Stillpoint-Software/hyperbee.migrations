@@ -4,126 +4,18 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Hyperbee.Migrations.Squash.Tests;
 
-// Phase 7 — Two-phase fleet readiness gate (per ADR-0019 A2 + A15).
+// Generation-time fleet readiness gate (ADR-0019 A2).
+// SquashFleetGate.EnsureGenerable refuses when fleet members are
+// mid-range -> MidRangeFleetException.
 //
-// Generation-time half: SquashFleetGate.EnsureGenerable refuses when fleet
-// members are mid-range -> MidRangeFleetException.
-// Deploy-time half: SquashFleetGate.EnsureDeployable refuses when env isn't
-// registered (UnregisteredEnvironmentException) or is stale beyond the
-// staleness window (StaleFleetMemberException).
+// The deploy-time half (EnsureDeployable + StaleFleetMemberException +
+// UnregisteredEnvironmentException) was cut per ADR-0026 -- never wired;
+// the silent-stranding case is already a loud apply-time refusal via
+// the wired MigrationRunner MidRangeSquashException path.
 
 [TestClass]
 public class FleetGateTests
 {
-    private static SquashMetadata MetadataFor(
-        Dictionary<string, long> expectedFleetVersions,
-        DateTimeOffset? generatedAt = null,
-        TimeSpan? maxStalenessWindow = null )
-    {
-        return new SquashMetadata
-        {
-            ReplacesFromVersion = 1000,
-            ReplacesToVersion = 1500,
-            ProviderId = "postgres",
-            Topology = new Dictionary<string, string> { ["server_major"] = "16" },
-            CanonicalizerVersion = "postgres/1.0.0",
-            ExpectedFleetVersions = expectedFleetVersions,
-            MaxStalenessWindow = maxStalenessWindow ?? TimeSpan.FromDays( 30 ),
-            CodegenToolVersion = "hyperbee-migrations/1.0.0",
-            GeneratedAt = generatedAt ?? new DateTimeOffset( 2026, 5, 1, 0, 0, 0, TimeSpan.Zero )
-        };
-    }
-
-    // -----------------------------------------------------------------
-    // EnsureDeployable
-    // -----------------------------------------------------------------
-
-    [TestMethod]
-    public void EnsureDeployable_EnvAtMinimum_Passes()
-    {
-        var metadata = MetadataFor( new Dictionary<string, long> { ["prod"] = 1500 } );
-
-        var act = () => SquashFleetGate.EnsureDeployable(
-            metadata, "prod",
-            environmentLastAppliedVersion: 1500,
-            now: new DateTimeOffset( 2026, 5, 6, 0, 0, 0, TimeSpan.Zero ) );
-
-        act.Should().NotThrow();
-    }
-
-    [TestMethod]
-    public void EnsureDeployable_EnvAboveMinimum_Passes()
-    {
-        var metadata = MetadataFor( new Dictionary<string, long> { ["prod"] = 1500 } );
-
-        var act = () => SquashFleetGate.EnsureDeployable(
-            metadata, "prod",
-            environmentLastAppliedVersion: 1700, // already past
-            now: new DateTimeOffset( 2026, 5, 6, 0, 0, 0, TimeSpan.Zero ) );
-
-        act.Should().NotThrow();
-    }
-
-    [TestMethod]
-    public void EnsureDeployable_EnvBelowMinimum_WithinStaleness_Passes()
-    {
-        var metadata = MetadataFor(
-            new Dictionary<string, long> { ["prod"] = 1500 },
-            generatedAt: new DateTimeOffset( 2026, 5, 1, 0, 0, 0, TimeSpan.Zero ),
-            maxStalenessWindow: TimeSpan.FromDays( 30 ) );
-
-        // 5 days after generation, env still below minimum: deploy allowed.
-        var act = () => SquashFleetGate.EnsureDeployable(
-            metadata, "prod",
-            environmentLastAppliedVersion: 1300,
-            now: new DateTimeOffset( 2026, 5, 6, 0, 0, 0, TimeSpan.Zero ) );
-
-        act.Should().NotThrow( "env is below minimum but within the 30-day staleness window" );
-    }
-
-    [TestMethod]
-    public void EnsureDeployable_EnvBelowMinimum_BeyondStaleness_Throws()
-    {
-        var metadata = MetadataFor(
-            new Dictionary<string, long> { ["prod"] = 1500 },
-            generatedAt: new DateTimeOffset( 2026, 4, 1, 0, 0, 0, TimeSpan.Zero ),
-            maxStalenessWindow: TimeSpan.FromDays( 30 ) );
-
-        // 35 days after generation, env still below minimum: refused.
-        var act = () => SquashFleetGate.EnsureDeployable(
-            metadata, "prod",
-            environmentLastAppliedVersion: 1300,
-            now: new DateTimeOffset( 2026, 5, 6, 0, 0, 0, TimeSpan.Zero ) );
-
-        var ex = act.Should().Throw<StaleFleetMemberException>().Which;
-        ex.EnvironmentName.Should().Be( "prod" );
-        ex.ExpectedMinVersion.Should().Be( 1500 );
-        ex.ActualVersion.Should().Be( 1300 );
-        ex.MaxStalenessWindow.Should().Be( TimeSpan.FromDays( 30 ) );
-        ex.Message.Should().Contain( "ADR-0019" );
-    }
-
-    [TestMethod]
-    public void EnsureDeployable_UnregisteredEnv_Throws()
-    {
-        var metadata = MetadataFor( new Dictionary<string, long>
-        {
-            ["prod"] = 1500,
-            ["staging"] = 1500
-        } );
-
-        var act = () => SquashFleetGate.EnsureDeployable(
-            metadata, "qa", // not in manifest
-            environmentLastAppliedVersion: 1700,
-            now: new DateTimeOffset( 2026, 5, 6, 0, 0, 0, TimeSpan.Zero ) );
-
-        var ex = act.Should().Throw<UnregisteredEnvironmentException>().Which;
-        ex.EnvironmentName.Should().Be( "qa" );
-        ex.RegisteredEnvironments.Should().BeEquivalentTo( new[] { "prod", "staging" } );
-        ex.Message.Should().Contain( "qa" );
-        ex.Message.Should().Contain( "prod" );
-    }
-
     // -----------------------------------------------------------------
     // EnsureGenerable
     // -----------------------------------------------------------------

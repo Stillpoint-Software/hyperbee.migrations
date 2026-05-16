@@ -1,69 +1,21 @@
 ﻿namespace Hyperbee.Migrations.Squash;
 
 /// <summary>
-/// Two-phase fleet readiness gate per ADR-0019 + Phase 7 Task 7.4. Static
-/// validation entry points so callers (runner deploy path, CLI generation
-/// path) share one rule set without taking a runtime dependency on each
-/// other's wiring.
+/// Generation-time fleet readiness gate per ADR-0019 A2. Static
+/// validation entry point so the CLI generation path enforces the rule
+/// without a runtime dependency on runner wiring.
 /// </summary>
+/// <remarks>
+/// The deploy-time half (<c>EnsureDeployable</c> +
+/// <c>StaleFleetMemberException</c> + <c>UnregisteredEnvironmentException</c>)
+/// was cut per ADR-0026: it was never wired, and the silent-stranding
+/// failure it targeted is already converted to a loud, recoverable
+/// apply-time refusal by the wired <c>MigrationRunner</c>
+/// <c>MidRangeSquashException</c> reconciliation path. Only the
+/// generation-time <see cref="EnsureGenerable"/> remains.
+/// </remarks>
 public static class SquashFleetGate
 {
-    /// <summary>
-    /// Deploy-time check: refuse the squash on this environment if either
-    /// (a) the env isn't in <see cref="SquashMetadata.ExpectedFleetVersions"/>,
-    /// or (b) the env is below its recorded minimum AND the squash's
-    /// staleness window has elapsed.
-    /// </summary>
-    /// <param name="metadata">Squash's sidecar metadata.</param>
-    /// <param name="environmentName">Live environment name (matches manifest entries).</param>
-    /// <param name="environmentLastAppliedVersion">
-    /// Highest pre-squash version the live ledger has recorded. Pass
-    /// <c>0</c> when the ledger is empty.
-    /// </param>
-    /// <param name="now">Current instant (caller-supplied for testability).</param>
-    /// <exception cref="UnregisteredEnvironmentException">
-    /// Thrown when <paramref name="environmentName"/> is not in
-    /// <see cref="SquashMetadata.ExpectedFleetVersions"/>.
-    /// </exception>
-    /// <exception cref="StaleFleetMemberException">
-    /// Thrown when the env is below its recorded minimum AND the staleness
-    /// window has elapsed.
-    /// </exception>
-    public static void EnsureDeployable(
-        SquashMetadata metadata,
-        string environmentName,
-        long environmentLastAppliedVersion,
-        DateTimeOffset now )
-    {
-        ArgumentNullException.ThrowIfNull( metadata );
-        if ( string.IsNullOrWhiteSpace( environmentName ) )
-            throw new ArgumentException( "environmentName is required.", nameof( environmentName ) );
-
-        if ( !metadata.ExpectedFleetVersions.TryGetValue( environmentName, out var expectedMin ) )
-        {
-            throw new UnregisteredEnvironmentException(
-                environmentName,
-                metadata.ExpectedFleetVersions.Keys );
-        }
-
-        if ( environmentLastAppliedVersion >= expectedMin )
-            return; // env is at or past the required minimum — deploy is safe.
-
-        // Environment is below the minimum. The deploy is allowed only if the
-        // squash is still inside its staleness window — gives the operator
-        // grace to bring the env forward without re-generating.
-        var elapsed = now - metadata.GeneratedAt;
-        if ( elapsed <= metadata.MaxStalenessWindow )
-            return;
-
-        throw new StaleFleetMemberException(
-            environmentName,
-            expectedMin,
-            environmentLastAppliedVersion,
-            elapsed,
-            metadata.MaxStalenessWindow );
-    }
-
     /// <summary>
     /// Generation-time check: refuse to generate the squash if any registered
     /// fleet member's last-applied version is mid-range with respect to the
