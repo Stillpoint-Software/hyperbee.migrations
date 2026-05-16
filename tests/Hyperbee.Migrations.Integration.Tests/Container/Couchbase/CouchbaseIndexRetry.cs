@@ -1,4 +1,4 @@
-using Couchbase;
+﻿using Couchbase;
 using ProviderIndexRetry = Hyperbee.Migrations.Providers.Couchbase.CouchbaseIndexRetry;
 
 namespace Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
