@@ -381,6 +381,7 @@ finalized for the hardening pass; plan archived; INDEX updated.
 | 2026-05-16 | process | Plan created from the five-agent pre-ship audit. Baseline before hardening: CI 23/23 green on the retriggered run; 413 unit + 884 squash-unit local. Riskiest task: 2.2 (Aerospike `InitializeAsync` readiness gate — hot path). Two gated decisions (0.2 NullSquashStrategy, 0.3 EnsureDeployable) must be ADR-recorded before their Phase 3/4 deletes. |
 | 2026-05-16 | decision | Phase 0 gated decisions resolved by user. **NullSquashStrategy: RETAIN** as public extension point (ADR-0025) — Phase 4.1 is doc-only, no delete. **EnsureDeployable: CUT** (ADR-0026). Baseline confirmed: CI 25953176574 = 23/23 on c221fd4. |
 | 2026-05-16 | decision | ADR-0026 rationale re-substantiated after challenge + runtime trace. The P0 (ADR-0019 A2) silent-stranding concern is **already** addressed by the WIRED `MigrationRunner` `MidRangeSquashException` reconciliation path + `recover from-mid-range` + ADR-0021 integrity — `EnsureDeployable` is redundant unwired defense-in-depth, never connected. Cutting removes a misleading net, not protection. Industry survey: no mainstream migration tool ships a deploy-time fleet-staleness gate (all use recoverability-from-history + operator discipline). Lesson: verify whether a P0's *outcome* is already met by a different wired mechanism before treating its unwired implementation as load-bearing. |
+| 2026-05-16 | style | Phase 1: doc claims must be diff-checked against source contracts, not prior docs. Ground truth pulled from `SquashVerb`/`RecoverVerb` (flag contracts), `AerospikeRecordStore:309-361` (IntersectWithSquashedAsync IS fully implemented — the CHANGELOG "follow-up" bullet was the stale side of the contradiction; "Changed/R-15" was correct). `docs/site` ASCII enforced via a glob sweep, now part of the Phase-1 done-gate. |
 
 ---
 
@@ -388,17 +389,17 @@ finalized for the hardening pass; plan archived; INDEX updated.
 
 | Phase | Status |
 |-------|--------|
-| 0 — Baseline + Gated Decisions | **Done** (2026-05-16) — baseline confirmed; ADR-0025 (retain NullSquashStrategy) + ADR-0026 (cut EnsureDeployable) written |
-| 1 — Documentation Ship-Blockers | Not Started |
+| 0 — Baseline + Gated Decisions | **Done** (2026-05-16) — baseline confirmed; ADR-0025 (retain NullSquashStrategy) + ADR-0026 (cut EnsureDeployable) written; committed |
+| 1 — Documentation Ship-Blockers | **Done** (2026-05-16) — squashing-migrations.md factual fixes + ADR-0026 two-refusal-points model; CHANGELOG Aerospike contradiction resolved; docs/site ASCII-clean |
 | 2 — README + Aerospike Readiness Gate | Not Started |
 | 3 — DRY Consolidation + Dead-Code Removal | Not Started |
 | 4 — Gated-Decision Execution + Drift Cleanup | Not Started |
 | 5 — Release Prep | Not Started |
 
-**Current task:** Phase 0 complete — awaiting user check-in before Phase 1.
-**Next action:** user approves Phase 0 commit; then `/nop:implement` Phase 1.
-**Blockers:** none. Both gated decisions resolved (ADR-0025 retain / ADR-0026
-cut). Phase 4 will execute them.
+**Current task:** Phase 1 complete — awaiting user check-in before Phase 2.
+**Next action:** user approves Phase 1 commit; then `/nop:implement` Phase 2
+(README v3.0 section + Aerospike readiness gate — riskiest task).
+**Blockers:** none.
 
 **Riskiest task:** Task 2.2 — Aerospike readiness gate (changes
 `AerospikeRecordStore.InitializeAsync`, the per-run hot path). A wrong gate

@@ -482,11 +482,12 @@ Docker runtime cost.
   files are removed. Rollback to v2 against a squashed ledger is unsupported;
   the documented recovery is backup-restore.
 - **Mixed-version fleet hazard.** Don't run v2 and v3 against the same ledger
-  simultaneously; deploy v3 to all environments before squashing. The
-  two-phase fleet readiness gate is the safety net; see ADR-0019 A2.
-- **Aerospike re-squash transitivity** is unsupported in v1 — the
-  `IntersectWithSquashedAsync` override is a follow-up. Direct
-  `Migration_<v>` auto-mark works via `IntersectWithAppliedAsync`.
+  simultaneously; deploy v3 to all environments before squashing. Safety nets:
+  the generation-time fleet readiness gate (`MidRangeFleetException`, refuses
+  to create a squash that would strand a listed fleet member) and the wired
+  apply-time refusal (`MidRangeSquashException`, refuses a mid-range
+  environment loudly with `recover from-mid-range` recovery). The deploy-time
+  fleet-staleness gate from ADR-0019 A2 was cut as redundant; see ADR-0026.
 
 ### Documentation
 

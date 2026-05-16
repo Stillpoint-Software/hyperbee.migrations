@@ -104,8 +104,14 @@ dotnet hyperbee-migrations squash \
   --range 1000-1500 \
   --output ./squash-out \
   --assembly ./bin/Release/net10.0/MyApp.Migrations.dll \
+  --scan-source ./src/MyApp.Migrations \
   --fleet-manifest ./fleet.yml
 ```
+
+`--scan-source <path>` (the Roslyn data-op annotation scan, ADR-0019 A5)
+and `--fleet-manifest <fleet.yml>` (ADR-0019 A2) are both required by
+default. To bypass either deliberately, pass `--no-scan="<reason>"` or
+`--no-fleet-manifest="<reason>"` (reason >= 20 chars; logged).
 
 The CLI:
 
@@ -115,8 +121,8 @@ The CLI:
    extensions + locale + encoding).
 3. Spins an ephemeral `postgres:<major>-alpine` container matching the
    topology, applies the migrations through the upper bound via the
-   assembly's `ApplyToDataSourceAsync` shim entry, and runs
-   `pg_dump --schema-only`.
+   `IMigrationHost` discovered in the migration assembly's reference
+   closure (per ADR-0024), and runs `pg_dump --schema-only`.
 4. Canonicalizes the dump (strips preamble, normalizes line endings,
    refuses `CREATE INDEX CONCURRENTLY` per A2).
 5. Captures `pg_sequences` last-values for a deterministic `setval(...)`
@@ -152,9 +158,13 @@ Embed `Squash_1500.sql` as a resource in your project's csproj
 
 After verifying the squash applies cleanly to a fresh container, delete
 the migration source files for versions in the squash range. The squash
-CLI's `--remove-originals` flag does this with an idempotency check (the
-flag refuses if the originals are already gone unless you also pass
-`--regenerate`).
+CLI's `--remove-originals` flag does this. It is **dry-run by default**:
+it lists what it would delete and changes nothing unless you also pass
+`--confirm-delete`. It requires `--migrations-root <path>` (the migration
+source-file root). `--regenerate` is a separate opt-in that rewrites the
+subsumed source files instead of deleting them. Recovery if you need the
+originals back: they remain in version-control history (see "Recovering
+from squash exceptions" below).
 
 The ledger row for the squash carries `Kind=Squash, Replaces=[1000..1500]`,
 so mature environments running the v3 runner against a populated ledger
@@ -170,48 +180,61 @@ narrates:
   `gen_random_uuid()`, etc.; classifier surprises).
 - Sequence `setval(...)` block emission count.
 
-Spot-check the `metadata.json` for the right `ExpectedFleetVersions` per
-environment and a sane `MaxStalenessWindow`.
+Spot-check the `metadata.json` `ExpectedFleetVersions` snapshot -- it
+records each environment's last-applied version *as seen at generation
+time*, which is a useful audit trail of what the fleet looked like when
+the squash was created. (It is not consulted at deploy time in v3.0; see
+"Squash safety model" below.)
 
 The raw SQL is generated; reviewing it line-by-line is rarely useful.
 
-## Recovering from squash exceptions
+## Squash safety model: two refusal points
 
-### `MidRangeSquashException` -- partial ledger coverage at deploy time
+Squash safety in v3.0 is enforced at two points, by two different
+mechanisms:
 
-The runner raises this when an environment's ledger contains SOME but not
-ALL of the versions a squash claims to subsume -- typically because a
-backup-restore brought the ledger to an awkward state, or because a
+- **Generation time (CLI, `MidRangeFleetException`).** When you run
+  `hyperbee-migrations squash`, the fleet readiness check reads every
+  environment listed in `--fleet-manifest` and refuses to *create* the
+  squash if any registered member is mid-range with respect to the
+  proposed `Replaces` range. The fleet manifest is **authoritative**:
+  generation safety only covers environments you have listed in it. There
+  is **no deploy-time fleet-staleness gate** in v3.0 -- keeping the fleet
+  manifest accurate is an operator responsibility (this matches industry
+  practice: Django/Flyway/EF Core/Liquibase all rely on operator fleet
+  discipline plus recoverability, not a mechanical deploy-time gate).
+- **Apply time (runner, `MidRangeSquashException`).** Independently of the
+  manifest, the runner refuses loudly at apply time if an environment's
+  ledger covers SOME but not ALL of a squash's `Replaces` versions. This
+  is the wired safety net: an environment that was missing from the
+  manifest at generation time, or fell behind afterwards, still gets a
+  loud, recoverable refusal when it reaches the squash -- never a silent
+  stranding.
+
+## Recovering from `MidRangeSquashException`
+
+The runner raises this at apply time when an environment's ledger contains
+SOME but not ALL of the versions a squash claims to subsume -- typically
+because the environment was behind (or unlisted) when the squash was
+generated, a backup-restore brought the ledger to an awkward state, or a
 migration was manually marked applied. Three documented recovery paths
 (per ADR-0019):
 
 1. **Restore from backup** -- preferred when the partial state was caused
    by an accident.
-2. **Re-introduce the missing migrations from version control** -- apply
-   them, then the squash auto-marks normally on the next runner pass.
+2. **Re-introduce the missing migrations from version control** -- the
+   squashed originals remain in git history; restore them, apply them,
+   then the squash auto-marks normally on the next runner pass.
 3. **`dotnet hyperbee-migrations recover from-mid-range`** -- last-resort
-   escape hatch. Requires:
+   escape hatch. All of the following are required:
+   - `--env`, `--squash-version`, `--missing-versions`,
+     `--connection`, `--assembly`.
    - The deterministic 12-character acknowledgement token derived from
      `(env-name, squash-version, missing-versions)`. Compute it externally
      and supply it via `--token`; the CLI rejects mismatches.
-   - `--ticket-id`, `--owner`, `--reason >= 20 chars` for the audit trail.
+   - `--ticket-id` and `--reason` (>= 20 chars) for the audit trail.
    - **Only safe** when an external check confirmed the live data state
      matches the squashed schema.
-
-### `StaleFleetMemberException` -- environment too far behind at deploy time
-
-The runner raises this when an environment's ledger is below its recorded
-`ExpectedFleetVersions` minimum AND the squash's `MaxStalenessWindow`
-(default 30 days) has elapsed. Recovery: bring the environment forward by
-applying the missing migrations; or regenerate the squash with the current
-fleet state (cheap when the snapshot A cache is warm per A4).
-
-### `UnregisteredEnvironmentException` -- env not in the manifest
-
-The squash's `ExpectedFleetVersions` doesn't list the live environment
-name. Either correct `MigrationOptions.EnvironmentName` to match an
-existing entry, or regenerate the squash with the current manifest
-including the new environment.
 
 ## Provider coverage
 
@@ -271,17 +294,18 @@ alias instead of through the operator's host network. Operators
 running the CLI from a non-containerized workstation use the default
 Testcontainers provisioner without thinking about it.
 
-### Transitivity caveat (Aerospike v3.0)
+### Re-squash transitivity
 
 The `IMigrationRecordStore.IntersectWithSquashedAsync` per-provider
 override enables transitive squash auto-mark: a v3 application can apply
 a squash that *itself* replaces an earlier squash, and the runner will
-correctly recognize the intermediate squash as satisfied. **Aerospike v3.0
-returns the DIM default (empty set)** from this method, so direct squash
-auto-mark works but re-squash transitivity does not. The other four
-providers ship full transitive override. This is a known v3.0 limitation
-tracked in [CHANGELOG.md](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/CHANGELOG.md);
-a v3.1 follow-up will close the gap.
+correctly recognize the intermediate squash as satisfied (ADR-0019 A6).
+**All five providers ship the full transitive override** -- Postgres,
+Aerospike, MongoDB, OpenSearch, and Couchbase. The
+`IMigrationRecordStore` DIM default for this method is fail-loud (it
+throws rather than silently returning an empty set), so a future
+third-party provider that forgets the override fails visibly instead of
+silently dropping re-squash transitivity.
 
 ## See also
 

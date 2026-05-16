@@ -11,7 +11,7 @@ package versions that Hyperbee.Migrations is built and tested against. It
 is intended for operators evaluating whether their environment is
 supported and for developers deciding which target framework or provider
 version to validate their migrations against. Numbers below are taken
-directly from the source repository — the integration test containers
+directly from the source repository -- the integration test containers
 under `tests/Hyperbee.Migrations.Integration.Tests/Container/` and the
 central package list in `Directory.Packages.props`.
 
@@ -33,14 +33,14 @@ runtime.
 
 The "Tested against" column lists the Docker image or version that the
 integration test containers spin up on each CI run. The "Minimum
-supported" column is a conservative floor — typically one major version
-below the tested version — that the provider implementations are
+supported" column is a conservative floor -- typically one major version
+below the tested version -- that the provider implementations are
 expected to function against. Operators on older releases should treat
 the floor as a soft guarantee and validate against their own fixtures.
 
 | Provider   | Tested against                          | Minimum supported | Notes                                                                                                                                                              |
 |------------|-----------------------------------------|-------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Aerospike  | `aerospike/aerospike-server:latest` (CE 7+) | 6.x               | Lock and ledger sets are created on first run. The namespace must allow records with TTL — set `DEFAULT_TTL > 0` if using the official Docker image (see test container).         |
+| Aerospike  | `aerospike/aerospike-server:latest` (CE 7+) | 6.x               | Lock and ledger sets are created on first run. The namespace must allow records with TTL -- set `DEFAULT_TTL > 0` if using the official Docker image (see test container).         |
 | Couchbase  | `couchbase/server:enterprise-7.6.4` (Testcontainers default) | 7.0               | Provider creates bucket / scope / collection on first run. The configured user needs roles with bucket-create and collection-create.                               |
 | MongoDB    | `mongo:7.0` (Testcontainers default)    | 6.0               | Replica set or standalone are both fine. The provider does not require multi-document transactions.                                                                |
 | OpenSearch | `opensearchproject/opensearch:2.18.0`   | 2.0               | AWS Managed OpenSearch is supported via the AWS extension package using SigV4 auth. The bootstrap probes `_plugins/_ism` vs `_opendistro/_ism` for AWS domain compatibility. |
