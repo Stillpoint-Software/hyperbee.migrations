@@ -14,7 +14,10 @@ internal static class CouchbaseIndexRetry
 {
     public static async Task WithRebalanceRetryAsync( Func<Task> create )
     {
-        const int maxAttempts = 30;
+        // Net9 CI runners can stay in "rebalance in progress" for over a
+        // minute even on a single-node Testcontainers cluster. 60 attempts
+        // x 3 s = 3 min ceiling.
+        const int maxAttempts = 60;
         for ( var attempt = 1; ; attempt++ )
         {
             try
@@ -26,7 +29,7 @@ internal static class CouchbaseIndexRetry
                 when ( ex.Message?.Contains( "rebalance in progress", StringComparison.OrdinalIgnoreCase ) == true
                     && attempt < maxAttempts )
             {
-                await Task.Delay( TimeSpan.FromSeconds( 2 ) ).ConfigureAwait( false );
+                await Task.Delay( TimeSpan.FromSeconds( 3 ) ).ConfigureAwait( false );
             }
         }
     }

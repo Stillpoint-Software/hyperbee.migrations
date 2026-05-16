@@ -389,11 +389,10 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
     // CREATE INDEX is rejected by GSI as "rebalance in progress" while
     // the index service is processing a prior CREATE INDEX or a
     // bucket-creation-triggered cluster rebalance. The error is
-    // transient (rebalances complete in seconds on a healthy cluster);
-    // retry with backoff before surfacing the failure.
+    // transient; retry with backoff. 60 attempts x 3 s = 3 min ceiling.
     private async Task CreateIndexWithRebalanceRetryAsync( Func<Task> create )
     {
-        const int maxAttempts = 30;
+        const int maxAttempts = 60;
         for ( var attempt = 1; ; attempt++ )
         {
             try
@@ -406,7 +405,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
                     && attempt < maxAttempts )
             {
                 _logger?.LogInformation( "CREATE INDEX blocked by rebalance; retrying ({attempt}/{maxAttempts}).", attempt, maxAttempts );
-                await Task.Delay( TimeSpan.FromSeconds( 2 ) ).ConfigureAwait( false );
+                await Task.Delay( TimeSpan.FromSeconds( 3 ) ).ConfigureAwait( false );
             }
         }
     }

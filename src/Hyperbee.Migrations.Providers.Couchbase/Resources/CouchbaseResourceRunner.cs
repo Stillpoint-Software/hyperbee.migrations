@@ -321,9 +321,9 @@ public class CouchbaseResourceRunner<TMigration>
         // InternalServerFailureException "rebalance in progress" when
         // the index service is mid-rebalance from a prior CREATE INDEX
         // or a bucket-creation-triggered cluster rebalance. The
-        // condition is transient (rebalances are short on a healthy
-        // cluster); retry with backoff before surfacing the failure.
-        const int maxAttempts = 30;
+        // condition is transient; retry with backoff. 60 attempts x 3 s
+        // = 3 min ceiling -- some CI runners stay in rebalance for >60 s.
+        const int maxAttempts = 60;
         for ( var attempt = 1; ; attempt++ )
         {
             try
@@ -337,7 +337,7 @@ public class CouchbaseResourceRunner<TMigration>
             {
                 _logger?.LogInformation( "CREATE {kind} {indexName} blocked by rebalance; retrying ({attempt}/{maxAttempts}).",
                     kind, item.Name, attempt, maxAttempts );
-                await Task.Delay( TimeSpan.FromSeconds( 2 ) ).ConfigureAwait( false );
+                await Task.Delay( TimeSpan.FromSeconds( 3 ) ).ConfigureAwait( false );
             }
         }
     }
