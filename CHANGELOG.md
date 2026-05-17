@@ -477,6 +477,13 @@ consumers; these are robustness, doc-accuracy, and dead-code items.
   `WaitForIndexDroppedAsync` (polls `GetAllIndexesAsync` until the index is
   gone). `CouchbaseRecordStore` and `CouchbaseResourceRunner` both route
   through it; the prior triplicated rebalance-retry loop is consolidated.
+  A second axis was closed for the squash integration fixtures: cluster
+  idle (KV `rebalance` task) is necessary but not sufficient for GSI DDL --
+  the index service runs its own initial topology placement on a fresh
+  cluster that the cluster-tasks endpoint does not surface. The isolated
+  Couchbase test container now performs a bounded indexer-DDL warmup
+  (sentinel create/ready/drop) before any test body, so the index service
+  is provably past initial placement before the first real CREATE INDEX.
   The CI per-provider matrix is green 23/23 with the 6 previously-LocalOnly
   Couchbase squash tests now running in CI via configured alternate addresses.
 - **Aerospike lock-disabled readiness gate.** `AerospikeRecordStore.InitializeAsync`

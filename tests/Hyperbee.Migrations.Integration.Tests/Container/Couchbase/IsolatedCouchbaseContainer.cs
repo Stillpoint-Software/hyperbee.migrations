@@ -1,14 +1,17 @@
 ﻿using System.Net.Http.Headers;
 using System.Text;
 using Couchbase;
+using Couchbase.Core.Exceptions;
 using Couchbase.Diagnostics;
 using Couchbase.Management.Buckets;
+using Couchbase.Management.Query;
 using Hyperbee.Migrations.Providers.Couchbase.Services;
 using Hyperbee.Migrations.Providers.Couchbase.Squash;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Testcontainers.Couchbase;
 using CbNetworkResolution = Couchbase.NetworkResolution;
+using ProviderIndexRetry = Hyperbee.Migrations.Providers.Couchbase.CouchbaseIndexRetry;
 
 namespace Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
 
@@ -19,7 +22,9 @@ namespace Hyperbee.Migrations.Integration.Tests.Container.Couchbase;
 /// Mirrors the production <c>CouchbaseBootstrapper</c> readiness sequence
 /// plus the Java Testcontainers per-bucket service-propagation wait so
 /// the SDK sees n1ql in the new bucket's cluster map before the first
-/// query runs.
+/// query runs, and a GSI indexer-DDL warmup so the index service is
+/// provably past its initial placement before any test issues CREATE
+/// INDEX.
 /// </summary>
 public sealed class IsolatedCouchbaseContainer : IAsyncDisposable
 {
@@ -100,6 +105,8 @@ public sealed class IsolatedCouchbaseContainer : IAsyncDisposable
         await bucket.WaitUntilReadyAsync( TimeSpan.FromSeconds( 30 ) ).ConfigureAwait( false );
 
         await WarmupN1qlAsync( instance.ClusterHandle, cancellationToken ).ConfigureAwait( false );
+        await WarmupIndexerDdlAsync( instance.ClusterHandle, instance.BucketName, cancellationToken )
+            .ConfigureAwait( false );
 
         return instance;
     }
@@ -136,9 +143,11 @@ public sealed class IsolatedCouchbaseContainer : IAsyncDisposable
 
         await restApi.WaitUntilClusterHealthyAsync( TimeSpan.FromMinutes( 2 ), cancellationToken ).ConfigureAwait( false );
         await restApi.WaitUntilBucketReadyAsync( bucketName, TimeSpan.FromMinutes( 2 ), cancellationToken ).ConfigureAwait( false );
-        // Wait for any post-bucket-creation rebalance to complete before
-        // returning. Without this, CREATE INDEX in tests races the
-        // rebalance and gets "rebalance in progress" rejected by GSI.
+        // Wait for any post-bucket-creation cluster (KV) rebalance to
+        // complete. Necessary but NOT sufficient: this gates only the
+        // cluster `rebalance` task; the GSI index service's own initial
+        // placement is gated separately by WarmupIndexerDdlAsync after the
+        // cluster handle is open.
         await restApi.WaitUntilClusterIdleAsync( TimeSpan.FromMinutes( 2 ), cancellationToken ).ConfigureAwait( false );
     }
 
@@ -169,6 +178,55 @@ public sealed class IsolatedCouchbaseContainer : IAsyncDisposable
             }
         }
         throw new InvalidOperationException( "n1ql planner did not become reachable within 30 s.", last );
+    }
+
+    private static async Task WarmupIndexerDdlAsync(
+        ICluster cluster, string bucketName, CancellationToken cancellationToken )
+    {
+        // WaitUntilClusterIdleAsync gates on the cluster KV `rebalance`
+        // task only. The GSI index service runs its OWN initial topology
+        // placement on a fresh single-node cluster -- it is not reported
+        // as a cluster `rebalance` task, so cluster-idle can return before
+        // the indexer accepts DDL. On a CPU-throttled CI runner that
+        // settle can exceed the per-CREATE rebalance-retry backstop
+        // (CouchbaseIndexRetry, 60 x 3 s), surfacing as a deterministic
+        // "rebalance in progress" failure on the test's FIRST CREATE INDEX
+        // (same code passes on a less-loaded runner -- the flake profile).
+        // Prove the indexer accepts DDL here, with a generous bound, so
+        // test-body index DDL never races a cold indexer. Mirrors
+        // WarmupN1qlAsync (planner warmup) for the index service.
+        const string sentinel = "idx_warmup_sentinel";
+        var deadline = DateTime.UtcNow + TimeSpan.FromMinutes( 5 );
+        Exception last = null;
+        while ( DateTime.UtcNow < deadline )
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                await cluster.QueryIndexes.CreatePrimaryIndexAsync(
+                    bucketName,
+                    new CreatePrimaryQueryIndexOptions()
+                        .IndexName( sentinel )
+                        .IgnoreIfExists( true ) ).ConfigureAwait( false );
+                await ProviderIndexRetry.WaitForIndexReadyAsync(
+                    cluster, bucketName, sentinel, watchPrimaryUnnamed: false,
+                    cancellationToken: cancellationToken ).ConfigureAwait( false );
+                await cluster.QueryIndexes.DropIndexAsync( bucketName, sentinel ).ConfigureAwait( false );
+                await ProviderIndexRetry.WaitForIndexDroppedAsync(
+                    cluster, bucketName, sentinel,
+                    cancellationToken: cancellationToken ).ConfigureAwait( false );
+                return; // indexer provably accepts DDL
+            }
+            catch ( InternalServerFailureException ex )
+                when ( ex.Message?.Contains( "rebalance in progress", StringComparison.OrdinalIgnoreCase ) == true )
+            {
+                last = ex;
+                await Task.Delay( TimeSpan.FromSeconds( 3 ), cancellationToken ).ConfigureAwait( false );
+            }
+        }
+        throw new InvalidOperationException(
+            "GSI index service did not accept DDL within 5 min (indexer never left its initial rebalance).",
+            last );
     }
 
     public async ValueTask DisposeAsync()
