@@ -8,15 +8,14 @@ namespace Hyperbee.Migrations.Providers.Postgres.Squash;
 /// <see cref="ClassifiedStatement"/>.
 /// </summary>
 /// <remarks>
-/// Productionized from <c>spikes/postgres-classifier/PostgresStatementClassifier.cs</c>
-/// with additions surfaced by the spike report:
+/// Notable classification cases:
 /// <list type="bullet">
-///   <item>F2 — <c>ALTER INDEX ... ATTACH PARTITION</c> recognized as
+///   <item><c>ALTER INDEX ... ATTACH PARTITION</c> recognized as
 ///         <see cref="PostgresStatementKind.AlterIndexAttachPartition"/>.</item>
-///   <item>F4 — <c>ALTER TABLE ... ADD CONSTRAINT</c> recognized as a
+///   <item><c>ALTER TABLE ... ADD CONSTRAINT</c> recognized as a
 ///         distinct kind so the canonicalizer can diff constraints
 ///         independently from generic ALTER TABLE shapes.</item>
-///   <item>DROP family added — squash diff emits DROP statements for objects
+///   <item>DROP family — squash diff emits DROP statements for objects
 ///         that disappear between snapshot A and snapshot B.</item>
 /// </list>
 /// </remarks>

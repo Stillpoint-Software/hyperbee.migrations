@@ -4,15 +4,13 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Hyperbee.Migrations.Squash.Tests;
 
-// Phase 6 — Postgres production classifier tests.
+// Postgres production classifier tests.
 //
-// Mirrors the spike's coverage but exercises the productionized classifier in
-// `Hyperbee.Migrations.Providers.Postgres.Squash`, which adds spike-discovered
-// extensions: \restrict/\unrestrict strip, ALTER INDEX [ATTACH PARTITION],
-// ALTER TABLE ADD CONSTRAINT, and the DROP family.
-//
-// Live pg_dump round-trip lives in `spikes/postgres-classifier/` and the
-// upcoming Phase 7 integration tests.
+// Exercises the classifier in
+// `Hyperbee.Migrations.Providers.Postgres.Squash`, covering
+// \restrict/\unrestrict strip, ALTER INDEX [ATTACH PARTITION],
+// ALTER TABLE ADD CONSTRAINT, and the DROP family. The live pg_dump
+// round-trip is covered by the Postgres squash integration tests.
 
 [TestClass]
 public class PostgresClassifierProductionTests

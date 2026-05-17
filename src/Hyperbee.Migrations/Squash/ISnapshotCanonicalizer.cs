@@ -16,8 +16,7 @@
 /// <para>
 /// Postgres v1 implementation strips the <c>SET</c> preamble, normalizes
 /// dollar-tag function bodies, extracts <c>CREATE EXTENSION</c> to a
-/// prerequisites file, normalizes line endings, etc. (per spike findings F1,
-/// F3, F5 in <c>spikes/postgres-classifier/SPIKE_REPORT.md</c>).
+/// prerequisites file, normalizes line endings, etc.
 /// </para>
 /// </remarks>
 public interface ISnapshotCanonicalizer
