@@ -291,3 +291,9 @@ docs/site/Gemfile.lock
 
 # Claude Code scratch directory (local, not shared)
 .claude/
+
+# Private working artifacts (nop process scaffolding -- local only, not public)
+docs/plans/
+docs/research/
+docs/requirements/
+docs/design/

@@ -19,9 +19,8 @@ v3.0 is a major release because of two breaking changes around
 safe back-compat paths so existing v2 migrations and consumers keep working
 unchanged.
 
-The full release-readiness audit
-(`docs/research/0009-v3-release-readiness-assessment.md`) is closed: 5
-release-blockers + 17 Redesigns + the F-tier deferred items are resolved.
+The full release-readiness audit is closed: 5 release-blockers + 17
+Redesigns + the F-tier deferred items are resolved.
 Library tier ships at 1335 unit tests per target framework (.NET 8, 9, 10);
 the five Squash provider packages
 (`Hyperbee.Migrations.Providers.{Provider}.Squash`) ship as separate
@@ -463,9 +462,9 @@ Docker runtime cost.
 
 ### Pre-ship hardening
 
-The v3.0 pre-ship audit (`docs/plans/archive/2026-05-v3-preship-hardening.md`)
-closed the following before release. No behavior change for correctly-configured
-consumers; these are robustness, doc-accuracy, and dead-code items.
+The v3.0 pre-ship audit closed the following before release. No behavior
+change for correctly-configured consumers; these are robustness,
+doc-accuracy, and dead-code items.
 
 - **Couchbase GSI rebalance flake fixed at the root.** Index DDL during an
   index-service rebalance ("rebalance in progress") was retried blindly,
