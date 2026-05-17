@@ -1,4 +1,4 @@
-namespace Hyperbee.Migrations.Resources;
+﻿namespace Hyperbee.Migrations.Resources;
 
 /// <summary>
 /// Maps a resource path to its <see cref="ResourceFormat"/>.
