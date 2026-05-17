@@ -470,18 +470,14 @@ finalized for the hardening pass; plan archived; INDEX updated.
 | 2 — README + Aerospike Readiness Gate | **Done** (2026-05-16) — committed 8c78cbe. CI 25972839690 = 22/23; lone failure net10 couchbase was the KNOWN rebalance flake (3m22s retry-budget exhaustion, varies by TFM), NOT a regression: Aerospike jobs all green (gate sound), other 2 Couchbase TFMs green. Phase 2 re-validation folded into Phase 3 CI (sequential commits). |
 | 3 — DRY Consolidation + Dead-Code Removal + root-cause flake fix | **Done** (2026-05-16) — 3.1 rebalance-retry consolidated; 3.2 three dead members removed; **3.3 `WaitForIndexReadyAsync` (SDK `WatchIndexesAsync`) — runner waits-for-ready by default after each CREATE (skips deferred), fixtures use `CreateThenWaitReadyAsync`, retry demoted to backstop.** Local validation: full solution builds clean (3 TFMs), 417 core + 884 squash unit, **all 8 Couchbase integration green incl. the 3 previously-flaky tests**; determinism gate unaffected (squash output is JSON, untouched). Awaiting commit + CI. |
 | 4 — Gated-Decision Execution + Drift Cleanup | **Done** (2026-05-16) — 4.1 ADR-0025 doc-only corrections (4 sites, no delete); 4.2 ADR-0026 cut (EnsureDeployable + 2 exceptions + 5 FleetGate tests removed; SquashFleetGate/MidRangeFleetException/SquashMetadata doc surface corrected; EnsureGenerable untouched); 4.3 drift (MongoDB/Postgres Serilog Override -> MongoDB/Npgsql; Couchbase runner DI -> AddCouchbaseProvider/AddCouchbaseMigrations; stale test ns -> .Squash). Plus Phase 3 residual: WaitForIndexDroppedAsync (drop-then-recreate collision). Local: solution clean; 417 core + 879 squash (884-5 = removed EnsureDeployable tests); all 8 Couchbase integration green incl. IndexRecreatedWithDifferentId. Awaiting commit + CI. |
-| 5 — Release Prep | **In Progress** (2026-05-16) — 5.1a reconciliation clean; 5.1b CHANGELOG hardening + ADR-0026 reconcile; 5.1c final CI surfaced a real GSI-indexer-readiness flake (root-caused, NOT retriggered) -> `WarmupIndexerDdlAsync` fix, validated locally 6/6; re-running final CI; 5.2 pending |
+| 5 — Release Prep | **Done** (2026-05-16) — 5.1a reconciliation clean; 5.1b CHANGELOG hardening + ADR-0026 reconcile; 5.1c final CI surfaced a real GSI-indexer-readiness flake (root-caused, NOT retriggered) -> `WarmupIndexerDdlAsync` fix, validated locally 6/6, **CI 25977961816 = 23/23 GREEN on ae9e78f (all 3 Couchbase TFM jobs green)**; 5.2 plan archived + INDEX + memory updated |
 
-**Current task:** Phase 5 Task 5.1c — final clean CI after the
-indexer-readiness root-cause fix. Phases 0-4 code is CI-green
-(65b7a14 / 25976819073 = 23/23). The 25977279302 net9-couchbase
-failure was a pre-existing GSI-indexer-readiness flake exposed by
-runner load (not a docs regression); fixed at root via
-`IsolatedCouchbaseContainer.WarmupIndexerDdlAsync` and validated
-locally (6/6 Couchbase squash tests green).
-**Next action:** commit the indexer-readiness fix + plan/CHANGELOG;
-dispatch final CI; on 23/23 do Task 5.2 (archive plan, update active
-INDEX, final memory update with release status).
+**Current task:** COMPLETE. v3.0 pre-ship hardening done. Final ship
+SHA `ae9e78f`; final CI run 25977961816 = 23/23 green (Format also
+green, no reformat commit). All five phases Done. Branch
+`devs/bfarmer/provider-squash` ready to merge to `main`.
+**Next action:** none (plan archived to
+`docs/plans/archive/2026-05-v3-preship-hardening.md`).
 **Blockers:** none.
 
 **Riskiest task:** Task 2.2 — Aerospike readiness gate (changes
