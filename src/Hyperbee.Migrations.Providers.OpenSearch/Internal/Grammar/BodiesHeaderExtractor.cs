@@ -4,9 +4,9 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Internal.Grammar;
 
 /// <summary>
 /// Pre-pass extractor for the <c>BODIES { ... }</c> header block at the top
-/// of an OpenSearch <c>.statements</c> script (per ADR-0022 + Phase 4
-/// follow-up). The header lifts named body references (Form 2/3 in the
-/// JSON-array shape) into a script-form-compatible map.
+/// of an OpenSearch <c>.pql</c> script. The header lifts named body
+/// references (Form 2/3 in the JSON-array shape) into a
+/// script-form-compatible map.
 /// </summary>
 /// <remarks>
 /// <para>

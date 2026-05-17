@@ -20,5 +20,5 @@ namespace Hyperbee.Migrations.OpenSearch.Samples.Migrations;
 public class ComponentAndIndexTemplate( OpenSearchResourceRunner<ComponentAndIndexTemplate> runner ) : Migration
 {
     public override Task UpAsync( CancellationToken cancellationToken = default )
-        => runner.StatementsFromAsync( "statements.json", cancellationToken );
+        => runner.StatementsFromAsync( "statements.pql", cancellationToken );
 }

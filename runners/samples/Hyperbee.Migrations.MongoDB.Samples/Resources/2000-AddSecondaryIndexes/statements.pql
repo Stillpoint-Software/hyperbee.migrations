@@ -1,7 +1,8 @@
 -- Secondary indexes for the application's queries.
--- Demonstrates the .statements script form per ADR-0022; the .statements.json
--- companion is preserved for backward compatibility but the script form is
--- the recommended shape for new migrations.
+-- Authored in the recommended .pql script form (multi-statement, comments,
+-- semicolon-terminated). The legacy .statements.json form remains supported
+-- for backward compatibility but is not the recommended way to author new
+-- migrations.
 
 -- Unique constraint on user email.
 CREATE UNIQUE INDEX idx_users_email ON sample.users (email);

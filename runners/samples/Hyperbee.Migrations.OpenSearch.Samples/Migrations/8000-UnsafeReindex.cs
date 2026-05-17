@@ -26,5 +26,5 @@ namespace Hyperbee.Migrations.OpenSearch.Samples.Migrations;
 public class UnsafeReindex( OpenSearchResourceRunner<UnsafeReindex> runner ) : Migration
 {
     public override Task UpAsync( CancellationToken cancellationToken = default )
-        => runner.StatementsFromAsync( "statements.json", cancellationToken );
+        => runner.StatementsFromAsync( "statements.pql", cancellationToken );
 }

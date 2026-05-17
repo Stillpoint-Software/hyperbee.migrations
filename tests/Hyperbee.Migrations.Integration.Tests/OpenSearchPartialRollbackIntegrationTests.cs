@@ -144,6 +144,36 @@ public class OpenSearchPartialRollbackIntegrationTests
         Assert.IsFalse( await IndexExistsAsync( _charlieIndex ) );
     }
 
+    // ---- .pql down-script path: dispatched in WRITTEN order ----
+
+    [TestMethod]
+    [TestCategory( "OpenSearch" )]
+    [TestCategory( "Phase2" )]
+    [TestCategory( "R-19" )]
+    public async Task RollbackFromScript_PqlDownScript_ExecutesInWrittenOrder()
+    {
+        // The recommended .pql two-file model: the down script is authored as
+        // a normal provider script and dispatched IN WRITTEN ORDER (the author
+        // owns the teardown sequence), unlike the legacy .statements.json form
+        // which auto-reverses per-entry `rollback` fields. Here the down
+        // script drops all three pre-created indices; IF EXISTS keeps it
+        // idempotent. R-19 partial-rollback ledger semantics are preserved
+        // (covered by the failure-path JSON test above; this asserts the
+        // happy-path script wiring end-to-end against a real cluster).
+        var script = $"""
+            -- teardown for the simulated Up; explicit author-owned order
+            DROP INDEX {_charlieIndex} IF EXISTS;
+            DROP INDEX {_bravoIndex} IF EXISTS;
+            DROP INDEX {_alphaIndex} IF EXISTS;
+            """;
+
+        await _runner.RollbackStatementsFromScriptAsync( script, _recordId );
+
+        Assert.IsFalse( await IndexExistsAsync( _alphaIndex ) );
+        Assert.IsFalse( await IndexExistsAsync( _bravoIndex ) );
+        Assert.IsFalse( await IndexExistsAsync( _charlieIndex ) );
+    }
+
     // ---- R-24c (n) keystone: partial rollback writes ledger correctly ----
 
     [TestMethod]

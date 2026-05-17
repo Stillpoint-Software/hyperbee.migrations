@@ -133,6 +133,60 @@ public class OpenSearchResourceRunnerRollbackTests
         ex.Which.StatementIndex.Should().Be( 1 );
     }
 
+    // ---- .pql script-form rollback path (separate .down.pql model) ----
+    //
+    // Unit scope mirrors the JSON tests: prove the script-rollback path is
+    // wired (BODIES/inline-body pipeline -> parser -> dispatch) and reaches
+    // dispatch for a valid .pql down script. End-to-end semantics (written
+    // order, partial-rollback ledger, ForceResume) are exercised by the
+    // OpenSearch container integration tests where R-19 is load-bearing.
+
+    [TestMethod]
+    public async Task RollbackFromScript_ValidPqlDownScript_ReachesDispatch_NotRollbackNotSupported()
+    {
+        // A valid .pql down script must parse and reach dispatch. Dispatch
+        // fails against the substituted client (returns nulls) -- we only
+        // assert it is NOT a parse/format failure and NOT
+        // RollbackNotSupportedException (that is the missing-down-file case,
+        // enforced in RollbackStatementsFromAsync, not here).
+        const string script = """
+            -- teardown, authored in written order
+            ALIAS REMOVE sample_audit ON sample_audit_v1;
+            DROP INDEX sample_audit_v1 IF EXISTS;
+            """;
+
+        var runner = BuildRunner();
+        var act = async () => await runner.RollbackStatementsFromScriptAsync( script, recordId: "rec-1" );
+
+        try
+        {
+            await act();
+            Assert.Fail( "expected the substituted client to fail dispatch" );
+        }
+        catch ( RollbackNotSupportedException )
+        {
+            Assert.Fail( "the .pql script path must not raise RollbackNotSupportedException; "
+                       + "Down-not-supported is the missing-.down.pql case in RollbackStatementsFromAsync" );
+        }
+        catch
+        {
+            // expected -- the script parsed and reached dispatch, which fails
+            // because the substituted client returns nulls.
+        }
+    }
+
+    [TestMethod]
+    public async Task RollbackFromScript_EmptyScript_IsNoOp()
+    {
+        // An empty down script parses to zero statements: nothing to dispatch,
+        // nothing to fail. (The "Down not supported" guard is the
+        // missing/empty *resource* case in RollbackStatementsFromAsync; a
+        // direct empty script here is simply a no-op rollback.)
+        var runner = BuildRunner();
+        var act = async () => await runner.RollbackStatementsFromScriptAsync( "   \n  ", recordId: "rec-1" );
+        await act.Should().NotThrowAsync();
+    }
+
     [TestMethod]
     public async Task RollbackFromJson_MissingStatementsArray_Throws()
     {

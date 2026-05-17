@@ -1,0 +1,8 @@
+-- Reversible migration (Down). Authored teardown sequence for 7000.
+-- The .pql down script dispatches IN WRITTEN ORDER, so the statements are
+-- written here in reverse of Up: drop the alias first, then the index.
+-- (The legacy .statements.json form auto-reverses per-entry rollbacks;
+-- the .pql form makes the teardown order explicit and author-owned.)
+
+ALIAS REMOVE sample_audit ON sample_audit_v1;
+DROP INDEX sample_audit_v1 IF EXISTS;

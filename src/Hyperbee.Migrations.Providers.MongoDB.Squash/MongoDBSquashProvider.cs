@@ -15,7 +15,7 @@ public sealed class MongoDBSquashProvider : ISquashProvider
     private readonly IEphemeralProvisioner _provisioner;
 
     public string ProviderId => "mongodb";
-    public string SquashFileExtension => ".statements";
+    public string SquashFileExtension => ".pql";
 
     public MongoDBSquashProvider()
         : this( provisioner: null )

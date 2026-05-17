@@ -1,0 +1,11 @@
+-- WHEN VERSION conditional execution.
+-- Authored in the recommended .pql script form (multi-statement, semicolon-
+-- terminated). The legacy .statements.json form remains supported for
+-- backward compatibility but is not the recommended way to author new
+-- migrations.
+
+WHEN VERSION >= '2.10' CREATE INDEX sample_v210_only IF NOT EXISTS WITH BODY {
+  "settings": { "number_of_shards": 1, "number_of_replicas": 0 }
+};
+
+WHEN VERSION < '2.0' DROP INDEX sample_legacy_pre_2x IF EXISTS;

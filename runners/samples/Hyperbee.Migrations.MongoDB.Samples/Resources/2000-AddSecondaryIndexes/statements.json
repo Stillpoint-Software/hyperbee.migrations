@@ -1,9 +1,0 @@
-{
-  "statements": [
-    { "statement": "CREATE UNIQUE INDEX idx_users_email ON sample.users (email)" },
-    { "statement": "CREATE INDEX idx_users_active ON sample.users (active)" },
-    { "statement": "CREATE INDEX idx_users_role ON sample.users (role)" },
-    { "statement": "CREATE INDEX idx_products_category ON sample.products (category)" },
-    { "statement": "CREATE INDEX idx_products_price ON sample.products (price)" }
-  ]
-}

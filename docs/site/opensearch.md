@@ -140,7 +140,7 @@ Durations use `<integer><s|m|h>` (e.g., `30s`, `5m`, `2h`). Pure integers are re
 
 ### Statement file format
 
-The runner accepts two file shapes. The script form (`.statements`) is the recommended default for new migrations (see [Resource migrations](resource-migrations.md)); the JSON-array form (`.statements.json`) is the original wrapper and is supported indefinitely. OpenSearch's script form adds two affordances over the universal shape: a `BODIES { ... }` header block that declares named bodies referenced by `$name`, and inline `WITH BODY { ... }` brace-balanced bodies that the splitter consumes as opaque blocks (semicolons inside the body are NOT statement terminators).
+The runner accepts two file shapes. The script form (`.pql`) is the recommended default for new migrations (see [Resource migrations](resource-migrations.md)); the JSON-array form (`.statements.json`) is the original wrapper and is supported indefinitely. OpenSearch's script form adds two affordances over the universal shape: a `BODIES { ... }` header block that declares named bodies referenced by `$name`, and inline `WITH BODY { ... }` brace-balanced bodies that the splitter consumes as opaque blocks (semicolons inside the body are NOT statement terminators). Reversible migrations pair `<name>.pql` with a sibling `<name>.down.pql` Down script (see [Resource migrations](resource-migrations.md)).
 
 Script form (`Resources/1000-CreateInitialIndex/statements`):
 

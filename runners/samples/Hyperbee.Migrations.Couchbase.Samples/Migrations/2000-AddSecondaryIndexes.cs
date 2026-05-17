@@ -9,7 +9,7 @@ public class AddSecondaryIndexes( CouchbaseResourceRunner<AddSecondaryIndexes> r
     {
         // create secondary GSI indexes on users and products
         await resourceRunner.StatementsFromAsync( [
-            "sample/statements.json"
+            "sample/statements.pql"
         ], cancellationToken );
     }
 }

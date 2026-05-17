@@ -1,0 +1,16 @@
+-- ISM policy creation + attachment to existing indices.
+-- Authored in the recommended .pql script form (multi-statement, semicolon-
+-- terminated). The legacy .statements.json form remains supported for
+-- backward compatibility but is not the recommended way to author new
+-- migrations.
+
+-- Inline body - small index settings tied to a single statement.
+CREATE INDEX sample_metrics-2026.01.01 IF NOT EXISTS WITH BODY {
+  "settings": { "number_of_shards": 1, "number_of_replicas": 0 }
+};
+
+-- Form 1 - direct file reference. Real production ISM policies are large
+-- enough that file-based is the right default.
+CREATE POLICY sample_hot_warm_cold WITH BODY @hot-warm-cold-policy.json;
+
+APPLY POLICY sample_hot_warm_cold TO sample_metrics-*;

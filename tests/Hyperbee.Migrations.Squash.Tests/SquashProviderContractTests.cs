@@ -34,7 +34,7 @@ public class SquashProviderContractTests
     {
         var provider = new AerospikeSquashProvider();
         provider.ProviderId.Should().Be( "aerospike" );
-        provider.SquashFileExtension.Should().Be( ".statements" );
+        provider.SquashFileExtension.Should().Be( ".pql" );
         provider.ScanSource( null! ).Should().BeEmpty();
         provider.ScanSource( "" ).Should().BeEmpty();
     }
@@ -44,7 +44,7 @@ public class SquashProviderContractTests
     {
         var provider = new OpenSearchSquashProvider();
         provider.ProviderId.Should().Be( "opensearch" );
-        provider.SquashFileExtension.Should().Be( ".statements" );
+        provider.SquashFileExtension.Should().Be( ".pql" );
         provider.ScanSource( null! ).Should().BeEmpty();
         provider.ScanSource( "" ).Should().BeEmpty();
     }
@@ -54,7 +54,7 @@ public class SquashProviderContractTests
     {
         var provider = new MongoDBSquashProvider();
         provider.ProviderId.Should().Be( "mongodb" );
-        provider.SquashFileExtension.Should().Be( ".statements" );
+        provider.SquashFileExtension.Should().Be( ".pql" );
         provider.ScanSource( null! ).Should().BeEmpty();
         provider.ScanSource( "" ).Should().BeEmpty();
     }
@@ -64,7 +64,7 @@ public class SquashProviderContractTests
     {
         var provider = new CouchbaseSquashProvider();
         provider.ProviderId.Should().Be( "couchbase" );
-        provider.SquashFileExtension.Should().Be( ".statements" );
+        provider.SquashFileExtension.Should().Be( ".pql" );
         provider.ScanSource( null! ).Should().BeEmpty();
         provider.ScanSource( "" ).Should().BeEmpty();
     }

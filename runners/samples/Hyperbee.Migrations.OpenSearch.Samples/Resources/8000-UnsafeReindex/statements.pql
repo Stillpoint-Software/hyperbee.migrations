@@ -1,0 +1,16 @@
+-- REINDEX UNSAFE("...") - the explicit-justification idiom.
+-- Authored in the recommended .pql script form (BODIES header + multi-
+-- statement, semicolon-terminated). The legacy .statements.json form remains
+-- supported for backward compatibility but is not the recommended way to
+-- author new migrations.
+
+BODIES {
+  idx: {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+    "mappings": { "properties": { "id": { "type": "keyword" } } }
+  }
+}
+
+CREATE INDEX sample_seed_src IF NOT EXISTS WITH BODY $idx;
+CREATE INDEX sample_seed_dst IF NOT EXISTS WITH BODY $idx;
+REINDEX UNSAFE("destination is a fresh index that will be discarded after this seed run; overwrite-on-retry is intended") FROM sample_seed_src TO sample_seed_dst;

@@ -134,6 +134,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # Cap concurrent jobs so the 18-cell matrix does not fire ~36
+      # simultaneous mcr.microsoft.com base-image pulls from GitHub's
+      # egress at once. That synchronized burst trips Azure Front Door's
+      # WAF in front of MCR ("The request is blocked" / Ref A/B/C), which
+      # surfaced as an instant Testcontainers image-pull failure. Combined
+      # with the bounded pre-pull step below it removes the failure class.
+      max-parallel: 4
       matrix:
         framework: [net8.0, net9.0, net10.0]
         provider: [postgres, aerospike, mongodb, opensearch, couchbase, multi-provider]
@@ -171,6 +178,30 @@ jobs:
             10.0.x
             9.0.x
             8.0.x
+
+      - name: Warm MCR base images (bounded retry, off the test hot path)
+        # The per-provider runner Dockerfiles begin with
+        # `FROM mcr.microsoft.com/dotnet/{sdk,runtime}:10.0`, which
+        # Testcontainers builds at test time. GitHub-hosted runners do not
+        # pre-cache these images, so the pull happens inside the test and a
+        # transient Azure-Front-Door block becomes an instant, unrecoverable
+        # test failure. Pull them here with bounded exponential backoff so
+        # (a) a throttle window is ridden out as a retryable workflow step,
+        # and (b) the subsequent Testcontainers build hits the local Docker
+        # cache instead of re-pulling. Pair with strategy.max-parallel above.
+        run: |
+          set -u
+          for img in mcr.microsoft.com/dotnet/sdk:10.0 mcr.microsoft.com/dotnet/runtime:10.0; do
+            n=0
+            until docker pull "$img"; do
+              n=$((n+1))
+              if [ "$n" -ge 5 ]; then
+                echo "::error::Failed to pull $img after $n attempts (MCR/AFD block?)."
+                exit 1
+              fi
+              sleep $((n * 15))
+            done
+          done
 
       - name: Restore + Build solution (EnableIntegrationTests)
         # Whole-solution build is required: CliBinaryEndToEndTests spawns

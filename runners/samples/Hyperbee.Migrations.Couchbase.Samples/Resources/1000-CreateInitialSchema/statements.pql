@@ -1,0 +1,7 @@
+-- Initial schema: create the sample bucket.
+-- Authored in the recommended .pql script form (multi-statement, comments,
+-- semicolon-terminated). The legacy .statements.json form remains supported
+-- for backward compatibility but is not the recommended way to author new
+-- migrations.
+
+CREATE BUCKET `sample` TYPE Couchbase RAMQUOTA 100 FLUSH ENABLED;

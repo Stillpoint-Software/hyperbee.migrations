@@ -2,5 +2,9 @@
   "chat.tools.terminal.autoApprove": {
     "dotnet add": true,
     "dotnet test": true
+  },
+  "//files.associations": "The .pql script form has a provider-specific grammar (no single standard). SQL highlighting is the closest generic fit for the CREATE/DROP/ALIAS/index DDL these scripts contain, and matches the Postgres .sql experience.",
+  "files.associations": {
+    "*.pql": "sql"
   }
 }

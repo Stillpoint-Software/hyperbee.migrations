@@ -5,39 +5,41 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="Resources\1000-CreateInitialIndex\statements.json" />
-    <None Remove="Resources\2000-AliasSwapReindexHandComposed\statements.json" />
-    <None Remove="Resources\3000-ComponentAndIndexTemplate\statements.json" />
+    <None Remove="Resources\1000-CreateInitialIndex\statements.pql" />
+    <None Remove="Resources\2000-AliasSwapReindexHandComposed\statements.pql" />
+    <None Remove="Resources\3000-ComponentAndIndexTemplate\statements.pql" />
     <None Remove="Resources\3000-ComponentAndIndexTemplate\bodies\common-mappings-component.json" />
-    <None Remove="Resources\4000-IsmPolicyAndApply\statements.json" />
+    <None Remove="Resources\4000-IsmPolicyAndApply\statements.pql" />
     <None Remove="Resources\4000-IsmPolicyAndApply\hot-warm-cold-policy.json" />
-    <None Remove="Resources\5000-ConditionalVersion\statements.json" />
-    <None Remove="Resources\6000-MigrateIndexComposite\statements.json" />
-    <None Remove="Resources\7000-ReversibleAlias\statements.json" />
-    <None Remove="Resources\8000-UnsafeReindex\statements.json" />
-    <None Remove="Resources\9000-ForwardAttachmentLifecycle\statements.json" />
+    <None Remove="Resources\5000-ConditionalVersion\statements.pql" />
+    <None Remove="Resources\6000-MigrateIndexComposite\statements.pql" />
+    <None Remove="Resources\7000-ReversibleAlias\statements.pql" />
+    <None Remove="Resources\7000-ReversibleAlias\statements.down.pql" />
+    <None Remove="Resources\8000-UnsafeReindex\statements.pql" />
+    <None Remove="Resources\9000-ForwardAttachmentLifecycle\statements.pql" />
     <None Remove="Resources\9000-ForwardAttachmentLifecycle\bodies\component.json" />
     <None Remove="Resources\9000-ForwardAttachmentLifecycle\bodies\template.json" />
     <None Remove="Resources\9000-ForwardAttachmentLifecycle\bodies\policy.json" />
-    <None Remove="Resources\9001-OngoingPolicyReconciliation\statements.json" />
+    <None Remove="Resources\9001-OngoingPolicyReconciliation\statements.pql" />
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Resources\1000-CreateInitialIndex\statements.json" />
-    <EmbeddedResource Include="Resources\2000-AliasSwapReindexHandComposed\statements.json" />
-    <EmbeddedResource Include="Resources\3000-ComponentAndIndexTemplate\statements.json" />
+    <EmbeddedResource Include="Resources\1000-CreateInitialIndex\statements.pql" />
+    <EmbeddedResource Include="Resources\2000-AliasSwapReindexHandComposed\statements.pql" />
+    <EmbeddedResource Include="Resources\3000-ComponentAndIndexTemplate\statements.pql" />
     <EmbeddedResource Include="Resources\3000-ComponentAndIndexTemplate\bodies\common-mappings-component.json" />
-    <EmbeddedResource Include="Resources\4000-IsmPolicyAndApply\statements.json" />
+    <EmbeddedResource Include="Resources\4000-IsmPolicyAndApply\statements.pql" />
     <EmbeddedResource Include="Resources\4000-IsmPolicyAndApply\hot-warm-cold-policy.json" />
-    <EmbeddedResource Include="Resources\5000-ConditionalVersion\statements.json" />
-    <EmbeddedResource Include="Resources\6000-MigrateIndexComposite\statements.json" />
-    <EmbeddedResource Include="Resources\7000-ReversibleAlias\statements.json" />
-    <EmbeddedResource Include="Resources\8000-UnsafeReindex\statements.json" />
-    <EmbeddedResource Include="Resources\9000-ForwardAttachmentLifecycle\statements.json" />
+    <EmbeddedResource Include="Resources\5000-ConditionalVersion\statements.pql" />
+    <EmbeddedResource Include="Resources\6000-MigrateIndexComposite\statements.pql" />
+    <EmbeddedResource Include="Resources\7000-ReversibleAlias\statements.pql" />
+    <EmbeddedResource Include="Resources\7000-ReversibleAlias\statements.down.pql" />
+    <EmbeddedResource Include="Resources\8000-UnsafeReindex\statements.pql" />
+    <EmbeddedResource Include="Resources\9000-ForwardAttachmentLifecycle\statements.pql" />
     <EmbeddedResource Include="Resources\9000-ForwardAttachmentLifecycle\bodies\component.json" />
     <EmbeddedResource Include="Resources\9000-ForwardAttachmentLifecycle\bodies\template.json" />
     <EmbeddedResource Include="Resources\9000-ForwardAttachmentLifecycle\bodies\policy.json" />
-    <EmbeddedResource Include="Resources\9001-OngoingPolicyReconciliation\statements.json" />
+    <EmbeddedResource Include="Resources\9001-OngoingPolicyReconciliation\statements.pql" />
   </ItemGroup>
 
   <ItemGroup>

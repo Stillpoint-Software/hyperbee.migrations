@@ -1,6 +1,9 @@
--- Phase 4 sample: secondary GSI indexes for the application's queries.
--- Demonstrates the .statements script form per ADR-0022.
-
+-- Secondary GSI indexes for the application's queries.
+-- Authored in the recommended .pql script form (multi-statement, comments,
+-- semicolon-terminated). The legacy .statements.json form remains supported
+-- for backward compatibility but is not the recommended way to author new
+-- migrations.
+--
 -- Deferred build: each CREATE INDEX adds the index but doesn't build it
 -- yet. The trailing BUILD INDEX kicks all deferred indexes off in one batch
 -- so we get parallelism on the cluster instead of one-at-a-time.

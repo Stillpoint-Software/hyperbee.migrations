@@ -9,7 +9,7 @@ public class CreateInitialSchema( AerospikeResourceRunner<CreateInitialSchema> r
     {
         // create initial indexes (WAIT ensures indexes are built before proceeding)
         await resourceRunner.StatementsFromAsync( [
-            "statements.json"
+            "statements.pql"
         ], cancellationToken );
 
         // seed initial user data

@@ -1,0 +1,10 @@
+-- Ongoing policy reconciliation.
+-- Authored in the recommended .pql script form (single statement, semicolon-
+-- terminated). The legacy .statements.json form remains supported for
+-- backward compatibility but is not the recommended way to author new
+-- migrations.
+
+-- Re-apply the lifecycle policy to every matching index. The wildcard adapts
+-- to current cluster state; ISM's change_policy is idempotent so re-running
+-- on every startup (this migration is journal: false) is cheap.
+APPLY POLICY sample_app_events_lifecycle TO sample_app_events-*;

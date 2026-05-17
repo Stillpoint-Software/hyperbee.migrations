@@ -1,0 +1,11 @@
+-- Secondary indexes for the application's queries.
+-- Authored in the recommended .pql script form (multi-statement, comments,
+-- semicolon-terminated). The legacy .statements.json form remains supported
+-- for backward compatibility but is not the recommended way to author new
+-- migrations.
+
+CREATE INDEX WAIT idx_users_role ON test.users (role) STRING;
+
+-- Product-search indexes for category browsing and price filters.
+CREATE INDEX WAIT idx_products_category ON test.products (category) STRING;
+CREATE INDEX WAIT idx_products_price    ON test.products (price)    NUMERIC;

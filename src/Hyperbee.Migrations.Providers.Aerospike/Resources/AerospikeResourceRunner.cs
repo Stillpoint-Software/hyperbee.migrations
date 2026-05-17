@@ -55,7 +55,7 @@ public class AerospikeResourceRunner<TMigration>
 
                 if ( format == ResourceFormat.JsonArray )
                 {
-                    // legacy .statements.json shape (per ADR-0002)
+                    // legacy .statements.json JSON-array shape (backward compat)
                     var node = JsonNode.Parse( content );
                     var statements = node!["statements"]!
                         .AsArray()
@@ -67,7 +67,7 @@ public class AerospikeResourceRunner<TMigration>
                 }
                 else
                 {
-                    // script form per ADR-0022 (.statements)
+                    // recommended .pql / .sql script form
                     foreach ( var item in parser.ParseScript( content ) )
                         yield return item;
                 }

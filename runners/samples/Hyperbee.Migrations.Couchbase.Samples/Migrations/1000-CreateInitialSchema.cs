@@ -9,8 +9,8 @@ public class CreateInitialSchema( CouchbaseResourceRunner<CreateInitialSchema> r
     {
         // create the sample bucket and primary index
         await resourceRunner.StatementsFromAsync( [
-            "statements.json",
-            "sample/statements.json"
+            "statements.pql",
+            "sample/statements.pql"
         ], cancellationToken );
 
         // seed initial user documents

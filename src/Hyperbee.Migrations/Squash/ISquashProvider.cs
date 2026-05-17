@@ -48,10 +48,9 @@ public interface ISquashProvider
 
     /// <summary>
     /// File extension (including the leading dot) for the emitted squash
-    /// content: <c>.sql</c> for Postgres, <c>.statements</c> for the four
-    /// NoSQL providers (per ADR-0022 script-form). Drives the squash output
-    /// filename and replaces the prior hardcoded <c>.sql</c> assumption
-    /// (per R-5).
+    /// content: <c>.sql</c> for Postgres, <c>.pql</c> for the four NoSQL
+    /// providers (the recommended script form). Drives the squash output
+    /// filename.
     /// </summary>
     string SquashFileExtension { get; }
 

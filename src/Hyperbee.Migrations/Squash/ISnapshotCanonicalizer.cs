@@ -31,10 +31,9 @@ public interface ISnapshotCanonicalizer
     string Canonicalize( string snapshot );
 
     /// <summary>
-    /// Emit canonical script-form output of the squash content (per ADR-0022)
-    /// for embedding into the generated migration's <c>.statements</c> /
-    /// <c>.sql</c> resource file. Must be byte-stable for the C12
-    /// determinism gate.
+    /// Emit canonical script-form output of the squash content for embedding
+    /// into the generated migration's <c>.pql</c> / <c>.sql</c> resource
+    /// file. Must be byte-stable for the determinism gate.
     /// </summary>
     string EmitScript( string canonicalContent );
 }

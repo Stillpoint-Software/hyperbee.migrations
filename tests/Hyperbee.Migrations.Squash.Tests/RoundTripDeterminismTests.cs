@@ -6,7 +6,7 @@ namespace Hyperbee.Migrations.Squash.Tests;
 
 // Phase 8 Task 8.3 — round-trip determinism gate per ADR-0022.
 //
-// Verifies that for the universal .statements script form, the canonical
+// Verifies that for the universal .pql script form, the canonical
 // pipeline parse -> re-emit -> re-parse produces an AST-equivalent result
 // (same statement texts, in the same order, with the same per-provider
 // classification).

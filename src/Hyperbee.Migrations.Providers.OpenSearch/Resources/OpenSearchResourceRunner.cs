@@ -323,17 +323,125 @@ public class OpenSearchResourceRunner<TMigration> where TMigration : Migration
         using var lts = CancellationTokenSource.CreateLinkedTokenSource( tts.Token, cancellationToken );
         var operationCancelToken = lts.Token;
 
-        // Roll back resources in REVERSE order; within each resource, also
-        // reverse the statement order. A migration that pulls multiple
-        // resources in Up order [a, b, c] is undone as [c-reversed, b-reversed,
-        // a-reversed] so the cluster state retraces the path it came in on.
+        // Roll back resources in REVERSE order. Per-resource behavior depends
+        // on the resource form:
+        //   * legacy `.statements.json` -> reverse the per-entry `rollback`
+        //     fields (auto-reverse; back-compat, unchanged).
+        //   * `.pql` down script -> dispatch the script IN WRITTEN ORDER (the
+        //     author authors the explicit teardown sequence).
+        // A migration that pulls multiple down resources in [a, b, c] order is
+        // undone as [c, b, a] so the cluster retraces the path it came in on.
         for ( var ri = resourceNames.Length - 1; ri >= 0; ri-- )
         {
             operationCancelToken.ThrowIfCancellationRequested();
 
-            var json = ResourceHelper.GetResource<TMigration>( $"{migrationName}.{resourceNames[ri]}" );
-            await RollbackStatementsFromJsonAsync( json, recordId, operationCancelToken ).ConfigureAwait( false );
+            var resourceName = resourceNames[ri];
+
+            string content;
+            try
+            {
+                content = ResourceHelper.GetResource<TMigration>( $"{migrationName}.{resourceName}" );
+            }
+            catch ( Exception ex )
+            {
+                throw new RollbackNotSupportedException( ri,
+                    $"Down resource `{resourceName}` for `{migrationName}` was not found ({ex.Message}). " +
+                    $"A reversible migration declares a Down script (e.g. a `.down.pql` file) and embeds it; " +
+                    $"if this migration is irreversible, do not call RollbackStatementsFromAsync from DownAsync." );
+            }
+
+            if ( string.IsNullOrWhiteSpace( content ) )
+                throw new RollbackNotSupportedException( ri,
+                    $"Down resource `{resourceName}` for `{migrationName}` is empty." );
+
+            if ( ResourceFormatDetector.Classify( resourceName ) == ResourceFormat.JsonArray )
+                await RollbackStatementsFromJsonAsync( content, recordId, operationCancelToken ).ConfigureAwait( false );
+            else
+                await RollbackStatementsFromScriptAsync( content, recordId, operationCancelToken ).ConfigureAwait( false );
         }
+    }
+
+    /// <summary>
+    /// Down path for the recommended `.pql` script form: a dedicated down
+    /// script (e.g. <c>statements.down.pql</c>) authored as a normal
+    /// provider script. Mirrors <see cref="RunStatementsFromScriptAsync"/>'s
+    /// BODIES-header / inline-body pipeline so <c>WITH BODY</c> works in the
+    /// down script too, and applies the R-19 partial-rollback ledger
+    /// semantics symmetric with the JSON rollback path. Statements dispatch
+    /// IN WRITTEN ORDER -- the author owns the teardown sequence (this is the
+    /// deliberate difference from the legacy `.statements.json` form, which
+    /// auto-reverses per-entry `rollback` fields).
+    /// </summary>
+    public async Task RollbackStatementsFromScriptAsync( string script, string recordId, CancellationToken cancellationToken = default )
+    {
+        var headerResult = Internal.Grammar.BodiesHeaderExtractor.Extract( script );
+        var inlineResult = Internal.Grammar.InlineBodyExtractor.Extract( headerResult.RemainingScript );
+
+        var mergedBodies = new Dictionary<string, Internal.Grammar.BodiesHeaderExtractor.BodiesEntry>(
+            headerResult.Bodies, StringComparer.OrdinalIgnoreCase );
+        foreach ( var (name, entry) in inlineResult.SyntheticBodies )
+            mergedBodies[name] = entry;
+
+        var statements = _parser.ParseScript( inlineResult.RewrittenScript ).ToList();
+
+        for ( var i = 0; i < statements.Count; i++ )
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var ast = statements[i];
+            var resolvedBody = ResolveBodyForScript( ast, statementIndex: i, mergedBodies );
+
+            var context = new StatementContext
+            {
+                Client = _client,
+                Options = _options,
+                TimeProvider = _timeProvider,
+                Logger = _logger,
+                ResolvedBody = resolvedBody,
+                CancellationToken = cancellationToken
+            };
+
+            _logger.LogInformation( "Rollback dispatch (script, written order) {idx}: {verb}", i, ast.Verb );
+
+            StatementResult result;
+            try
+            {
+                result = await _dispatcher.DispatchAsync( ast, context ).ConfigureAwait( false );
+            }
+            catch ( Exception ex )
+            {
+                await WritePartialRollbackIfAvailableAsync( recordId, i, ex.Message ).ConfigureAwait( false );
+                throw new MigrationException(
+                    $"Rollback script statement {i} ({ast.Verb}) threw: {ex.Message}. " +
+                    $"Ledger marked `partially_rolled_back` at index {i}; subsequent runs require ForceResume.",
+                    ex );
+            }
+
+            if ( !result.IsSuccess )
+            {
+                var reason = result.Detail ?? "unknown failure";
+                await WritePartialRollbackIfAvailableAsync( recordId, i, reason ).ConfigureAwait( false );
+
+                throw new MigrationException(
+                    $"Rollback script statement {i} ({ast.Verb}) failed: {reason}. " +
+                    $"Ledger marked `partially_rolled_back` at index {i}; subsequent runs require ForceResume.",
+                    result.Exception ?? new InvalidOperationException( reason ) );
+            }
+
+            _logger.LogInformation(
+                "Rollback script statement {idx} {outcome}: {detail}",
+                i, result.Outcome, result.Detail ?? "(no detail)" );
+        }
+
+        await _dispatcher.FlushImplicitWaitsAsync( new StatementContext
+        {
+            Client = _client,
+            Options = _options,
+            TimeProvider = _timeProvider,
+            Logger = _logger,
+            ResolvedBody = null,
+            CancellationToken = cancellationToken
+        } ).ConfigureAwait( false );
     }
 
     /// <summary>

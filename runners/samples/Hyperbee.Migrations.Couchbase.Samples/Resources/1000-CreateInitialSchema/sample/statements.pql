@@ -1,0 +1,8 @@
+-- Primary index for the sample bucket.
+-- Authored in the recommended .pql script form (multi-statement, comments,
+-- semicolon-terminated). Deferred build: the primary index is created
+-- deferred, then BUILD INDEX kicks off all deferred indexes in one batch.
+
+CREATE PRIMARY INDEX `idx_sample_primary` ON `sample` WITH {'defer_build':true};
+
+BUILD INDEX ON `sample` ( ( SELECT RAW name FROM system:indexes WHERE keyspace_id = 'sample' AND state = 'deferred' ));

@@ -1,14 +1,29 @@
-﻿namespace Hyperbee.Migrations.Resources;
+namespace Hyperbee.Migrations.Resources;
 
 /// <summary>
-/// Maps a resource path to its <see cref="ResourceFormat"/> per ADR-0022.
+/// Maps a resource path to its <see cref="ResourceFormat"/>.
 /// Per-provider <c>*ResourceRunner</c> types use this to branch between the
-/// JSON-array loader (legacy) and the script loader (new).
+/// JSON-array loader (legacy) and the script loader (the recommended form).
 /// </summary>
 /// <remarks>
-/// Extension precedence: <c>.statements.json</c> takes priority over
-/// <c>.statements</c> so the longer-suffix match wins (e.g., a hypothetical
-/// <c>foo.statements.json</c> classifies as JsonArray, not Script).
+/// <para>
+/// Recognized forms:
+/// <list type="bullet">
+///   <item><c>.pql</c> — the recommended multi-statement script form for all
+///         providers (Provider Query Language; the grammar itself is
+///         provider-specific).</item>
+///   <item><c>.sql</c> — Postgres native; equivalent to <c>.pql</c> for the
+///         Postgres provider.</item>
+///   <item><c>.statements.json</c> (and a bare <c>statements.json</c>) — the
+///         legacy v2 JSON-array container, retained for backward
+///         compatibility only.</item>
+/// </list>
+/// </para>
+/// <para>
+/// The <c>.json</c> branch is evaluated first so a compound
+/// <c>*.statements.json</c> (or a bare <c>statements.json</c>) classifies as
+/// <see cref="ResourceFormat.JsonArray"/> and never falls through.
+/// </para>
 /// </remarks>
 public static class ResourceFormatDetector
 {
@@ -17,10 +32,11 @@ public static class ResourceFormatDetector
         if ( string.IsNullOrEmpty( resourcePath ) )
             throw new ArgumentException( "Resource path cannot be null or empty.", nameof( resourcePath ) );
 
-        // .statements.json is a compound extension; check the inner one first so a
-        // bare `statements.json` (no leading dot) classifies correctly.
         var ext = Path.GetExtension( resourcePath );
 
+        // Legacy JSON-array container. `.statements.json` is a compound
+        // extension; check the inner one (or a bare `statements.json`) so it
+        // classifies before the script branch.
         if ( ext.Equals( ".json", StringComparison.OrdinalIgnoreCase ) )
         {
             var inner = Path.GetExtension( Path.GetFileNameWithoutExtension( resourcePath ) );
@@ -31,7 +47,8 @@ public static class ResourceFormatDetector
             }
         }
 
-        if ( ext.Equals( ".statements", StringComparison.OrdinalIgnoreCase )
+        // Recommended script form (.pql, universal) and Postgres-native .sql.
+        if ( ext.Equals( ".pql", StringComparison.OrdinalIgnoreCase )
              || ext.Equals( ".sql", StringComparison.OrdinalIgnoreCase ) )
         {
             return ResourceFormat.Script;
@@ -39,7 +56,8 @@ public static class ResourceFormatDetector
 
         throw new MigrationException(
             $"Unrecognized resource extension on `{resourcePath}`. " +
-            "Expected one of: .statements.json (legacy JSON-array), .statements (script form), .sql (Postgres native)." );
+            "Expected one of: .pql (recommended script form), .sql (Postgres native), " +
+            "or .statements.json (legacy JSON-array)." );
     }
 
     /// <summary>True if <paramref name="path"/> ends with <paramref name="suffix"/>, case-insensitively.</summary>

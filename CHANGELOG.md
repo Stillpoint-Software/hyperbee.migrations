@@ -38,11 +38,20 @@ Docker runtime cost.
   the strategy abstraction is only proven correct by being implemented
   against the full provider matrix. **Outcome:** the 5-interface contract
   held for all five providers without modification.
-- **Universal `.statements` script form** — alongside the legacy
-  `.statements.json` shape, all four NoSQL providers accept multi-statement
-  script files with `--`/`//`/`/* */` comments and `;` terminators. Postgres
-  treats `.statements` as an alias for `.sql`. Backward-compatible: existing
-  `.statements.json` files continue to apply unchanged.
+- **Universal `.pql` script form** — the recommended shape for resource
+  migrations. All four NoSQL providers accept multi-statement `.pql`
+  (*Provider Query Language*) files with `--`/`//`/`/* */` comments and
+  `;` terminators; Postgres accepts its native `.sql` and `.pql`. The
+  legacy `.statements.json` JSON-array form continues to apply unchanged
+  (backward-compatible, not recommended for new work).
+- **Reversible migrations via `.down.pql`** (OpenSearch) — pair a
+  `<name>.pql` Up script with a sibling `<name>.down.pql` Down script;
+  the down script is dispatched in written order (author-owned teardown),
+  preserving the R-19 partial-rollback ledger semantics. The legacy
+  per-entry `rollback` field in `.statements.json` (auto-reverse) remains
+  supported. Missing `.down.pql` ⇒ loud `RollbackNotSupportedException`
+  before any mutation. Squashes are up-only, so generated squashes carry
+  no down script.
 - **Fleet readiness gate** — the squash CLI refuses generation while any
   registered fleet member is mid-range (`MidRangeFleetException`), and the
   runner refuses a mid-range environment loudly at apply time
@@ -273,7 +282,7 @@ Docker runtime cost.
   `OpenSearchSquashProvider` spins ephemeral
   `opensearchproject/opensearch:2.18.0` containers via the generic
   `Testcontainers` package. Both route migration apply through the
-  discovered `IMigrationHost` and emit `.statements` script form.
+  discovered `IMigrationHost` and emit `.pql` script form.
   RB-3 per-provider readiness probes ship in both (Mongo:
   N1QL-style aggregation over the migration ledger collection;
   OpenSearch: `_search` against the ledger index extracting the max
@@ -293,8 +302,8 @@ Docker runtime cost.
   integration point.
 - **R-5 (output file extension)**: emitted squash artifact filename uses
   `ISquashProvider.SquashFileExtension` instead of a hardcoded `.sql`.
-  Postgres -> `.sql`; the four NoSQL providers -> `.statements`
-  (the script form).
+  Postgres -> `.sql`; the four NoSQL providers -> `.pql`
+  (the recommended script form).
 - **R-8 (per-provider source scanner dispatch)**: scanner dispatch routes
   through `ISquashProvider.ScanSource` instead of hardcoding
   `PostgresMigrationSourceScanner.Scan`. Each provider's package exposes
@@ -531,7 +540,7 @@ doc-accuracy, and dead-code items.
 ### Documentation
 
 - [Squashing migrations](docs/site/squashing-migrations.md) — the full operator guide
-- [Resource migrations](docs/site/resource-migrations.md) — the `.statements` script form
+- [Resource migrations](docs/site/resource-migrations.md) — the `.pql` script form + `.down.pql` reversibility
 - [Multi-provider hosts](docs/site/multi-provider-hosts.md)
 - [Upgrade guide v2 → v3](docs/guides/upgrading-from-v2.md)
 

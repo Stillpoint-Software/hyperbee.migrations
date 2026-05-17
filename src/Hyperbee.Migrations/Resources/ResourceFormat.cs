@@ -1,22 +1,23 @@
-﻿namespace Hyperbee.Migrations.Resources;
+namespace Hyperbee.Migrations.Resources;
 
 /// <summary>
-/// Resource-file content format. Per ADR-0022 the framework supports both the
-/// legacy JSON-array container (<c>.statements.json</c>) and the universal
-/// script form (<c>.statements</c> for the four NoSQL providers, <c>.sql</c>
-/// for Postgres). Both forms produce the same AST stream into a provider's
-/// dispatcher; the loader chooses by extension.
+/// Resource-file content format. The framework supports the recommended
+/// multi-statement script form (<c>.pql</c> for all providers; <c>.sql</c>
+/// is the Postgres-native equivalent) and the legacy v2 JSON-array container
+/// (<c>.statements.json</c>) for backward compatibility. Both forms produce
+/// the same AST stream into a provider's dispatcher; the loader chooses by
+/// extension.
 /// </summary>
 public enum ResourceFormat : byte
 {
     /// <summary>
     /// Legacy JSON-array container — `.statements.json`. Backward-compatible
-    /// with v2 resource migrations.
+    /// with v2 resource migrations; not the recommended form for new work.
     /// </summary>
     JsonArray = 0,
 
     /// <summary>
-    /// Universal script form — `.statements` (NoSQL providers) or `.sql`
+    /// Recommended script form — `.pql` (all providers) or `.sql`
     /// (Postgres native). Multi-statement bodies separated by `;` with
     /// `--`/`//`/`/* */` comments per the per-provider grammar.
     /// </summary>

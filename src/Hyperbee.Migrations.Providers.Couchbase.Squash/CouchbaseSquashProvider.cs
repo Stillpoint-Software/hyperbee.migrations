@@ -22,7 +22,7 @@ public sealed class CouchbaseSquashProvider : ISquashProvider
     private readonly IEphemeralProvisioner _provisioner;
 
     public string ProviderId => "couchbase";
-    public string SquashFileExtension => ".statements";
+    public string SquashFileExtension => ".pql";
 
     public CouchbaseSquashProvider()
         : this( provisioner: null )

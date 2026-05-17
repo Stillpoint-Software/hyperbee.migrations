@@ -1,7 +1,8 @@
--- Phase 4 sample: initial sample_users index with a tight strict mapping.
--- Demonstrates ADR-0022 script form with a BODIES { ... } header carrying
--- the index body. The .statements.json companion file (now superseded by
--- this script form) is preserved for backward compatibility.
+-- Initial sample_users index with a tight strict mapping.
+-- Authored in the recommended .pql script form (BODIES header carrying the
+-- index body, multi-statement, semicolon-terminated). The legacy
+-- .statements.json form remains supported for backward compatibility but is
+-- not the recommended way to author new migrations.
 
 BODIES {
   usersIndex: {

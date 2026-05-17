@@ -9,7 +9,7 @@ public class AddSecondaryIndexes( MongoDBResourceRunner<AddSecondaryIndexes> res
     {
         // create secondary indexes on users and products collections
         await resourceRunner.StatementsFromAsync( [
-            "statements.json"
+            "statements.pql"
         ], cancellationToken );
     }
 }

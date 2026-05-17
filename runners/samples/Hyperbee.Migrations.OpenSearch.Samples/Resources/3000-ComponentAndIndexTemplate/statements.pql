@@ -1,0 +1,30 @@
+-- Component template + composable index template.
+-- Authored in the recommended .pql script form (multi-statement, semicolon-
+-- terminated). The legacy .statements.json form remains supported for
+-- backward compatibility but is not the recommended way to author new
+-- migrations.
+
+-- Form 1 - named body as a file reference; the component body lives in its
+-- own file under bodies/.
+CREATE COMPONENT sample_common_mappings WITH BODY @bodies/common-mappings-component.json;
+
+-- Inline body - terse content tied to a single statement.
+CREATE COMPONENT sample_default_settings WITH BODY {
+  "template": {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 }
+  }
+};
+
+CREATE TEMPLATE sample_app_logs_template WITH BODY {
+  "index_patterns": ["sample_app_logs-*"],
+  "composed_of": ["sample_common_mappings", "sample_default_settings"],
+  "template": {
+    "mappings": {
+      "properties": {
+        "level": { "type": "keyword" },
+        "msg":   { "type": "text" }
+      }
+    }
+  },
+  "priority": 100
+};

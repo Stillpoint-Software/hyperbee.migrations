@@ -15,7 +15,7 @@ public sealed class OpenSearchSquashProvider : ISquashProvider
     private readonly IEphemeralProvisioner _provisioner;
 
     public string ProviderId => "opensearch";
-    public string SquashFileExtension => ".statements";
+    public string SquashFileExtension => ".pql";
 
     public OpenSearchSquashProvider()
         : this( provisioner: null )

@@ -3,18 +3,18 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <None Remove="Resources\1000-CreateInitialSchema\statements.json" />
-    <None Remove="Resources\1000-CreateInitialSchema\sample\statements.json" />
+    <None Remove="Resources\1000-CreateInitialSchema\statements.pql" />
+    <None Remove="Resources\1000-CreateInitialSchema\sample\statements.pql" />
     <None Remove="Resources\1000-CreateInitialSchema\sample\_default\ccuser001.json" />
     <None Remove="Resources\1000-CreateInitialSchema\sample\_default\ccuser002.json" />
-    <None Remove="Resources\2000-AddSecondaryIndexes\sample\statements.json" />
+    <None Remove="Resources\2000-AddSecondaryIndexes\sample\statements.pql" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Resources\1000-CreateInitialSchema\statements.json" />
-    <EmbeddedResource Include="Resources\1000-CreateInitialSchema\sample\statements.json" />
+    <EmbeddedResource Include="Resources\1000-CreateInitialSchema\statements.pql" />
+    <EmbeddedResource Include="Resources\1000-CreateInitialSchema\sample\statements.pql" />
     <EmbeddedResource Include="Resources\1000-CreateInitialSchema\sample\_default\ccuser001.json" />
     <EmbeddedResource Include="Resources\1000-CreateInitialSchema\sample\_default\ccuser002.json" />
-    <EmbeddedResource Include="Resources\2000-AddSecondaryIndexes\sample\statements.json" />
+    <EmbeddedResource Include="Resources\2000-AddSecondaryIndexes\sample\statements.pql" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Couchbase.Extensions.DependencyInjection"/>

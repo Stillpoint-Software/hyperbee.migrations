@@ -29,10 +29,21 @@ public class ScriptFormatTests
     }
 
     [TestMethod]
-    public void Detector_Statements_ClassifiesAsScript()
+    public void Detector_Pql_ClassifiesAsScript()
     {
-        ResourceFormatDetector.Classify( "create-indexes.statements" ).Should().Be( ResourceFormat.Script );
-        ResourceFormatDetector.Classify( "schema.statements" ).Should().Be( ResourceFormat.Script );
+        ResourceFormatDetector.Classify( "create-indexes.pql" ).Should().Be( ResourceFormat.Script );
+        ResourceFormatDetector.Classify( "schema.pql" ).Should().Be( ResourceFormat.Script );
+        ResourceFormatDetector.Classify( "MIGRATION.PQL" ).Should().Be( ResourceFormat.Script );
+    }
+
+    [TestMethod]
+    public void Detector_BareStatements_IsNotRecognized()
+    {
+        // The bare `.statements` script extension (v3.0 pre-release only,
+        // never shipped) was replaced by `.pql`. It must NOT classify as
+        // Script; only `.statements.json` (legacy JSON) is still honored.
+        var act = () => ResourceFormatDetector.Classify( "create-indexes.statements" );
+        act.Should().Throw<MigrationException>().WithMessage( "*Unrecognized resource extension*" );
     }
 
     [TestMethod]
@@ -43,10 +54,11 @@ public class ScriptFormatTests
     }
 
     [TestMethod]
-    public void Detector_StatementsJson_PrioritizedOverStatements()
+    public void Detector_StatementsJson_ClassifiesAsJsonArrayNotScript()
     {
-        // Longer-suffix-first prevents `.statements.json` from falling through
-        // to `.statements` (both substrings would match without precedence).
+        // The `.json` branch is evaluated first so a compound
+        // `*.statements.json` always classifies as the legacy JSON-array
+        // form and never falls through to the script branch.
         ResourceFormatDetector.Classify( "foo.statements.json" ).Should().Be( ResourceFormat.JsonArray );
     }
 

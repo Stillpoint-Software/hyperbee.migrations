@@ -117,18 +117,23 @@ The legacy JSON-sibling-property body (the back-compat "Form 0" from ADR-0017) i
 
 ### File extensions and resource discovery
 
-| Provider | Legacy extension | New extension | Rationale |
+| Provider | Legacy extension | Recommended extension | Rationale |
 |---|---|---|---|
-| Aerospike | `*.statements.json` | `*.statements` | Cross-provider symmetric |
-| Couchbase | `*.statements.json` | `*.statements` | Cross-provider symmetric |
-| MongoDB | `*.statements.json` | `*.statements` | Cross-provider symmetric |
-| OpenSearch | `*.statements.json` | `*.statements` | Cross-provider symmetric |
-| Postgres | `*.sql` | `*.sql` (unchanged) **AND** `*.statements` | Postgres native already script form; `.sql` continues to work |
+| Aerospike | `*.statements.json` | `*.pql` | Cross-provider symmetric |
+| Couchbase | `*.statements.json` | `*.pql` | Cross-provider symmetric |
+| MongoDB | `*.statements.json` | `*.pql` | Cross-provider symmetric |
+| OpenSearch | `*.statements.json` | `*.pql` | Cross-provider symmetric |
+| Postgres | `*.sql` | `*.sql` (native) **AND** `*.pql` | Postgres native already script form; `.sql` continues to work |
+
+`.pql` = *Provider Query Language*. The extension is deliberately
+grammar-neutral: each provider's statement grammar is provider-specific
+(N1QL, AQL, the OpenSearch DSL, Mongo-shell, SQL), so the extension names
+the *role* (provider migration script), not a single standard syntax.
 
 The resource loader detects format by extension:
 
-- `*.statements.json` → JSON-array loader (legacy)
-- `*.statements` → script loader (new)
+- `*.statements.json` → JSON-array loader (legacy, backward-compatible)
+- `*.pql` → script loader (recommended; all providers)
 - `*.sql` → script loader (Postgres native; semantics already match)
 
 Both loaders produce the same AST stream into the dispatcher. Single-pass detection at resource-iteration time; no per-statement dispatch on format.
@@ -144,7 +149,32 @@ Both loaders produce the same AST stream into the dispatcher. Single-pass detect
 | ADR-0002 (Resource Migration Pattern) | Amended (see "Relation to other ADRs"); the JSON-array form is no longer the only option but remains valid. |
 | ADR-0017 (Body-Source Grammar) | Amended; Form 0 (sibling-property) deprecated for new work but preserved for JSON-array form migrations. |
 
-**Squash CLI codegen emits script form.** Going forward, generated squashes use the new format regardless of source migrations' format. The C12 generation determinism gate (per ADR-0019 amendment A16) tests byte-stable script output.
+**Squash CLI codegen emits script form.** Generated squashes use `.pql`
+(four NoSQL providers) or `.sql` (Postgres) regardless of the source
+migrations' format. The generation determinism gate (ADR-0019) tests
+byte-stable script output.
+
+### Reversibility (`.down.pql`)
+
+Reversible resource migrations (OpenSearch R-19) use a **separate down
+script**: `UpAsync` loads `<name>.pql`; `DownAsync` loads a sibling
+`<name>.down.pql`. The down script is a normal provider script dispatched
+**in written order** — the author authors the explicit teardown sequence.
+This is the deliberate difference from the legacy `.statements.json`
+form, where each entry carries an inline `rollback` field and Down
+auto-reverses per entry; that form remains supported for backward
+compatibility.
+
+Rationale for separate files over an inline rollback clause: it requires
+no grammar change (a `.down.pql` is just a normal script the existing
+parser handles), matches established migration-tool conventions
+(Flyway `U__`, Sqitch `revert/`), and gives the author explicit control
+of the teardown order rather than relying on a per-statement auto-reverse
+heuristic. If `<name>.down.pql` is absent the runner refuses Down loudly
+(`RollbackNotSupportedException`) before mutating anything; the R-19
+partial-rollback ledger semantics are preserved unchanged. Squashes are
+up-only (ADR-0020), so squash codegen never emits a down script — the
+reversibility model is orthogonal to the squash path.
 
 ### Codegen canonical formatter (per provider)
 
@@ -161,11 +191,11 @@ Each provider's canonical-formatter is part of `ISnapshotCanonicalizer` (per con
 
 ### Per-provider notes
 
-- **Postgres** (v1): already uses `.sql` files. The script-format adoption is a *terminology unification* — Postgres has been doing this all along. Any Postgres-specific lexer additions (e.g., `--` is Postgres-native) carry no friction. **Dollar-quote authoring rules apply** — see "Authoring rules: Postgres dollar-quoted bodies" below.
-- **Aerospike** (v1.1): `.statements` script form replaces `.statements.json`. AQL subset already statement-by-statement; tiny grammar lift.
-- **Couchbase** (v1.2): N1QL is SQL-shaped; `--` line comments already conventional. `.statements` files; `BODIES` header for shared inline bodies.
-- **MongoDB** (v1.1): Mongo-shell-like statements (`db.col.createIndex(...)`) terminate with `;` natively in the shell. `//` line comments are Mongo-shell convention. Both `--` and `//` supported.
-- **OpenSearch** (v1.2): the existing 21-statement AST already parses individual statements; lift to script-level adds top-level comment + terminator rules. The `BODIES` header is most useful here (richest body-source usage).
+- **Postgres**: already uses `.sql` files. The script-format adoption is a *terminology unification* — Postgres has been doing this all along; `.pql` is also accepted. Any Postgres-specific lexer additions (e.g., `--` is Postgres-native) carry no friction. **Dollar-quote authoring rules apply** — see "Authoring rules: Postgres dollar-quoted bodies" below.
+- **Aerospike**: `.pql` script form replaces `.statements.json`. AQL subset already statement-by-statement; tiny grammar lift.
+- **Couchbase**: N1QL is SQL-shaped; `--` line comments already conventional. `.pql` files; `BODIES` header for shared inline bodies.
+- **MongoDB**: Mongo-shell-like statements (`db.col.createIndex(...)`) terminate with `;` natively in the shell. `//` line comments are Mongo-shell convention. Both `--` and `//` supported.
+- **OpenSearch**: the existing 21-statement AST already parses individual statements; lift to script-level adds top-level comment + terminator rules. The `BODIES` header is most useful here (richest body-source usage). Reversible migrations use the `.down.pql` model above.
 
 ### Authoring rules: Postgres dollar-quoted bodies
 
@@ -173,7 +203,7 @@ Postgres function/procedure bodies are wrapped in dollar-quoted string literals 
 
 This makes function bodies more fragile than they look: the dollar-quote tag must round-trip exactly, and the splitter must not tokenize inside the body.
 
-**Three rules authors must follow when writing Postgres functions in `.statements` or `.sql` script-form resources:**
+**Three rules authors must follow when writing Postgres functions in `.pql` or `.sql` script-form resources:**
 
 1. **The outer dollar-tag must NOT appear anywhere in the body — including inside what looks like a comment.** Postgres' lexer doesn't see comments inside the body; the bytes `$body$` (or whatever tag is in use) close the literal regardless of surrounding context.
 
@@ -222,10 +252,10 @@ These rules apply only to Postgres. The four NoSQL providers don't have dollar-q
 
 - **Author ergonomics materially improved.** No JSON-string escaping for content that's already a parseable mini-language. Comments are first-class, not bound to a specific next-statement. Statements can be rearranged freely. Multi-line embedded JSON bodies don't fight JSON-quoting.
 - **Reviewer experience materially improved.** PR diffs of script files are far more readable than diffs of JSON-encoded statements. Code review surface shrinks; comprehension goes up.
-- **Cross-provider symmetry restored.** All five providers now use script-form resources (`.sql` for Postgres, `.statements` for the four NoSQL providers). One mental model. Tooling investments (syntax highlighters, LSP, formatter) target one shape.
-- **Tooling can target the actual mini-language.** A future hyperbee LSP could parse `.statements` files directly, providing autocompletion, diagnostics, and rename refactoring on real grammar tokens — not on JSON-string contents.
-- **Squash codegen output is more reviewable.** The `Squash_M.statements` artifact is a script that PR reviewers can read top-to-bottom; the C13a summary artifact (`Squash_M.summary.md`) carries the diff narrative. Together they're substantially more useful than a JSON-array dump.
-- **Grammar reuse with Postgres `.sql`.** Postgres's existing `.sql` resource pattern aligns with the new universal shape; Postgres uplifts to `.statements` discovery as a "free" extension change without migrating its native script form.
+- **Cross-provider symmetry restored.** All five providers now use script-form resources (`.sql` for Postgres, `.pql` for the four NoSQL providers). One mental model. Tooling investments (syntax highlighters, LSP, formatter) target one shape.
+- **Tooling can target the actual mini-language.** A future hyperbee LSP could parse `.pql` files directly, providing autocompletion, diagnostics, and rename refactoring on real grammar tokens — not on JSON-string contents.
+- **Squash codegen output is more reviewable.** The `Squash_M.pql` artifact is a script that PR reviewers can read top-to-bottom; the C13a summary artifact (`Squash_M.summary.md`) carries the diff narrative. Together they're substantially more useful than a JSON-array dump.
+- **Grammar reuse with Postgres `.sql`.** Postgres's existing `.sql` resource pattern aligns with the new universal shape; Postgres uplifts to `.pql` discovery as a "free" extension change without migrating its native script form.
 
 ### Negative
 
@@ -239,12 +269,12 @@ These rules apply only to Postgres. The four NoSQL providers don't have dollar-q
 
 - **The verbs / AST / dispatcher / runtime middleware are unchanged.** This is purely a parser-input format addition. Squash codegen, fleet readiness, verification, classifier, all unchanged structurally.
 - **Body-source resolution via `@path` is unchanged.** ADR-0017 Forms 1/2/3 stay; Form 4 (inline brace-balanced) and `BODIES` header are additions, not replacements.
-- **Postgres adoption is symbolic.** The provider was already doing script form via `.sql`; the only change is treating `.sql` and `.statements` as equivalent for resource discovery.
+- **Postgres adoption is symbolic.** The provider was already doing script form via `.sql`; the only change is treating `.sql` and `.pql` as equivalent for resource discovery.
 
 ## Alternatives Considered
 
 - **Keep JSON-array exclusive; do not add script form.** Rejected — the JSON ceremony is the dominant ergonomics complaint from authors; the verbs are already statement-by-statement parseable; the change is small. Maintaining JSON-only is paying ongoing ergonomics tax to avoid one-time grammar work.
-- **Per-provider native extensions** (Postgres `.sql`, OpenSearch `.os`, Couchbase `.n1ql`, etc.). Rejected — provider-native extensions have ecosystem familiarity but break cross-provider symmetry and complicate documentation. `.statements` is uniform; provider dispatch happens by registered handler, not by extension.
+- **Per-provider native extensions** (Postgres `.sql`, OpenSearch `.os`, Couchbase `.n1ql`, etc.). Rejected — provider-native extensions have ecosystem familiarity but break cross-provider symmetry and complicate documentation. `.pql` is uniform; provider dispatch happens by registered handler, not by extension.
 - **Force migration of all existing JSON-array files at v1.** Rejected — backward compatibility is cheap (one extra loader path per provider) and avoids a customer-facing migration that adds no functional value beyond format change. Lazy migration is operator-paced.
 - **Adopt only one comment style** (e.g., `--` only). Rejected — different audiences reach for different conventions; supporting all three is grammar-trivial in Parlot and removes a friction point. Style consistency is a per-project lint concern, not a framework concern.
 
@@ -263,7 +293,7 @@ Per-provider implementation work (rough sizing):
 
 | Provider | Lift | Notes |
 |---|---|---|
-| Postgres | ~0.5 days | Already script form; add `.statements` extension recognition (alias of `.sql`); confirm canonical formatter |
+| Postgres | ~0.5 days | Already script form; add `.pql` extension recognition (alias of `.sql`); confirm canonical formatter |
 | Aerospike | ~1-2 days | Lift AQL grammar to multi-statement entry; add comment + terminator rules; canonical formatter |
 | Couchbase | ~2-3 days | N1QL has the most complex grammar of the four NoSQL providers; same lift as Aerospike but more rules |
 | MongoDB | ~2 days | Mongo-shell-like grammar; `;` and `//` already natural |

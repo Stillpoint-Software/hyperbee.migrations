@@ -9,8 +9,7 @@
     <None Remove="Resources\1000-CreateInitialSchema\sample\users\user2.json" />
     <None Remove="Resources\1000-CreateInitialSchema\sample\products\product1.json" />
     <None Remove="Resources\1000-CreateInitialSchema\sample\products\product2.json" />
-    <None Remove="Resources\2000-AddSecondaryIndexes\statements.json" />
-    <None Remove="Resources\2000-AddSecondaryIndexes\statements" />
+    <None Remove="Resources\2000-AddSecondaryIndexes\statements.pql" />
   </ItemGroup>
 
   <ItemGroup>
@@ -18,8 +17,7 @@
     <EmbeddedResource Include="Resources\1000-CreateInitialSchema\sample\users\user2.json" />
     <EmbeddedResource Include="Resources\1000-CreateInitialSchema\sample\products\product1.json" />
     <EmbeddedResource Include="Resources\1000-CreateInitialSchema\sample\products\product2.json" />
-    <EmbeddedResource Include="Resources\2000-AddSecondaryIndexes\statements.json" />
-    <EmbeddedResource Include="Resources\2000-AddSecondaryIndexes\statements" />
+    <EmbeddedResource Include="Resources\2000-AddSecondaryIndexes\statements.pql" />
   </ItemGroup>
 
   <ItemGroup>

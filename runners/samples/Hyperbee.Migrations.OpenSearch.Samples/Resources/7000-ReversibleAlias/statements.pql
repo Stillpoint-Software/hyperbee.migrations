@@ -1,0 +1,8 @@
+-- Reversible migration (Up). Recommended .pql script form.
+-- Creates the v1 audit index and points the alias at it. Statements run
+-- top-to-bottom; the matching teardown lives in statements.down.pql.
+-- (The legacy .statements.json per-statement `rollback` form remains
+-- supported for backward compatibility but is not the recommended way.)
+
+CREATE INDEX sample_audit_v1 IF NOT EXISTS;
+ALIAS ADD sample_audit ON sample_audit_v1;

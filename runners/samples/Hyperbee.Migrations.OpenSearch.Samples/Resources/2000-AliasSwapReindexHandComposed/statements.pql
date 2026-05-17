@@ -1,0 +1,33 @@
+-- Hand-composed zero-downtime reindex-and-swap.
+-- Authored in the recommended .pql script form (BODIES header + multi-
+-- statement, semicolon-terminated). The legacy .statements.json form remains
+-- supported for backward compatibility but is not the recommended way to
+-- author new migrations.
+
+BODIES {
+  logsV1: {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "msg":        { "type": "text" }
+      }
+    }
+  }
+  logsV2: {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "msg":        { "type": "text" },
+        "level":      { "type": "keyword" }
+      }
+    }
+  }
+}
+
+CREATE INDEX sample_logs_v1 IF NOT EXISTS WITH BODY $logsV1;
+CREATE INDEX sample_logs_v2 IF NOT EXISTS WITH BODY $logsV2;
+ALIAS ADD sample_logs ON sample_logs_v1;
+REINDEX FROM sample_logs_v1 TO sample_logs_v2;
+ALIAS SWAP sample_logs FROM sample_logs_v1 TO sample_logs_v2;

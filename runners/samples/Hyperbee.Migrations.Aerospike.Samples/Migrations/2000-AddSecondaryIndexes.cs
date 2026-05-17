@@ -9,7 +9,7 @@ public class AddSecondaryIndexes( AerospikeResourceRunner<AddSecondaryIndexes> r
     {
         // create additional indexes for users and products
         await resourceRunner.StatementsFromAsync( [
-            "statements.json"
+            "statements.pql"
         ], cancellationToken );
 
         // seed user and product data

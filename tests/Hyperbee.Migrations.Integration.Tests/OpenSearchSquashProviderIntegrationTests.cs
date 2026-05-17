@@ -56,7 +56,7 @@ public class OpenSearchSquashProviderIntegrationTests
 
         var gen = (SquashGenerationResult.Generated) result;
         Assert.IsFalse( string.IsNullOrWhiteSpace( gen.Content ), "Generated squash content must be non-empty." );
-        Assert.AreEqual( ".statements", provider.SquashFileExtension );
+        Assert.AreEqual( ".pql", provider.SquashFileExtension );
         Assert.IsTrue( gen.Topology.Properties.Count > 0 );
     }
 

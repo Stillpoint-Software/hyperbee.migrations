@@ -14,7 +14,7 @@ public sealed class AerospikeSquashProvider : ISquashProvider
     private readonly IEphemeralProvisioner _provisioner;
 
     public string ProviderId => "aerospike";
-    public string SquashFileExtension => ".statements";
+    public string SquashFileExtension => ".pql";
 
     public AerospikeSquashProvider()
         : this( provisioner: null )

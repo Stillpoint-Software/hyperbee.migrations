@@ -87,7 +87,7 @@ The grammar is a subset of AQL focused on the operations that make sense as migr
 
 ### Statement file format
 
-The runner accepts two file shapes. The script form (`.statements`) is the recommended default for new migrations (see [Resource migrations](resource-migrations.md)); the JSON-array form (`.statements.json`) is the original wrapper and is supported indefinitely. Both parse to the same statement list.
+The runner accepts two file shapes. The script form (`.pql`) is the recommended default for new migrations (see [Resource migrations](resource-migrations.md)); the JSON-array form (`.statements.json`) is the original wrapper and is supported indefinitely. Both parse to the same statement list.
 
 Script form (`Resources/2000-AddSecondaryIndexes/statements`):
 
