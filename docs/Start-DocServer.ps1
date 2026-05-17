@@ -136,11 +136,20 @@ $dockerArgs += @($Image, "sh", "-c", $serveCmd)
 $baseUrlPath = if ( $RootBaseUrl ) { "" } else { "/hyperbee.migrations/" }
 $shownUrl = "http://localhost:$Port$baseUrlPath"
 
+# OSC 8 terminal hyperlink: ESC ]8;;URI ESC \ text ESC ]8;; ESC \
+# Rendered clickable by VS Code's terminal, Windows Terminal, iTerm2, etc.;
+# terminals without OSC 8 still show the URL text (kept identical to the URI).
+$esc = [char]27
+$clickableUrl = "$esc]8;;$shownUrl$esc\$shownUrl$esc]8;;$esc\"
+
 Write-Host "Serving docs/site via $Image  (per docs/local-jekyll.md)" -ForegroundColor Cyan
-Write-Host "  URL:        $shownUrl" -ForegroundColor Cyan
 Write-Host "  Container:  $containerName   (stop: docker stop $containerName)" -ForegroundColor Cyan
 Write-Host "  BundleCache:$([bool](-not $NoBundleCache))   first run also fetches the just-the-docs remote theme (network required)" -ForegroundColor DarkGray
 Write-Host "  Ctrl+C to stop." -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "  Launch -> " -ForegroundColor Green -NoNewline
+Write-Host $clickableUrl -ForegroundColor Green
+Write-Host "  (the link is live once Jekyll prints 'Server running' below)" -ForegroundColor DarkGray
 Write-Host ""
 
 & docker @dockerArgs
