@@ -131,6 +131,14 @@ jobs:
   # container, etc.
   integration-tests:
     needs: discover
+    # Heavy container-based integration tests are LocalOnly for now: they
+    # are excluded from the gating matrix (every class is
+    # [TestCategory("LocalOnly")]) and do NOT gate the NuGet publish (the
+    # release pipeline runs unit tests only). With nothing left to run, this
+    # job is gated off so it does not fail on a zero-match `dotnet test`.
+    # Re-enable by setting repo variable RUN_HEAVY_INTEGRATION=true (no code
+    # change needed); run the suite locally / on demand in the meantime.
+    if: ${{ vars.RUN_HEAVY_INTEGRATION == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

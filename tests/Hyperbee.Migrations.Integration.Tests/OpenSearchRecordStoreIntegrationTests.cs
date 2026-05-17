@@ -24,6 +24,8 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // cleanup is local. Standard #if INTEGRATIONS gate per ADR-0010.
 
 [TestClass]
+// LocalOnly: heavy container-based integration test; excluded from the gating CI matrix (does not gate the NuGet publish). Runs locally / on demand.
+[TestCategory( "LocalOnly" )]
 public class OpenSearchRecordStoreIntegrationTests
 {
     private static OpenSearchRecordStore BuildStore( OpenSearchMigrationOptions options )

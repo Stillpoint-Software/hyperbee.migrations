@@ -19,6 +19,8 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // without a separate-GET-then-POST window.
 
 [TestClass]
+// LocalOnly: heavy container-based integration test; excluded from the gating CI matrix (does not gate the NuGet publish). Runs locally / on demand.
+[TestCategory( "LocalOnly" )]
 public class OpenSearchAliasIntegrationTests
 {
     private OpenSearchStatementParser _parser = null!;

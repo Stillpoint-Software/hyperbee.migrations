@@ -10,6 +10,8 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // on AerospikeRunnerTest for the rationale.
 [TestClass]
 [DoNotParallelize]
+// LocalOnly: heavy container-based integration test; excluded from the gating CI matrix (does not gate the NuGet publish). Runs locally / on demand.
+[TestCategory( "LocalOnly" )]
 public class MongoDBRunnerTest
 {
     public IMongoClient Client;

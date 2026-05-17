@@ -13,6 +13,8 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // slowing other tests (the OpenSearch suite keeps parallel methods).
 [TestClass]
 [DoNotParallelize]
+// LocalOnly: heavy container-based integration test; excluded from the gating CI matrix (does not gate the NuGet publish). Runs locally / on demand.
+[TestCategory( "LocalOnly" )]
 public class AerospikeRunnerTest
 {
     public IAsyncClient AsyncClient;

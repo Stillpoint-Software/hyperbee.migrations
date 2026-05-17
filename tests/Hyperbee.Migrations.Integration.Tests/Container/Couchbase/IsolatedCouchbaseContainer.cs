@@ -195,8 +195,14 @@ public sealed class IsolatedCouchbaseContainer : IAsyncDisposable
         // Prove the indexer accepts DDL here, with a generous bound, so
         // test-body index DDL never races a cold indexer. Mirrors
         // WarmupN1qlAsync (planner warmup) for the index service.
+        // Bound calibrated to the OBSERVED worst case, not a guess: a fresh
+        // single-node Couchbase 7.6.2 GSI indexer's initial rebalance is
+        // highly variable on constrained hosts and was seen to exceed 5 min.
+        // These tests are LocalOnly (they do not gate CI or the publish), so
+        // a generous readiness wait costs nothing and removes the boundary
+        // flake on slower local/loaded machines.
         const string sentinel = "idx_warmup_sentinel";
-        var deadline = DateTime.UtcNow + TimeSpan.FromMinutes( 5 );
+        var deadline = DateTime.UtcNow + TimeSpan.FromMinutes( 12 );
         Exception last = null;
         while ( DateTime.UtcNow < deadline )
         {
@@ -225,7 +231,7 @@ public sealed class IsolatedCouchbaseContainer : IAsyncDisposable
             }
         }
         throw new InvalidOperationException(
-            "GSI index service did not accept DDL within 5 min (indexer never left its initial rebalance).",
+            "GSI index service did not accept DDL within 12 min (indexer never left its initial rebalance).",
             last );
     }
 
