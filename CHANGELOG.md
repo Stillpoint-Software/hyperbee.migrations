@@ -52,12 +52,14 @@ Docker runtime cost.
   script files with `--`/`//`/`/* */` comments and `;` terminators. Postgres
   treats `.statements` as an alias for `.sql`. Backward-compatible: existing
   `.statements.json` files continue to apply unchanged.
-- **Two-phase fleet readiness gate** — the squash CLI refuses generation while
-  any registered fleet member is mid-range
-  (`MidRangeFleetException`); the runner refuses deploy when an environment
-  isn't registered (`UnregisteredEnvironmentException`) or has gone stale
-  beyond the configurable window (`StaleFleetMemberException`, default
-  30 days per [ADR-0019 amendment A15](docs/decisions/0019-migration-squash-replaces-graph.md)).
+- **Fleet readiness gate** — the squash CLI refuses generation while any
+  registered fleet member is mid-range (`MidRangeFleetException`), and the
+  runner refuses a mid-range environment loudly at apply time
+  (`MidRangeSquashException`, with a `recover from-mid-range` escape hatch).
+  The deploy-time fleet-staleness gate originally specified in
+  [ADR-0019 amendment A2](docs/decisions/0019-migration-squash-replaces-graph.md)
+  was cut as redundant before ship; see
+  [ADR-0026](docs/decisions/0026-deploy-time-fleet-gate-cut.md).
 - **Recovery acknowledgement token** for the
   `MidRangeSquashException` escape hatch — deterministic per
   `(env, squash, missing-versions)` so retries reproduce the same token,
@@ -126,9 +128,10 @@ Docker runtime cost.
 - `[DataMigration]` and `[StructuralOnly]` attributes (ADR-0019 A5) -- the
   Roslyn-based source scanners refuse squash generation if a migration class
   matches the data-op heuristic without an explicit annotation.
-- Two-phase fleet gate types: `SquashMetadata`, `SquashFleetGate`,
-  `StaleFleetMemberException`, `UnregisteredEnvironmentException`,
-  `MidRangeFleetException`.
+- Generation-time fleet gate types: `SquashMetadata`, `SquashFleetGate`
+  (`EnsureGenerable`), `MidRangeFleetException`. (The deploy-time half --
+  `EnsureDeployable`, `StaleFleetMemberException`,
+  `UnregisteredEnvironmentException` -- was cut before ship per ADR-0026.)
 - `RecoveryAcknowledgement` — deterministic 12-char token for the
   `recover from-mid-range` escape hatch.
 - **Per-provider `MigrationRunner` subclasses** (`PostgresMigrationRunner`,
@@ -457,6 +460,54 @@ Docker runtime cost.
   the typed `{Provider}MigrationRunner` explicitly. Single-provider
   hosts are unaffected. (See ADR-0023 + the multi-provider hosts
   operator guide at `docs/site/multi-provider-hosts.md`.)
+
+### Pre-ship hardening
+
+The v3.0 pre-ship audit (`docs/plans/archive/2026-05-v3-preship-hardening.md`)
+closed the following before release. No behavior change for correctly-configured
+consumers; these are robustness, doc-accuracy, and dead-code items.
+
+- **Couchbase GSI rebalance flake fixed at the root.** Index DDL during an
+  index-service rebalance ("rebalance in progress") was retried blindly,
+  leaving create-after-create and create-after-drop races. The provider now
+  exposes a single `CouchbaseIndexRetry` helper:
+  `WithRebalanceRetryAsync` (one 60x3s backstop -- single source of truth for
+  the retry budget), `WaitForIndexReadyAsync` (delegates to the SDK
+  `WatchIndexesAsync`; unnamed primary watched as `#primary`), and
+  `WaitForIndexDroppedAsync` (polls `GetAllIndexesAsync` until the index is
+  gone). `CouchbaseRecordStore` and `CouchbaseResourceRunner` both route
+  through it; the prior triplicated rebalance-retry loop is consolidated.
+  The CI per-provider matrix is green 23/23 with the 6 previously-LocalOnly
+  Couchbase squash tests now running in CI via configured alternate addresses.
+- **Aerospike lock-disabled readiness gate.** `AerospikeRecordStore.InitializeAsync`
+  previously only checked `_client.Connected`; on the lock-disabled path the
+  first ledger read could hit a not-yet-warm cluster. It now runs a sentinel
+  probe filtered by the existing `IsTransientClusterError` predicate with a
+  60s bound, throwing a clear `MigrationException` on timeout.
+- **Documentation corrections.** `docs/site/squashing-migrations.md`: removed
+  the stale `ApplyToDataSourceAsync` apply-path (CLI applies via the discovered
+  `IMigrationHost` per ADR-0024), corrected the CLI invocation example and the
+  `recover from-mid-range` flag list to match `RecoverVerb`, and fixed the
+  Aerospike `IntersectWithSquashedAsync` transitivity caveat. `CHANGELOG.md`
+  internal contradiction on the Aerospike override reconciled (R-15 shipped).
+  `docs/site/supported-versions.md`: non-ASCII em-dashes replaced (just-the-docs
+  ASCII constraint). Top-level `README.md`: added a "What's new in v3.0" section.
+- **Dead code removed.** `ICouchbaseRestApiService.GetNodeStatusesAsync`
+  (+impl, +`RestApi.GetNodeStatuses`), `GetClusterInfoAsync` (+impl; the
+  still-used `RestApi.GetClusterInfo` is retained), and the no-timeout
+  `WaitUntilBucketReadyAsync` overload had no callers and were deleted.
+- **Two confirm-intent decisions recorded.** `NullSquashStrategy` is retained
+  as a public extension point (no first-party provider uses it) per
+  [ADR-0025](docs/decisions/0025-nullsquashstrategy-retained-as-extension-point.md);
+  the deploy-time fleet gate (`SquashFleetGate.EnsureDeployable` +
+  `StaleFleetMemberException` + `UnregisteredEnvironmentException`) was cut as
+  redundant per
+  [ADR-0026](docs/decisions/0026-deploy-time-fleet-gate-cut.md).
+- **Accidental-drift cleanup.** MongoDB / Postgres `appsettings.json` Serilog
+  `Override` key corrected from the copy-pasted `"Couchbase"` to `"MongoDB"` /
+  `"Npgsql"`. Couchbase runner DI helpers renamed to the `Add{Provider}Provider`
+  / `Add{Provider}Migrations` convention used by the other four. Stale test
+  namespace `Hyperbee.Migrations.Tests.Squash.Cli` -> `.Squash`.
 
 ### Breaking changes (with safe back-compat paths)
 
