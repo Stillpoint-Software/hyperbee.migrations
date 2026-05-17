@@ -296,14 +296,13 @@ applied-version set against the squash's `Replaces` graph. Three
 
 | Field      | Purpose                                                  |
 | ---------- | -------------------------------------------------------- |
-| `Kind`     | `Migration` / `Squash` / `Baseline` (per ADR-0021)        |
+| `Kind`     | `Migration` / `Squash` / `Baseline`                       |
 | `Replaces` | `long[]` of versions the squash subsumes                 |
 | `Checksum` | SHA-256 of `(typeof.FullName, Version)` -- drift gate    |
 
 A separate squash CLI (`dotnet hyperbee-migrations squash`) generates the
 destructive codegen from a live ephemeral cluster (snapshot A + apply
-[N..M] + snapshot B + diff). All 5 providers ship squash codegen in v3.0
-per ADR-0019.
+[N..M] + snapshot B + diff). All 5 providers ship squash codegen in v3.0.
 
 See [Squashing migrations](squashing-migrations.md) for the full operator
 workflow + per-provider snapshot strategy details.

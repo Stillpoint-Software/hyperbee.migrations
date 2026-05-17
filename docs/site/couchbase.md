@@ -53,7 +53,7 @@ services.AddCouchbaseMigrations( options =>
 | LockExpireInterval | TimeSpan | 5 minutes | Lock-document expiry written on each heartbeat (the safety TTL if a runner crashes). |
 | LockRenewInterval | TimeSpan | 2 minutes | How often the holding runner renews the lock heartbeat (must be smaller than `LockExpireInterval`). |
 
-For multi-provider hosts (e.g. Couchbase + MongoDB in the same app), resolve the typed runner `CouchbaseMigrationRunner` rather than the base `MigrationRunner`. See [Multi-Provider Hosts](multi-provider-hosts.md) (ADR-0023) for the registration and invocation pattern.
+For multi-provider hosts (e.g. Couchbase + MongoDB in the same app), resolve the typed runner `CouchbaseMigrationRunner` rather than the base `MigrationRunner`. See [Multi-Provider Hosts](multi-provider-hosts.md) for the registration and invocation pattern.
 
 ## Resource layout
 
@@ -90,7 +90,7 @@ Statements use an N1QL (SQL++) flavored syntax. Statement keywords are case-inse
 
 ### Statement file format
 
-The runner accepts two file shapes. The script form (`.statements`) is the recommended default for new migrations per [ADR-0022](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0022-script-format-resource-migrations.md); the JSON-array form (`.statements.json`) is the original ADR-0002 wrapper and is supported indefinitely. Both parse to the same statement list.
+The runner accepts two file shapes. The script form (`.statements`) is the recommended default for new migrations (see [Resource migrations](resource-migrations.md)); the JSON-array form (`.statements.json`) is the original wrapper and is supported indefinitely. Both parse to the same statement list.
 
 Script form (`Resources/2000-AddSecondaryIndexes/sample/statements`):
 
@@ -221,7 +221,7 @@ public class CreateInitialSchema( CouchbaseResourceRunner<CreateInitialSchema> r
 
 ## Locking semantics
 
-The provider uses a Couchbase document on the ledger collection as a distributed lock (per [ADR-0005](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0005-provider-native-distributed-locking.md), provider-native locking). Acquisition uses `Couchbase.Extensions.Locks.RequestMutexAsync`, which writes a TTL-bearing document with a CAS-protected create. The holding runner auto-renews the lock at `LockRenewInterval`; if the runner crashes, the document expires after `LockExpireInterval` and the next runner's acquisition succeeds. `LockMaxLifetime` caps total wall-clock hold so a hung migration cannot lock forever -- when reached, the in-flight migration is canceled cleanly via the cancellation token.
+The provider uses a Couchbase document on the ledger collection as a distributed lock (provider-native locking). Acquisition uses `Couchbase.Extensions.Locks.RequestMutexAsync`, which writes a TTL-bearing document with a CAS-protected create. The holding runner auto-renews the lock at `LockRenewInterval`; if the runner crashes, the document expires after `LockExpireInterval` and the next runner's acquisition succeeds. `LockMaxLifetime` caps total wall-clock hold so a hung migration cannot lock forever -- when reached, the in-flight migration is canceled cleanly via the cancellation token.
 
 The migration ledger and the lock share the same collection (`<bucket>.<scope>.<collection>`); both are created on first run.
 
@@ -244,7 +244,7 @@ For code migrations, override `DownAsync` and reverse the operations explicitly.
 
 ## Squash support
 
-The Couchbase provider ships full squash codegen via `HybridStrategy` (per ADR-0019). The canonical output is JSON-section form (`[buckets]`, `[scopes]`, `[collections]`, `[indexes]`, etc.) because Couchbase structural state (FTS index definitions, Eventing function source, GSI WITH clauses) exceeds the partial-grammar StatementParser. The capture path combines two sources: N1QL `system:keyspaces` + `system:indexes` for keyspaces and GSI indexes, REST `/pools/default/buckets/<name>` for bucket settings.
+The Couchbase provider ships full squash codegen via `HybridStrategy`. The canonical output is JSON-section form (`[buckets]`, `[scopes]`, `[collections]`, `[indexes]`, etc.) because Couchbase structural state (FTS index definitions, Eventing function source, GSI WITH clauses) exceeds the partial-grammar StatementParser. The capture path combines two sources: N1QL `system:keyspaces` + `system:indexes` for keyspaces and GSI indexes, REST `/pools/default/buckets/<name>` for bucket settings.
 
 **Deferred-build GSI preservation:** the canonicalizer scope-aware-handles the `state` field in the `[indexes]` section -- `state=online` is dropped (default, no structural information), `state=deferred` is preserved (apply path issues BUILD INDEX), transient values (`building`/`pending`) throw at squash-time so the settle-wait bug surfaces immediately rather than producing a non-deterministic snapshot. This is the R-P3 OQ resolution for deferred-build indexes.
 

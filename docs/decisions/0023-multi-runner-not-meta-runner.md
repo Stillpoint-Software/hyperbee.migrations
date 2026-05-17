@@ -4,7 +4,6 @@
 **Date:** 2026-05-08 (original) / 2026-05-11 (promoted to Accepted)
 **Amends:** ADR-0006 § DI registration shape (`AddSingleton` → `TryAddSingleton` for the base-type aliases; per-provider runner subclass registration replaces the single base-`MigrationRunner` registration).
 **Related ADRs:** ADR-0003 (Provider Record Store Contract), ADR-0005 (Provider-Native Distributed Locking), ADR-0006 (Options Inheritance with DI Registration), ADR-0019 (Squash via Replaces Graph), ADR-0020 (Squashes are Up-Only)
-**Assessed in:** [docs/research/0008-multi-runner-composition-assessment.md](../research/0008-multi-runner-composition-assessment.md)
 
 ## Context
 
@@ -205,7 +204,7 @@ Revisit only if a future C# language feature lets keyed services participate in 
 
 ## Implications
 
-- **Squash is unchanged.** Squash is per-provider by construction; each runner handles its own ledger reconciliation. The squash CLI verb continues to target a specific provider; the fleet manifest is per-provider. (Verified during the assessment — see research/0008 § F5.)
+- **Squash is unchanged.** Squash is per-provider by construction; each runner handles its own ledger reconciliation. The squash CLI verb continues to target a specific provider; the fleet manifest is per-provider.
 - **Resource runners are unchanged.** `{Provider}ResourceRunner<TMigration>` is already provider-typed and doesn't conflict.
 - **Documentation gains a multi-provider section** with a worked expand/contract example, a negative example showing the wrong way, and a failure-isolation code sample (try/finally per runner, `AggregateException` collection pattern, ledger inspection on partial failure). The package itself ships **no coordinator type** — the act of writing the foreach loop forces operators to confront failure semantics. (Assessment F2 reversal; F4 expansion.)
 - **CLI verbs remain per-provider per binary.** Multi-provider CLI hosts are out of scope for this ADR.

@@ -103,4 +103,4 @@ The Hyperbee Migrations API is heavily influenced by
 We welcome contributions! See the
 [repo-local CONTRIBUTING guide](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/CONTRIBUTING.md)
 for the development setup, coding conventions, and the provider-author DI
-checklist (per ADR-0023).
+checklist.

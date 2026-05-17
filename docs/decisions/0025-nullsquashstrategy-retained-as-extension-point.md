@@ -3,7 +3,6 @@
 **Status:** Accepted
 **Date:** 2026-05-16
 **Related ADRs:** ADR-0019 (Squash via Replaces Graph), ADR-0024 (Migration Host Discovery)
-**Surfaced by:** v3.0 pre-ship audit (DRY/SOLID + dead-code sweep, 2026-05-16); decided in [docs/plans/active/v3-preship-hardening.md](../plans/active/v3-preship-hardening.md) Task 0.2.
 
 ## Context
 
@@ -16,7 +15,7 @@ The all-5-providers-or-nothing release rule changed that: every provider now shi
 
 The remark at `ISquashStrategy.cs:12-14` still claims four providers ship `NullSquashStrategy` and "calls return Failed" — which directly contradicts shipped reality and will mislead a reader into thinking four providers are squash no-ops.
 
-The audit flagged this as "probably dead — confirm intent": delete it, or consciously keep it as a public extension point.
+The question this ADR settles: delete `NullSquashStrategy` as dead code, or consciously retain it as a public extension point.
 
 ## Decision
 
@@ -24,7 +23,7 @@ The audit flagged this as "probably dead — confirm intent": delete it, or cons
 
 Rationale: the type is the correct, intention-revealing return for any future or third-party provider that registers a `SquashStrategyDescriptor` before its codegen exists. ADR-0024 makes the provider surface open to third-party providers discovered via reference closure; a third-party provider mid-build needs exactly this "registered but not yet generating" strategy so the CLI fails loudly with a clear roadmap message instead of throwing a null/NotImplemented. Deleting it would remove a small, stable, already-tested affordance that the open provider model legitimately wants — for no maintenance saving (it is ~1 type with no dependencies and full contract-test coverage).
 
-Required corrections (not deletions), executed in plan Phase 4 Task 4.1:
+Required corrections (documentation only, no deletion):
 
 1. Fix the stale remark in `ISquashStrategy.cs` so it no longer claims any first-party provider ships `NullSquashStrategy`.
 2. Add an explicit note on `NullSquashStrategy` and at the `ISquashStrategy`/`SquashStrategyDescriptor` cref sites that it is an **extension point for providers without codegen yet**, and that **all five first-party providers ship real strategies** (none use it).

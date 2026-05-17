@@ -8,7 +8,7 @@ nav_order: 8
 
 A single application can register and run migrations for more than one provider in the same `IServiceCollection`. Each provider keeps its own ledger, its own lock, and its own discovery scope -- they do not interfere with each other. This page shows the registration shape, the recommended invocation pattern, and what to do when a feature touches more than one store.
 
-> The behavior described here ships with [ADR-0023](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0023-multi-runner-not-meta-runner.md). Single-provider hosts continue to work unchanged.
+> The behavior described here ships in v3.0. Single-provider hosts continue to work unchanged.
 
 ## When to use a multi-provider host
 
@@ -109,7 +109,7 @@ This shape is deliberate:
 
 ## Parallel invocation (when providers are disjoint)
 
-If the two providers share no application-layer dependency between their migration sets, the invocation can be parallelized. Each provider's lock acquisition is independent (per [ADR-0005](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0005-provider-native-distributed-locking.md)), so there is no cross-provider lock contention.
+If the two providers share no application-layer dependency between their migration sets, the invocation can be parallelized. Each provider's lock acquisition is independent (provider-native locking), so there is no cross-provider lock contention.
 
 ```csharp
 using ( var scope = app.Services.CreateScope() )
@@ -188,7 +188,7 @@ public class AddUserProfile : Migration
 }
 ```
 
-If the Postgres `ALTER TABLE` succeeds and the Mongo insert fails, the system is in a half-applied state with no rollback path -- squashes are up-only ([ADR-0020](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0020-squashes-are-up-only.md)) and the Postgres migration's ledger entry is already committed. Recovery requires manual intervention.
+If the Postgres `ALTER TABLE` succeeds and the Mongo insert fails, the system is in a half-applied state with no rollback path -- migrations and squashes are up-only and the Postgres migration's ledger entry is already committed. Recovery requires manual intervention.
 
 Express the change as separate per-provider migrations and put the coordination in application code.
 
@@ -205,6 +205,4 @@ Express the change as separate per-provider migrations and put the coordination 
 
 A "thin coordinator" that runs N runners in declared order and reports aggregate status looks attractive but creates the wrong affordance: operators treat the aggregate status as a transactional outcome and stop coding the application-layer expand/contract. The migration system has the wrong primitives for cross-store coordination -- no application context, no feature flags, no compensating transactions.
 
-The act of writing the foreach loop you see above is intentional. It forces you to confront the failure semantics for your specific application instead of inheriting a one-size-fits-all policy.
-
-For the architectural rationale see [ADR-0023: Multi-Runner Composition (Not a Cross-Provider Meta-Runner)](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0023-multi-runner-not-meta-runner.md).
+The act of writing the foreach loop you see above is intentional. It forces you to confront the failure semantics for your specific application instead of inheriting a one-size-fits-all policy. The package deliberately ships no cross-provider meta-runner or coordinator type -- composition and failure policy are the application's to own.

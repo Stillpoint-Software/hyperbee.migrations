@@ -4,7 +4,6 @@
 **Date:** 2026-05-12 (promoted 2026-05-13)
 **Amends:** None directly. Replaces an implicit Postgres-only convention (`static ApplyToDataSourceAsync(NpgsqlDataSource, ...)`) that the v1 squash CLI used for migration apply.
 **Related ADRs:** ADR-0006 (Options Inheritance with DI Registration), ADR-0019 (Squash via Replaces Graph), ADR-0023 (Multi-Runner Composition).
-**Assessed in:** [docs/research/0009-v3-release-readiness-assessment.md](../research/0009-v3-release-readiness-assessment.md) — R-17 + the Path A architecture decision.
 
 ## Context
 
@@ -22,7 +21,7 @@ This worked for one provider but does not survive v3.0's "all 5 providers" commi
 - **DI duplication:** the user's migration project already wires `services.Add{Provider}Migrations(...)` in their host application. The static method redoes that setup, drifting over time.
 - **No third-party path:** a future Cassandra provider author would need to publish their own CLI fork that knows about a Cassandra-specific static signature.
 
-The Path A audit (research/0009) requires a single contract that works for all 5 first-party providers AND any future third-party provider, with discovery a single-shot reflection at CLI startup.
+The chosen architecture requires a single contract that works for all 5 first-party providers AND any future third-party provider, with discovery a single-shot reflection at CLI startup.
 
 ## Decision
 
@@ -220,6 +219,6 @@ Couchbase additionally ships `CouchbaseSiblingContainerProvisioner` — when the
 ## Status
 
 - Proposed: 2026-05-12.
-- Implementation: Week 2 Day 1 of Path A (see `docs/research/0009-v3-release-readiness-assessment.md`).
+- Implementation: shipped as part of the v3.0 CLI extensibility work.
 - Accepted: 2026-05-13 — all 5 providers ship a working `IMigrationHost` host class; CLI binary E2E test (`CliBinaryEndToEndTests`) drives Postgres host through the actual `hyperbee-migrations.exe` child process and validates emitted `.sql` + `.metadata.json` + `.summary.md` artifacts; 5 per-provider SquashProvider integration tests pass on net8/net9/net10 (F-1 closed: per-provider integration matrix + `CouchbaseHelper` planner-catalog retries removed the Couchbase host-side race).
 - Amendments: A1 (`IEphemeralProvisioner` extension, 2026-05-13), A2 (plugin-style ALC isolation, 2026-05-13).

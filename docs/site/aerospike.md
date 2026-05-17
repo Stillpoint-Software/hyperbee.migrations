@@ -87,7 +87,7 @@ The grammar is a subset of AQL focused on the operations that make sense as migr
 
 ### Statement file format
 
-The runner accepts two file shapes. The script form (`.statements`) is the recommended default for new migrations per [ADR-0022](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0022-script-format-resource-migrations.md); the JSON-array form (`.statements.json`) is the original ADR-0002 wrapper and is supported indefinitely. Both parse to the same statement list.
+The runner accepts two file shapes. The script form (`.statements`) is the recommended default for new migrations (see [Resource migrations](resource-migrations.md)); the JSON-array form (`.statements.json`) is the original wrapper and is supported indefinitely. Both parse to the same statement list.
 
 Script form (`Resources/2000-AddSecondaryIndexes/statements`):
 
@@ -279,9 +279,9 @@ The provider uses a single Aerospike record as a distributed lock. Acquisition u
 
 ## Squash support
 
-The Aerospike provider ships full squash codegen via `InfoSnapshotStrategy` (per ADR-0019). The canonical output is AQL statement form: `CREATE INDEX` + sentinel-set membership recorded as section-headered text. The capture path probes the live cluster via `Info.Request("sets/<namespace>", "sindex/<namespace>")` and an injected snapshot delegate; the canonicalizer strips ephemeral counters (`objects`, `memory_used`, etc.) at every level.
+The Aerospike provider ships full squash codegen via `InfoSnapshotStrategy`. The canonical output is AQL statement form: `CREATE INDEX` + sentinel-set membership recorded as section-headered text. The capture path probes the live cluster via `Info.Request("sets/<namespace>", "sindex/<namespace>")` and an injected snapshot delegate; the canonicalizer strips ephemeral counters (`objects`, `memory_used`, etc.) at every level.
 
-The Roslyn-based `AerospikeMigrationSourceScanner` enforces the `[DataMigration]` / `[StructuralOnly]` annotation requirement (ADR-0019 amendment A5) for migrations that write data via the SDK.
+The Roslyn-based `AerospikeMigrationSourceScanner` enforces the `[DataMigration]` / `[StructuralOnly]` annotation requirement for migrations that write data via the SDK.
 
 See [Squashing migrations](squashing-migrations.md) for the cross-provider squash CLI + workflow.
 

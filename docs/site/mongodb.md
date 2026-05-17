@@ -41,7 +41,7 @@ services.AddMongoDBMigrations( options =>
 | LockName | string | "ledger" | Logical lock name surfaced in `MigrationLockUnavailableException` messages. |
 | LockMaxLifetime | TimeSpan | 1 hour | Hard cap on lock hold time; doubles as the lock document's expiry stamp. |
 
-For multi-provider hosts (e.g. PostgreSQL + MongoDB in the same app), resolve the typed runner `MongoDBMigrationRunner` rather than the base `MigrationRunner`. See [Multi-Provider Hosts](multi-provider-hosts.md) (ADR-0023) for the registration and invocation pattern.
+For multi-provider hosts (e.g. PostgreSQL + MongoDB in the same app), resolve the typed runner `MongoDBMigrationRunner` rather than the base `MigrationRunner`. See [Multi-Provider Hosts](multi-provider-hosts.md) for the registration and invocation pattern.
 
 ## Resource layout
 
@@ -77,7 +77,7 @@ Statements use a small SQL-flavored DSL -- not the Mongo-shell JavaScript syntax
 
 ### Statement file format
 
-The runner accepts two file shapes. The script form (`.statements`) is the recommended default for new migrations per [ADR-0022](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0022-script-format-resource-migrations.md); the JSON-array form (`.statements.json`) is the original ADR-0002 wrapper and is supported indefinitely. Both parse to the same statement list.
+The runner accepts two file shapes. The script form (`.statements`) is the recommended default for new migrations (see [Resource migrations](resource-migrations.md)); the JSON-array form (`.statements.json`) is the original wrapper and is supported indefinitely. Both parse to the same statement list.
 
 Script form (`Resources/2000-AddSecondaryIndexes/statements`):
 
@@ -208,7 +208,7 @@ public class AddSecondaryIndexes( MongoDBResourceRunner<AddSecondaryIndexes> run
 
 ## Locking semantics
 
-The provider uses a single MongoDB document inside the ledger collection as a distributed lock (per [ADR-0005](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0005-provider-native-distributed-locking.md), provider-native locking). Acquisition is a single `InsertOneAsync` against a fixed `_id`; on conflict, the existing lock's `ReleaseOn` is checked -- expired locks are deleted and re-acquired, live locks throw `MigrationLockUnavailableException`. `LockMaxLifetime` caps total wall-clock hold and is stamped on the lock document at acquisition time, so a crashed runner does not lock forever.
+The provider uses a single MongoDB document inside the ledger collection as a distributed lock (provider-native locking). Acquisition is a single `InsertOneAsync` against a fixed `_id`; on conflict, the existing lock's `ReleaseOn` is checked -- expired locks are deleted and re-acquired, live locks throw `MigrationLockUnavailableException`. `LockMaxLifetime` caps total wall-clock hold and is stamped on the lock document at acquisition time, so a crashed runner does not lock forever.
 
 The lock and the ledger share the same collection (`<database>.<collection>`); reads use `ReadConcern.Majority` and `ReadPreference.Primary` so replica-set deployments see committed writes and standalones fall back to local semantics automatically.
 
@@ -231,11 +231,11 @@ For code migrations, override `DownAsync` and reverse the operations explicitly.
 
 ## Squash support
 
-The MongoDB provider ships full squash codegen via `IntrospectionSnapshotStrategy` (per ADR-0019). The canonical output is JSON-section form (`[collections]`, `[indexes]`, etc.) because MongoDB structural state (validators, time-series options, view pipelines, partialFilterExpression on indexes) exceeds the narrow MongoStatementParser grammar. The capture path probes the live cluster via the `listCollections` + per-collection `Indexes.List` admin commands; the canonicalizer strips ephemeral fields (`uuid`, `readOnly`, `v`, `ns`) at every nesting level.
+The MongoDB provider ships full squash codegen via `IntrospectionSnapshotStrategy`. The canonical output is JSON-section form (`[collections]`, `[indexes]`, etc.) because MongoDB structural state (validators, time-series options, view pipelines, partialFilterExpression on indexes) exceeds the narrow MongoStatementParser grammar. The capture path probes the live cluster via the `listCollections` + per-collection `Indexes.List` admin commands; the canonicalizer strips ephemeral fields (`uuid`, `readOnly`, `v`, `ns`) at every nesting level.
 
 Capture uses BSON Extended JSON v2 (`CanonicalExtendedJson`) so MongoDB-specific types (ObjectId, BinData, Decimal128, BsonDateTime) round-trip losslessly. The canonicalizer treats payloads as opaque JSON value content -- BSON-flavored values ride through unchanged.
 
-The Roslyn-based `MongoDBMigrationSourceScanner` enforces the `[DataMigration]` / `[StructuralOnly]` annotation requirement (ADR-0019 amendment A5) for migrations using `collection.InsertOneAsync`, `BulkWriteAsync`, `UpdateManyAsync`, and related write call-sites.
+The Roslyn-based `MongoDBMigrationSourceScanner` enforces the `[DataMigration]` / `[StructuralOnly]` annotation requirement for migrations using `collection.InsertOneAsync`, `BulkWriteAsync`, `UpdateManyAsync`, and related write call-sites.
 
 See [Squashing migrations](squashing-migrations.md) for the cross-provider squash CLI + workflow.
 

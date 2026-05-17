@@ -41,7 +41,7 @@ services.AddPostgresMigrations( options =>
 | LockName | string | "ledger_lock" | Table name (under `SchemaName`) holding the single-row lock record. |
 | LockMaxLifetime | TimeSpan | 1 hour | Hard cap on lock hold time; doubles as the lock row's expiry stamp written at acquisition. |
 
-For multi-provider hosts (e.g. PostgreSQL + MongoDB in the same app), resolve the typed runner `PostgresMigrationRunner` rather than the base `MigrationRunner`. See [Multi-Provider Hosts](multi-provider-hosts.md) (ADR-0023) for the registration and invocation pattern.
+For multi-provider hosts (e.g. PostgreSQL + MongoDB in the same app), resolve the typed runner `PostgresMigrationRunner` rather than the base `MigrationRunner`. See [Multi-Provider Hosts](multi-provider-hosts.md) for the registration and invocation pattern.
 
 ## Resource layout
 
@@ -159,7 +159,7 @@ public class AddSecondaryIndexes( PostgresResourceRunner<AddSecondaryIndexes> ru
 
 ## Locking semantics
 
-The provider uses a single-row lock table under `SchemaName` as a distributed lock (per [ADR-0005](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0005-provider-native-distributed-locking.md), provider-native locking). Acquisition reads the lock row; if a row exists with `release_on` in the past, it is deleted and a fresh row is inserted; if a live row exists, `MigrationLockUnavailableException` is raised. `LockMaxLifetime` caps total wall-clock hold and is stamped on the lock row at acquisition time, so a crashed runner does not lock the schema forever -- the next runner sees the expired stamp and reclaims.
+The provider uses a single-row lock table under `SchemaName` as a distributed lock (provider-native locking). Acquisition reads the lock row; if a row exists with `release_on` in the past, it is deleted and a fresh row is inserted; if a live row exists, `MigrationLockUnavailableException` is raised. `LockMaxLifetime` caps total wall-clock hold and is stamped on the lock row at acquisition time, so a crashed runner does not lock the schema forever -- the next runner sees the expired stamp and reclaims.
 
 The lock table and the ledger table both live under `SchemaName` and are created during `InitializeAsync` if they do not exist. The lock implementation is intentionally application-level (a single-row table with TTL semantics) rather than `pg_advisory_lock` so its semantics match the other providers and the lock state is visible through `SELECT * FROM <schema>.<lock_table>` for ops debugging.
 
@@ -175,9 +175,9 @@ The ledger writes are journaled per the framework's standard `WriteAsync` semant
 
 ## Squash support
 
-The Postgres provider is the squash-codegen reference implementation (per ADR-0019). It ships `PgDumpSnapshotStrategy` with `pg_dump --schema-only` as the capture mechanism. The canonical output is `.sql` text with the pg_dump preamble + psql directives stripped; the splitter (`PostgresStatementSplitter`) handles dollar-quoted strings; the classifier recognizes all 30+ Postgres DDL kinds plus refuses `CREATE INDEX CONCURRENTLY` (incompatible with squash transactionality).
+The Postgres provider is the squash-codegen reference implementation. It ships `PgDumpSnapshotStrategy` with `pg_dump --schema-only` as the capture mechanism. The canonical output is `.sql` text with the pg_dump preamble + psql directives stripped; the splitter (`PostgresStatementSplitter`) handles dollar-quoted strings; the classifier recognizes all 30+ Postgres DDL kinds plus refuses `CREATE INDEX CONCURRENTLY` (incompatible with squash transactionality).
 
-The Roslyn-based `PostgresMigrationSourceScanner` enforces the `[DataMigration]` / `[StructuralOnly]` annotation requirement (ADR-0019 amendment A5) for migrations using `NpgsqlCommand` writes outside the structural DDL surface.
+The Roslyn-based `PostgresMigrationSourceScanner` enforces the `[DataMigration]` / `[StructuralOnly]` annotation requirement for migrations using `NpgsqlCommand` writes outside the structural DDL surface.
 
 See [Squashing migrations](squashing-migrations.md) for the cross-provider squash CLI + workflow.
 

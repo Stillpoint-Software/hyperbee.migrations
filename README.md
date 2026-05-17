@@ -18,11 +18,11 @@ Database schema and data evolve over the life of an application. Hyperbee.Migrat
 v3.0 adds **migration squashing** across all five providers, plus the
 tooling and discovery surface that supports it:
 
-- **Migration squashing (ADR-0019).** Collapse a long run of historical
+- **Migration squashing.** Collapse a long run of historical
   migrations `[N..M]` into a single equivalent squash migration. Mature
   environments auto-mark the squash via the `Replaces` graph (no re-run);
-  fresh installs run the squash body. Squashes are up-only (ADR-0020) and
-  carry a content checksum + `Kind`/`Replaces` ledger metadata (ADR-0021).
+  fresh installs run the squash body. Squashes are up-only and carry a
+  content checksum + `Kind`/`Replaces` ledger metadata.
 - **The `hyperbee-migrations` CLI.** Generates squash artifacts against an
   ephemeral, topology-matched container, runs a verification round, and
   emits the squash body + sidecar metadata + summary. Also hosts the
@@ -35,7 +35,7 @@ tooling and discovery surface that supports it:
   canonicalization + verification). Install the `.Squash` package
   alongside the provider package to enable `hyperbee-migrations squash
   --provider <p>` for that store.
-- **`IMigrationHost` discovery (ADR-0024).** A migration project exposes
+- **`IMigrationHost` discovery.** A migration project exposes
   exactly one `IMigrationHost` that builds a configured service provider
   for an arbitrary connection. The CLI, the recovery verb, and the runner
   all consume the same host through a single reflection scan -- the v1
@@ -90,7 +90,7 @@ using ( var scope = app.Services.CreateScope() )
     // Single-provider host: resolve the typed runner. Resolving the base
     // MigrationRunner also works in single-provider hosts, but the typed
     // runner is the documented entry point and the only one that works in
-    // multi-provider hosts (per ADR-0023 a multi-provider host throws on
+    // multi-provider hosts (a multi-provider host throws on
     // GetRequiredService<MigrationRunner>() to prevent silently routing to
     // the wrong provider).
     var runner = scope.ServiceProvider.GetRequiredService<PostgresMigrationRunner>();
@@ -164,7 +164,6 @@ See [Multi-Provider Hosts](https://stillpoint-software.github.io/hyperbee.migrat
 |                            |                                                            |
 | -------------------------- | ---------------------------------------------------------- |
 | **Concepts & guides**      | https://stillpoint-software.github.io/hyperbee.migrations/ |
-| **Architecture decisions** | [`docs/decisions/`](docs/decisions/)                       |
 | **Operator guides**        | [`docs/guides/`](docs/guides/)                             |
 | **Changelog**              | [`CHANGELOG.md`](CHANGELOG.md)                             |
 

@@ -133,7 +133,7 @@ The reasons MIGRATE INDEX is the recommended pattern:
 - **Safe defaults are baked in.** `op_type: create` is auto-injected on REINDEX so retried runs don't double-write. The ALIAS SWAP precondition is in-body so there's no TOCTOU window.
 - **Atomicity is explicit.** The sub-statements run as a halting sequence; failure of any sub-statement halts the rest and feeds R-19 partial-rollback ledger semantics.
 - **The intent is readable.** "MIGRATE INDEX users-v1 TO users-v2" reads as the operation it is. Three separate statements bury the intent across multiple lines.
-- **Template resolution is offline-pure.** The parser carries the template name unresolved; the runtime fetches the live template body just before CREATE INDEX dispatch (ADR-0015). Authors can update the template independently of the migration that uses it.
+- **Template resolution is offline-pure.** The parser carries the template name unresolved; the runtime fetches the live template body just before CREATE INDEX dispatch. Authors can update the template independently of the migration that uses it.
 
 ## Related
 

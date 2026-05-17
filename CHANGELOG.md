@@ -7,13 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.0.0] — 2026-05-12 — Migration Squashing (all 5 providers)
 
-This release ships the destructive-model migration squash feature
-(per [ADR-0019](docs/decisions/0019-migration-squash-replaces-graph.md)) plus
-the universal script-format resource form (per
-[ADR-0022](docs/decisions/0022-script-format-resource-migrations.md)) and
-the CLI extensibility contract that lets each provider plug into
-`hyperbee-migrations squash` (per
-[ADR-0024](docs/decisions/0024-migration-host-discovery.md)).
+This release ships the destructive-model migration squash feature plus
+the universal script-format resource form and the CLI extensibility
+contract that lets each provider plug into `hyperbee-migrations squash`.
 v3.0 is a major release because of two breaking changes around
 `IMigrationRecordStore` and provider record-store schemas — both protected by
 safe back-compat paths so existing v2 migrations and consumers keep working
@@ -38,14 +34,10 @@ Docker runtime cost.
   own snapshot strategy in v1: Postgres `PgDumpSnapshotStrategy` (canonical
   `.sql` from `pg_dump --schema-only`), Aerospike `InfoSnapshotStrategy`,
   OpenSearch `RestStateDiffStrategy`, MongoDB `IntrospectionSnapshotStrategy`,
-  Couchbase `HybridStrategy`. Shipping all five together is deliberate per the
-  2026-05-09 scope retraction in
-  [ADR-0019 amendment A7](docs/decisions/0019-migration-squash-replaces-graph.md):
+  Couchbase `HybridStrategy`. Shipping all five together is deliberate:
   the strategy abstraction is only proven correct by being implemented
-  against the full provider matrix. **Outcome:** the contract held for all
-  five providers without amendment -- four consecutive provider
-  implementations after Postgres shipped without requiring an ADR-0019
-  amendment, confirming the 5-interface abstraction is correct.
+  against the full provider matrix. **Outcome:** the 5-interface contract
+  held for all five providers without modification.
 - **Universal `.statements` script form** — alongside the legacy
   `.statements.json` shape, all four NoSQL providers accept multi-statement
   script files with `--`/`//`/`/* */` comments and `;` terminators. Postgres
@@ -55,10 +47,9 @@ Docker runtime cost.
   registered fleet member is mid-range (`MidRangeFleetException`), and the
   runner refuses a mid-range environment loudly at apply time
   (`MidRangeSquashException`, with a `recover from-mid-range` escape hatch).
-  The deploy-time fleet-staleness gate originally specified in
-  [ADR-0019 amendment A2](docs/decisions/0019-migration-squash-replaces-graph.md)
-  was cut as redundant before ship; see
-  [ADR-0026](docs/decisions/0026-deploy-time-fleet-gate-cut.md).
+  A deploy-time fleet-staleness gate was specified during design but cut
+  as redundant before ship (the apply-time refusal already makes the
+  dangerous case loud and recoverable).
 - **Recovery acknowledgement token** for the
   `MidRangeSquashException` escape hatch — deterministic per
   `(env, squash, missing-versions)` so retries reproduce the same token,
@@ -101,7 +92,7 @@ Docker runtime cost.
 - OpenSearch squash components (`OpenSearchTopologySignature`,
   `OpenSearchStatementClassifier`,
   `OpenSearchSnapshotCanonicalizer` -- JSON-section canonical form with
-  opaque painless preservation per the Task 2.0 spike,
+  opaque painless preservation,
   `OpenSearchDataOpClassifier`,
   `RestStateDiffStrategy` + `OpenSearchSquashGenerationContext` +
   `OpenSearchSnapshotCapture`, `OpenSearchSquashVerifier`,
@@ -124,20 +115,20 @@ Docker runtime cost.
   `HybridStrategy` + `CouchbaseSquashGenerationContext` +
   `CouchbaseSnapshotCapture`, `CouchbaseSquashVerifier`,
   `CouchbaseMigrationSourceScanner`).
-- `[DataMigration]` and `[StructuralOnly]` attributes (ADR-0019 A5) -- the
+- `[DataMigration]` and `[StructuralOnly]` attributes -- the
   Roslyn-based source scanners refuse squash generation if a migration class
   matches the data-op heuristic without an explicit annotation.
 - Generation-time fleet gate types: `SquashMetadata`, `SquashFleetGate`
   (`EnsureGenerable`), `MidRangeFleetException`. (The deploy-time half --
   `EnsureDeployable`, `StaleFleetMemberException`,
-  `UnregisteredEnvironmentException` -- was cut before ship per ADR-0026.)
+  `UnregisteredEnvironmentException` -- was cut before ship.)
 - `RecoveryAcknowledgement` — deterministic 12-char token for the
   `recover from-mid-range` escape hatch.
 - **Per-provider `MigrationRunner` subclasses** (`PostgresMigrationRunner`,
   `MongoDBMigrationRunner`, `CouchbaseMigrationRunner`,
   `OpenSearchMigrationRunner`, `AerospikeMigrationRunner`). Each provides
   a unique DI handle so multi-provider hosts can resolve and run each
-  provider's runner independently. See ADR-0023 + the multi-provider
+  provider's runner independently. See the multi-provider
   hosts operator guide.
 - **`IEphemeralProvisioner` abstraction (+ Couchbase sibling-container variant).**
   The per-provider squash CLI capture orchestrators consume an
@@ -150,7 +141,7 @@ Docker runtime cost.
   default `{Provider}SquashProvider()` ctor wires the default
   Testcontainers impl; a second `(IEphemeralProvisioner)` ctor accepts
   a caller-supplied provisioner for integration tests and third-party
-  embeddings. Per ADR-0024 audit Week 2 + Week 4 completion.
+  embeddings.
 - **5 end-to-end SquashProvider integration tests + CLI binary E2E.**
   One SquashProvider integration test per provider (Postgres,
   Aerospike, OpenSearch, MongoDB, Couchbase). Each test loads the
@@ -165,7 +156,7 @@ Docker runtime cost.
   emitted `.sql`, `.metadata.json`, and `.summary.md` artifacts. All
   pass on net8.0, net9.0, and net10.0.
 - **Plugin-style `AssemblyLoadContext` isolation for the CLI binary**
-  (ADR-0024 A2). `MigrationAssemblyLoader` now defers shared-type
+ . `MigrationAssemblyLoader` now defers shared-type
   identity to the Default ALC (so `IServiceCollection`,
   `IServiceProvider`, etc. type-match across the host/plugin boundary)
   AND probes the NuGet cache directly via the migration assembly's
@@ -196,8 +187,7 @@ Docker runtime cost.
   via `MongoDbTestContainer.ConnectionString` rather than assuming a
   fixed host:port.
 - **OpenSearch ISM lifecycle DSL — `DROP POLICY` + `DETACH POLICY FROM INDEX`.**
-  Closes the CREATE/APPLY/DETACH/DROP symmetry for ISM policy management
-  (R-17 per ADR-0024 audit follow-up). `DROP POLICY <id> [IF EXISTS]` deletes
+  Closes the CREATE/APPLY/DETACH/DROP symmetry for ISM policy management. `DROP POLICY <id> [IF EXISTS]` deletes
   the policy via `DELETE _plugins/_ism/policies/<id>` (the cluster rejects
   with 409 if any index still references the policy -- run DETACH first).
   `DETACH POLICY FROM INDEX <pattern> [NO WAIT("<reason>")]` calls
@@ -269,28 +259,27 @@ Docker runtime cost.
   and prevents unload. The collectible ALC (`MigrationAssemblyLoader`)
   resolves transitively-referenced assemblies from the migration project's
   output directory and unloads cleanly when the verb completes -- safe
-  for embedding the CLI in long-running hosts. Per ADR-0024 audit
-  follow-up (F-3).
+  for embedding the CLI in long-running hosts.
 - **`CouchbaseRecordStore.IntersectWithAppliedAsync` rewritten to single N1QL
   `USE KEYS` round-trip.** Previously fanned out N parallel `ExistsAsync`
   KV probes -- a 500-migration squash auto-mark opened 500 concurrent
   KV connections, risking throttle / retry storms on smaller clusters.
   The new path issues `SELECT RAW META(d).id FROM <keyspace> d USE KEYS $ids`
   for a primary-key index hit; semantically identical, one round-trip,
-  no fan-out. Per ADR-0024 audit follow-up (R-16).
+  no fan-out.
 - **MongoDB + OpenSearch Squash provider packages** ship as part of the
   five-provider CLI extensibility cascade. `MongoDBSquashProvider`
   spins ephemeral `mongo:7` containers via `Testcontainers.MongoDb`;
   `OpenSearchSquashProvider` spins ephemeral
   `opensearchproject/opensearch:2.18.0` containers via the generic
   `Testcontainers` package. Both route migration apply through the
-  discovered `IMigrationHost` and emit `.statements` script form per
-  ADR-0022. RB-3 per-provider readiness probes ship in both (Mongo:
+  discovered `IMigrationHost` and emit `.statements` script form.
+  RB-3 per-provider readiness probes ship in both (Mongo:
   N1QL-style aggregation over the migration ledger collection;
   OpenSearch: `_search` against the ledger index extracting the max
   version from record_id).
-- **CLI is a thin dispatch shell over `ISquashProvider`** (per ADR-0024
-  Week 2). The CLI assembly references zero provider packages; per-provider
+- **CLI is a thin dispatch shell over `ISquashProvider`.** The CLI
+  assembly references zero provider packages; per-provider
   CLI implementations are discovered via the migration assembly's reference
   closure. NuGet package presence IS the registration: a migration project
   adds `Hyperbee.Migrations.Providers.{Provider}.Squash` to enable
@@ -299,13 +288,13 @@ Docker runtime cost.
   MongoDB / OpenSearch / Couchbase follow in Week 3-4.
 - **RB-4 (apply-path reflection) closed.** Provider CLI implementations
   route migration apply through the discovered `IMigrationHost`
-  (ADR-0024) -- no more `ApplyToDataSourceAsync` static-method
+  -- no more `ApplyToDataSourceAsync` static-method
   reflection convention. The host class is the single supported
   integration point.
 - **R-5 (output file extension)**: emitted squash artifact filename uses
   `ISquashProvider.SquashFileExtension` instead of a hardcoded `.sql`.
-  Postgres -> `.sql`; the four NoSQL providers -> `.statements` (per
-  ADR-0022 script form).
+  Postgres -> `.sql`; the four NoSQL providers -> `.statements`
+  (the script form).
 - **R-8 (per-provider source scanner dispatch)**: scanner dispatch routes
   through `ISquashProvider.ScanSource` instead of hardcoding
   `PostgresMigrationSourceScanner.Scan`. Each provider's package exposes
@@ -338,38 +327,35 @@ Docker runtime cost.
   re-verifies the token before consuming the row, so a stale acknowledgement
   from a previous incident with a different missing-set is rejected. v3.0
   CLI persists via Postgres only; the remaining four providers wire through
-  the Week 2 `IMigrationHost` discovery contract. Per ADR-0024 audit
-  follow-up (RB-2 option a).
+  the Week 2 `IMigrationHost` discovery contract.
 - **README quick-start uses the typed `PostgresMigrationRunner` instead of the
   base `MigrationRunner`.** The base type works in single-provider hosts but
-  throws in multi-provider hosts (per ADR-0023); the typed runner is the
+  throws in multi-provider hosts; the typed runner is the
   documented entry point either way. The README also flags the multi-provider
-  pattern with a cross-link to the operator guide. Per ADR-0024 audit
-  follow-up (R-11).
+  pattern with a cross-link to the operator guide.
 - **`squash --scan-source` is required by default; explicit bypass requires
-  `--no-scan="<reason>"`** (>= 20 chars). ADR-0019 A5 source scanning is the
+  `--no-scan="<reason>"`** (>= 20 chars). Source scanning is the
   default-deny annotation gate; making it opt-in let operators ship squashes
   that silently elided data ops. The bypass form preserves operator
   autonomy (e.g. cluster-only scenarios with no source) while keeping the
-  choice auditable. Per ADR-0024 audit follow-up (R-6).
+  choice auditable.
 - **`squash --fleet-manifest` is required by default; explicit bypass requires
-  `--no-fleet-manifest="<reason>"`** (>= 20 chars). ADR-0019 A2 two-phase
-  fleet readiness gate degraded to a zero-phase no-op when the manifest was
+  `--no-fleet-manifest="<reason>"`** (>= 20 chars). The fleet readiness gate degraded to a zero-phase no-op when the manifest was
   omitted, hiding mid-range fleet members. The bypass is for solo-environment
-  squashes only. Per ADR-0024 audit follow-up (R-7).
+  squashes only.
 - **CLI `ArgParser` whitelists flags per verb** and rejects unknown long-options
   with a did-you-mean suggestion (Damerau-Levenshtein-lite over the
   per-verb known-flag set). A non-boolean flag missing its value
   (e.g. `--connection --range 1-2`) now throws "flag --connection requires
   a value" instead of being silently treated as the string `"true"`.
   Boolean flags (`--remove-originals`, `--regenerate`) retain value-less
-  semantics. Per ADR-0024 audit follow-up (R-12).
+  semantics.
 - **Fleet manifest YAML loader rejects unknown keys** instead of silently
   swallowing them. The previous `IgnoreUnmatchedProperties()` call let typos
   through (`squash-overides` parsed cleanly, `expries: 2026-06-01` produced
   the default 30-day window) -- giving the operator the illusion that the
   manifest was honored. v3.0 throws `MigrationException` wrapping the
-  YamlDotNet line/column on any unknown key. Per ADR-0024 audit follow-up (R-13).
+  YamlDotNet line/column on any unknown key.
 - **`RegisterBaseAliases` removes only helper-owned descriptors when a second
   provider registers.** Previously the second-provider flip called
   `RemoveAll<MigrationOptions>` / `RemoveAll<IMigrationRecordStore>` /
@@ -382,20 +368,19 @@ Docker runtime cost.
   multi-provider mode the throwing factory still poisons base-type
   resolution by design (operators resolve typed runners) -- R-9's guarantee
   is "your descriptor is not destroyed", not "your descriptor wins base-type
-  resolution". Per ADR-0023 amendment F1 + ADR-0024 audit follow-up (R-9).
+  resolution".
 - **`AddCouchbaseMigrations` validates `BucketName` at options-factory time.**
   Missing or whitespace-only `BucketName` now throws
   `InvalidOperationException` with an operator-friendly message naming the
   field plus the canonical fix (`opts.BucketName = "..."`). Previously the
   failure surfaced as an obscure `NullReferenceException` inside the Couchbase
-  SDK on the first `BucketAsync(null)` call. Per ADR-0024 audit follow-up (R-14).
+  SDK on the first `BucketAsync(null)` call.
 - **`MidRangeSquashException` prints the recovery acknowledgement token** in
   its message and exposes it as `RecoveryToken` on the exception itself, so
   operators have the token on hand during incident response without
   recomputing it. New `MigrationOptions.EnvironmentName` property feeds the
   token derivation; when unset, the token is computed against an `<unset>`
   sentinel and the exception message includes a remediation note. Per
-  ADR-0019 A3 + ADR-0024 audit follow-up (R-10).
 - **Runner snapshots the applied set once at startup** instead of issuing a
   per-migration `ExistsAsync` round-trip. The loop now consults the in-memory
   snapshot to decide skip-vs-run. On a 500-migration project the runner
@@ -404,7 +389,7 @@ Docker runtime cost.
   Up direction is correctness-stable (Up only adds records); Down direction
   uses the start-of-run "exists?" answer, which is the correct semantic
   (Down should revert what was present at the start, not chase concurrent
-  writers). Per ADR-0024 audit follow-up (R-2). The audit's PA-8 finding
+  writers). The audit's PA-8 finding
   (count-only optimization of the prior `IsLedgerEmptyAsync` helper) is
   dissolved by this change -- the full applied set is now consumed
   pervasively, so sending all ids is fully justified.
@@ -414,13 +399,13 @@ Docker runtime cost.
   set `opts.LockingEnabled = false` explicitly. Existing consumers who never set the
   property pick up locking automatically on upgrade -- if you have a CI deployment that
   intentionally races (e.g., test fixtures that nuke + recreate the database between
-  runs), set the property explicitly. Per ADR-0024 audit follow-up (R-1).
+  runs), set the property explicitly.
 - All five provider record stores override `IntersectWithAppliedAsync` with a
   single-round-trip realtime read (Postgres `WHERE = ANY`, MongoDB
   `find _id $in` with majority+primary, Couchbase parallel `ExistsAsync`,
   Aerospike `BatchGet`, OpenSearch `_mget realtime=true`).
 - **All five provider record stores override `IntersectWithSquashedAsync`** for
-  transitive squash satisfaction (ADR-0019 A6). Postgres uses
+  transitive squash satisfaction. Postgres uses
   `WHERE kind=1 AND replaces && ARRAY[...]`; MongoDB uses `find { kind: 1, replaces: { $in: [...] } }`;
   Couchbase uses N1QL `WHERE kind = 1 AND ANY v IN replaces SATISFIES v IN [...] END`;
   OpenSearch uses `_search` with a `terms` filter on `replaces`; Aerospike uses a
@@ -435,15 +420,14 @@ Docker runtime cost.
   message naming the store type the first time the runner reconciles a
   `Kind=Squash` descriptor against a store that hasn't overridden the method.
   v2 stores without any squash usage are untouched -- the runner reaches this
-  method only when a squash descriptor is being processed. Per ADR-0024 audit
-  follow-up (R-3).
+  method only when a squash descriptor is being processed.
 - OpenSearch ledger index strict mapping extended with `kind` (byte) and
   `replaces` (long[]) fields. Existing v2-era indices receive an additive
   `PUT _mapping` patch on bootstrap, idempotent and IAM-aware.
 - `MigrationDescriptor` (previously a private record on `MigrationRunner`)
   is now a public core type so squash strategies can consume it.
 - **`MigrationRunner` accepts `ILoggerFactory` in addition to
-  `ILogger<MigrationRunner>`.** Per ADR-0023 (assessment F7) the new
+  `ILogger<MigrationRunner>`.** The new
   primary constructor takes `ILoggerFactory` and creates a logger
   categorized under the concrete runtime type so per-provider subclass
   instances log under their own type names
@@ -457,7 +441,7 @@ Docker runtime cost.
   resolutions now throw `InvalidOperationException` with a clear,
   actionable message when multiple providers are registered; resolve
   the typed `{Provider}MigrationRunner` explicitly. Single-provider
-  hosts are unaffected. (See ADR-0023 + the multi-provider hosts
+  hosts are unaffected. (See the multi-provider hosts
   operator guide at `docs/site/multi-provider-hosts.md`.)
 
 ### Pre-ship hardening
@@ -491,8 +475,8 @@ doc-accuracy, and dead-code items.
   probe filtered by the existing `IsTransientClusterError` predicate with a
   60s bound, throwing a clear `MigrationException` on timeout.
 - **Documentation corrections.** `docs/site/squashing-migrations.md`: removed
-  the stale `ApplyToDataSourceAsync` apply-path (CLI applies via the discovered
-  `IMigrationHost` per ADR-0024), corrected the CLI invocation example and the
+  the stale `ApplyToDataSourceAsync` apply-path (the CLI applies via the
+  discovered `IMigrationHost`), corrected the CLI invocation example and the
   `recover from-mid-range` flag list to match `RecoverVerb`, and fixed the
   Aerospike `IntersectWithSquashedAsync` transitivity caveat. `CHANGELOG.md`
   internal contradiction on the Aerospike override reconciled (R-15 shipped).
@@ -503,12 +487,10 @@ doc-accuracy, and dead-code items.
   still-used `RestApi.GetClusterInfo` is retained), and the no-timeout
   `WaitUntilBucketReadyAsync` overload had no callers and were deleted.
 - **Two confirm-intent decisions recorded.** `NullSquashStrategy` is retained
-  as a public extension point (no first-party provider uses it) per
-  [ADR-0025](docs/decisions/0025-nullsquashstrategy-retained-as-extension-point.md);
-  the deploy-time fleet gate (`SquashFleetGate.EnsureDeployable` +
-  `StaleFleetMemberException` + `UnregisteredEnvironmentException`) was cut as
-  redundant per
-  [ADR-0026](docs/decisions/0026-deploy-time-fleet-gate-cut.md).
+  as a public extension point (no first-party provider uses it); the
+  deploy-time fleet gate (`SquashFleetGate.EnsureDeployable` +
+  `StaleFleetMemberException` + `UnregisteredEnvironmentException`) was cut
+  as redundant before ship.
 - **Accidental-drift cleanup.** MongoDB / Postgres `appsettings.json` Serilog
   `Override` key corrected from the copy-pasted `"Couchbase"` to `"MongoDB"` /
   `"Npgsql"`. Couchbase runner DI helpers renamed to the `Add{Provider}Provider`
@@ -544,14 +526,13 @@ doc-accuracy, and dead-code items.
   to create a squash that would strand a listed fleet member) and the wired
   apply-time refusal (`MidRangeSquashException`, refuses a mid-range
   environment loudly with `recover from-mid-range` recovery). The deploy-time
-  fleet-staleness gate from ADR-0019 A2 was cut as redundant; see ADR-0026.
+  fleet-staleness gate was cut as redundant before ship.
 
 ### Documentation
 
-- [ADR-0019](docs/decisions/0019-migration-squash-replaces-graph.md) — Migration squash via Replaces graph + 19 amendments
-- [ADR-0020](docs/decisions/0020-squashes-are-up-only.md) — Squashes are up-only
-- [ADR-0021](docs/decisions/0021-migration-record-checksum.md) — MigrationRecord checksum
-- [ADR-0022](docs/decisions/0022-script-format-resource-migrations.md) — Script-format resource migrations
+- [Squashing migrations](docs/site/squashing-migrations.md) — the full operator guide
+- [Resource migrations](docs/site/resource-migrations.md) — the `.statements` script form
+- [Multi-provider hosts](docs/site/multi-provider-hosts.md)
 - [Upgrade guide v2 → v3](docs/guides/upgrading-from-v2.md)
 
 [3.0.0]: https://github.com/Stillpoint-Software/hyperbee.migrations/releases/tag/v3.0.0

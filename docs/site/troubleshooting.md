@@ -137,7 +137,7 @@ Hyperbee.Migrations.StaleFleetMemberException: Environment 'eu-west-2-prod' has 
    - **Yes, decommissioned.** Remove it from the fleet manifest and redeploy.
    - **No, still active.** Run the migration there to refresh its `LastSeen` timestamp. If that environment cannot run, investigate why - likely a CI/CD failure or a long-disabled deployment pipeline.
 
-2. The staleness window is baked into the squash artifact (`SquashMetadata.MaxStalenessWindow`, default 30 days, set at generation time per [ADR-0019 amendment A15](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0019-migration-squash-replaces-graph.md)). To adopt a different window, regenerate the squash with the desired `--max-staleness` value. Increasing the window suppresses the symptom but does not fix the underlying fleet-drift.
+2. The staleness window is baked into the squash artifact (`SquashMetadata.MaxStalenessWindow`, default 30 days, set at generation time). To adopt a different window, regenerate the squash with the desired `--max-staleness` value. Increasing the window suppresses the symptom but does not fix the underlying fleet-drift.
 
 See [Multi-Provider Hosts](multi-provider-hosts.md) for fleet manifest details.
 

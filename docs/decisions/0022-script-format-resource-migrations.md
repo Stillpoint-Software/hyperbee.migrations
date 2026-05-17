@@ -2,8 +2,6 @@
 
 **Status:** Accepted
 **Date:** 2026-05-05
-**Amendments:** A1 (2026-05-06) — Postgres dollar-quote authoring rules added per spike finding F6 (`spikes/postgres-classifier/SPIKE_REPORT.md`).
-**Related design:** [docs/design/migration-squashing.md](../design/migration-squashing.md), [docs/design/migration-squashing-consensus-destructive.md](../design/migration-squashing-consensus-destructive.md)
 **Related ADRs:** ADR-0001 (Parlot), ADR-0002 (Resource Migration Pattern), ADR-0009 (Convention-Based Record IDs), ADR-0017 (Body-Source Grammar), ADR-0019 (Squash via Replaces Graph), ADR-0021 (Migration Record Checksum)
 
 ## Context
@@ -24,7 +22,7 @@ Postgres uses raw `.sql` files via `PostgresResourceRunner.AllSqlFromAsync` — 
 
 Since each provider already has a Parlot grammar for its statement language (per ADR-0001), the parser is already statement-by-statement; the JSON-array container is purely a delivery mechanism. **Lifting parser entry to a script-level rule is small grammar work** — multi-statement parsing, top-level comment handling, statement terminator recognition.
 
-The destructive-model squash design (ADR-0019 + Assessment 0007) introduces a generation determinism gate (C12) that requires byte-stable codegen output across re-runs. JSON has well-defined canonicalization rules (sort keys, normalize whitespace, etc.); script form requires explicit canonical-formatter rules but is no harder in principle.
+The destructive-model squash design (ADR-0019) introduces a generation determinism gate that requires byte-stable codegen output across re-runs. JSON has well-defined canonicalization rules (sort keys, normalize whitespace, etc.); script form requires explicit canonical-formatter rules but is no harder in principle.
 
 A unified script format also closes the asymmetry between Postgres (`.sql`) and the four NoSQL providers (`.statements.json`). Operators reach for a familiar mental model — write a SQL-like script — regardless of provider.
 
@@ -173,7 +171,7 @@ Each provider's canonical-formatter is part of `ISnapshotCanonicalizer` (per con
 
 Postgres function/procedure bodies are wrapped in dollar-quoted string literals (`$tag$ ... $tag$`). The Postgres lexer treats the body as **opaque bytes** — it does not recognize comment syntax, string-literal escaping, or any other token boundary inside the body. Only the matching close-tag terminates the literal.
 
-This makes function bodies more fragile than they look. Surfaced by the Postgres classifier spike (`spikes/postgres-classifier/SPIKE_REPORT.md` finding F6) after three failed fixture iterations.
+This makes function bodies more fragile than they look: the dollar-quote tag must round-trip exactly, and the splitter must not tokenize inside the body.
 
 **Three rules authors must follow when writing Postgres functions in `.statements` or `.sql` script-form resources:**
 
@@ -281,6 +279,3 @@ Per-provider implementation work (rough sizing):
 - ADR-0017 (Body-Source Grammar): [docs/decisions/0017-body-source-grammar.md](0017-body-source-grammar.md)
 - ADR-0019 (Migration Squash via Replaces Graph + Destructive Codegen): [docs/decisions/0019-migration-squash-replaces-graph.md](0019-migration-squash-replaces-graph.md)
 - ADR-0021 (Migration Record Checksum): [docs/decisions/0021-migration-record-checksum.md](0021-migration-record-checksum.md)
-- Squash design: [docs/design/migration-squashing.md](../design/migration-squashing.md)
-- Multi-advocate consensus: [docs/design/migration-squashing-consensus-destructive.md](../design/migration-squashing-consensus-destructive.md)
-- Assessment 0007: [docs/research/0007-migration-squashing-destructive-assessment.md](../research/0007-migration-squashing-destructive-assessment.md)

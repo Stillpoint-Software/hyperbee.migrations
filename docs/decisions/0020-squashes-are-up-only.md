@@ -2,7 +2,6 @@
 
 **Status:** Accepted
 **Date:** 2026-05-04
-**Related design:** [docs/design/migration-squashing.md](../design/migration-squashing.md)
 **Related ADRs:** ADR-0019 (Replaces-Graph Mechanism)
 
 ## Context
@@ -60,7 +59,4 @@ A squash migration is identified by having non-empty `Replaces` on its `[Migrati
 
 ## References
 
-- Research: [docs/research/0005-migration-squashing.md](../research/0005-migration-squashing.md), Finding 8
-- Requirements: [docs/requirements/migration-squashing.md](../requirements/migration-squashing.md), R-07
-- Design: [docs/design/migration-squashing.md](../design/migration-squashing.md), Decision 3
-- Related: [`OpenSearchExceptions.cs`](../../src/Hyperbee.Migrations.Providers.OpenSearch/OpenSearchExceptions.cs) — existing `RollbackNotSupportedException` infrastructure to reuse
+- [`OpenSearchExceptions.cs`](../../src/Hyperbee.Migrations.Providers.OpenSearch/OpenSearchExceptions.cs) — existing `RollbackNotSupportedException` infrastructure reused for this decision

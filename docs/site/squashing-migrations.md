@@ -38,9 +38,8 @@ Use a squash when **one of the following is true**:
 **Don't squash if:**
 
 - Any registered fleet environment hasn't yet applied the migrations you
-  want to subsume -- the two-phase fleet readiness gate (per ADR-0019 A2)
-  refuses generation in this state and the right move is to bring the env
-  forward first.
+  want to subsume -- the fleet readiness gate refuses generation in this
+  state and the right move is to bring the env forward first.
 - You're in the middle of a v2 -> v3 upgrade. Ship v3 to all environments
   first ([upgrade guide](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/guides/upgrading-from-v2.md));
   then squash.
@@ -93,7 +92,7 @@ squash-overrides:
 - `accept-stranding` lists environments that intentionally aren't expected
   to deploy this squash. Each entry requires a ticket-id (3-64 alphanumeric
   + dash + underscore), an owner, a reason >= 20 chars, and an expiry within
-  90 days (default 30 if omitted) per ADR-0019 A15.
+  90 days (default 30 if omitted).
 
 ### 3. Run the squash CLI
 
@@ -108,9 +107,9 @@ dotnet hyperbee-migrations squash \
   --fleet-manifest ./fleet.yml
 ```
 
-`--scan-source <path>` (the Roslyn data-op annotation scan, ADR-0019 A5)
-and `--fleet-manifest <fleet.yml>` (ADR-0019 A2) are both required by
-default. To bypass either deliberately, pass `--no-scan="<reason>"` or
+`--scan-source <path>` (the Roslyn data-op annotation scan) and
+`--fleet-manifest <fleet.yml>` (the fleet readiness gate) are both
+required by default. To bypass either deliberately, pass `--no-scan="<reason>"` or
 `--no-fleet-manifest="<reason>"` (reason >= 20 chars; logged).
 
 The CLI:
@@ -122,9 +121,9 @@ The CLI:
 3. Spins an ephemeral `postgres:<major>-alpine` container matching the
    topology, applies the migrations through the upper bound via the
    `IMigrationHost` discovered in the migration assembly's reference
-   closure (per ADR-0024), and runs `pg_dump --schema-only`.
+   closure, and runs `pg_dump --schema-only`.
 4. Canonicalizes the dump (strips preamble, normalizes line endings,
-   refuses `CREATE INDEX CONCURRENTLY` per A2).
+   refuses `CREATE INDEX CONCURRENTLY`).
 5. Captures `pg_sequences` last-values for a deterministic `setval(...)`
    post-block.
 6. Emits three artifacts in `--output`:
@@ -144,7 +143,7 @@ public class Squash_1500 : Migration
     public override async Task UpAsync( CancellationToken ct = default )
     {
         // The squash body runs only on fresh installs; mature environments
-        // auto-mark this migration via the Replaces graph (per ADR-0019).
+        // auto-mark this migration via the Replaces graph.
         var sql = ResourceHelper.GetResource<Squash_1500>( "Squash_1500.sql" );
         // execute against your NpgsqlDataSource
     }
@@ -217,8 +216,7 @@ The runner raises this at apply time when an environment's ledger contains
 SOME but not ALL of the versions a squash claims to subsume -- typically
 because the environment was behind (or unlisted) when the squash was
 generated, a backup-restore brought the ledger to an awkward state, or a
-migration was manually marked applied. Three documented recovery paths
-(per ADR-0019):
+migration was manually marked applied. Three documented recovery paths:
 
 1. **Restore from backup** -- preferred when the partial state was caused
    by an accident.
@@ -254,9 +252,9 @@ verification round, ledger-record shape, recovery semantics -- is identical.
 | Couchbase | `system:keyspaces` + `system:indexes` (N1QL) + `/pools/default/buckets/<name>` (REST) | `HybridStrategy` | JSON-section form (`ContentKind.CanonicalJson`) |
 
 Shipping all five together is deliberate: the strategy abstraction is
-validated by every provider's implementation, not just one. v3.0 ships
-**without any ADR-0019 amendments** across the four non-Postgres provider
-phases -- the 5-interface contract held intact.
+validated by every provider's implementation, not just one. The
+5-interface contract held intact across all five providers without
+modification.
 
 ### Ephemeral container provisioning
 
@@ -299,7 +297,7 @@ Testcontainers provisioner without thinking about it.
 The `IMigrationRecordStore.IntersectWithSquashedAsync` per-provider
 override enables transitive squash auto-mark: a v3 application can apply
 a squash that *itself* replaces an earlier squash, and the runner will
-correctly recognize the intermediate squash as satisfied (ADR-0019 A6).
+correctly recognize the intermediate squash as satisfied.
 **All five providers ship the full transitive override** -- Postgres,
 Aerospike, MongoDB, OpenSearch, and Couchbase. The
 `IMigrationRecordStore` DIM default for this method is fail-loud (it
@@ -309,8 +307,6 @@ silently dropping re-squash transitivity.
 
 ## See also
 
-- [ADR-0019 -- Migration squash via Replaces graph](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0019-migration-squash-replaces-graph.md)
-- [ADR-0020 -- Squashes are up-only](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0020-squashes-are-up-only.md)
-- [ADR-0021 -- MigrationRecord checksum](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0021-migration-record-checksum.md)
-- [ADR-0022 -- Script-format resource migrations](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0022-script-format-resource-migrations.md)
 - [Upgrade guide v2 -> v3](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/guides/upgrading-from-v2.md)
+- [Resource migrations](resource-migrations.md) -- the script form squash bodies use
+- [Multi-provider hosts](multi-provider-hosts.md)

@@ -68,8 +68,7 @@ formats; PostgreSQL uses plain `.sql` files via `AllSqlFromAsync` /
 
 ### Script form (`.statements`) -- recommended
 
-Per [ADR-0022](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0022-script-format-resource-migrations.md),
-the script form is the recommended shape for new migrations. Statements are
+The script form is the recommended shape for new migrations. Statements are
 written one-per-line (or multi-line) inside a plain text file with the
 `.statements` extension:
 
@@ -96,7 +95,7 @@ Lexical rules (universal across the four NoSQL providers):
 
 ### JSON-array form (`.statements.json`) -- legacy, still supported
 
-The original ADR-0002 wrapper format remains supported indefinitely:
+The original JSON-array wrapper format remains supported indefinitely:
 
 ```json
 {
@@ -198,7 +197,7 @@ public class CreateInitialSchema(AerospikeResourceRunner<CreateInitialSchema> re
 {
     public override async Task UpAsync(CancellationToken cancellationToken = default)
     {
-        // execute AQL statements (create indexes) -- script form per ADR-0022
+        // execute AQL statements (create indexes) -- script form
         await resourceRunner.StatementsFromAsync(["statements"], cancellationToken);
 
         // seed documents into test.users set

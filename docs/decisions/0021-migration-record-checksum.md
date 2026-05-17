@@ -2,7 +2,6 @@
 
 **Status:** Accepted
 **Date:** 2026-05-04
-**Related design:** [docs/design/migration-squashing.md](../design/migration-squashing.md)
 **Related ADRs:** ADR-0003 (Provider Record Store Contract), ADR-0019 (Replaces-Graph Mechanism)
 
 ## Context
@@ -73,13 +72,17 @@ public enum MigrationRecordKind
 - **Refuse to load null-checksum rows entirely** — rejected. Existing deployments would break on upgrade. Tolerating nulls as "pre-checksum era" with explicit opt-in for integrity-sensitive operations is the migration-friendly path.
 - **Compute checksum at discovery time and never store it** — rejected. Storage is the point: we want to detect when an *applied* migration's body has been changed since it was journaled, not just check current code against itself.
 
-## Amendments from Assessment 0007 (2026-05-05)
+## Additional integrity rules
 
-The full `/nop:assess` ([0007](../research/0007-migration-squashing-destructive-assessment.md)) surfaced two record-store integrity gaps the original ADR didn't close.
+Two record-store integrity rules accompany the checksum.
 
-### A1 (P0-8): `Kind` / `Replaces` consistency enforcement
+### `Kind` / `Replaces` consistency enforcement
 
-Per finding IR-N3: original ADR-0019 reconciliation didn't reference `Kind`. The runner could treat `Kind = Migration` with non-empty `Replaces` as a squash, OR `Kind = Squash` with empty `Replaces` as regular — either path undermines ledger integrity. A ledger-write attacker (or buggy migration) could promote a regular migration row to squash retroactively without changing checksum.
+Reconciliation must not treat `Kind = Migration` with non-empty `Replaces`
+as a squash, nor `Kind = Squash` with empty `Replaces` as regular — either
+path undermines ledger integrity (a ledger-write attacker or buggy
+migration could retroactively promote a regular row to a squash without
+changing its checksum).
 
 **Write-time enforcement.** Provider record stores enforce on every `WriteAsync`:
 
@@ -95,20 +98,16 @@ if (record.Kind == MigrationRecordKind.Migration && record.Replaces is { Count: 
 
 **Read-time enforcement.** Inconsistent rows raise `MigrationLedgerIntegrityException` at load — hard refusal, never silent acceptance. Pre-amendment rows with `Kind = Migration` (the default) and empty `Replaces` read clean.
 
-### A2 (P2-3): Old canonicalizer-version retention
+### Old canonicalizer-version retention
 
-Per finding PM-5 + IR amendment: forensic reconstruction after a canonicalizer regression requires that old canonicalizer-versions remain runnable. If a major refactor changes `ISnapshotCanonicalizer` interface signatures three years out, the artifact's pinned canonicalizer-version becomes unrunnable.
+Forensic reconstruction after a canonicalizer regression requires that old canonicalizer-versions remain runnable. If a major refactor changes `ISnapshotCanonicalizer` interface signatures years out, an artifact's pinned canonicalizer-version would otherwise become unrunnable.
 
 - Each canonicalizer-version retained as a separate frozen package (similar to Roslyn language-version retention).
 - Squash artifact header records `canonicalizer-version: <provider>/<version>` (e.g., `postgres/1.2.0`).
 - Major-version refactors ship a back-compat shim or refuse to load older artifacts (`CanonicalizerVersionUnsupportedException` with clear remediation).
 
-Phase 2 enrichment; v1 ships with one canonicalizer-version per provider so the retention machinery isn't yet load-bearing.
+v1 ships with one canonicalizer-version per provider, so the retention machinery is not yet load-bearing.
 
 ## References
 
-- Research: [docs/research/0005-migration-squashing.md](../research/0005-migration-squashing.md), Findings 5, 7
-- Requirements: [docs/requirements/migration-squashing.md](../requirements/migration-squashing.md), R-01, R-05
-- Design: [docs/design/migration-squashing.md](../design/migration-squashing.md), Decision 4
-- **Assessment 0007 (drives A1, A2 above):** [docs/research/0007-migration-squashing-destructive-assessment.md](../research/0007-migration-squashing-destructive-assessment.md)
-- Related: [`MigrationRecord.cs`](../../src/Hyperbee.Migrations/MigrationRecord.cs), [`IMigrationRecordStore.cs`](../../src/Hyperbee.Migrations/IMigrationRecordStore.cs)
+- [`MigrationRecord.cs`](../../src/Hyperbee.Migrations/MigrationRecord.cs), [`IMigrationRecordStore.cs`](../../src/Hyperbee.Migrations/IMigrationRecordStore.cs)

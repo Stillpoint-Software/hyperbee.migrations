@@ -19,8 +19,7 @@ and v3 simultaneously against the same ledger.
   was in v2.
 - **Existing `*.statements.json` resources work unchanged.** The legacy
   JSON-array loader is preserved; the new `.statements` script form is an
-  additive option (per
-  [ADR-0022](../decisions/0022-script-format-resource-migrations.md)).
+  additive option.
 - **Existing `dotnet build` / `dotnet test` flows work unchanged.** No new
   required dependencies; no changes to project shape.
 - **Provider DI registration is unchanged.** Each provider's
@@ -60,7 +59,7 @@ Its DIM throws `NotSupportedException` the first time the runner reconciles a
 `Kind=Squash` descriptor against a custom store that hasn't overridden the
 method. Returning an empty set silently would misclassify mature environments
 that auto-marked an inner squash as "Fresh" against an outer squash, so the
-contract is fail-loud (R-3, ADR-0019 A6). v2 stores that never see a squash
+contract is fail-loud. v2 stores that never see a squash
 descriptor are untouched -- the throw is reached only when a `Kind=Squash`
 descriptor is actually being processed.
 
@@ -169,9 +168,10 @@ a squash row and v2 then encounters it, the behavior is undefined.
    transparently).
 2. After all environments are on v3, optionally start authoring squashes.
 
-The two-phase fleet readiness gate is the safety net for the
-deploy-then-squash workflow; see
-[ADR-0019 amendment A2](../decisions/0019-migration-squash-replaces-graph.md).
+The generation-time fleet readiness gate (the squash CLI refuses to
+generate a squash that would strand a registered fleet member) plus the
+apply-time `MidRangeSquashException` refusal are the safety net for the
+deploy-then-squash workflow.
 
 ### Squash is operationally one-way
 
@@ -304,8 +304,7 @@ suites plus the contract-pin tests in `Hyperbee.Migrations.Squash.Tests`.
 
 ## See also
 
-- [ADR-0019 — Migration squash via Replaces graph](../decisions/0019-migration-squash-replaces-graph.md)
-- [ADR-0020 — Squashes are up-only](../decisions/0020-squashes-are-up-only.md)
-- [ADR-0021 — MigrationRecord checksum](../decisions/0021-migration-record-checksum.md)
-- [ADR-0022 — Script-format resource migrations](../decisions/0022-script-format-resource-migrations.md)
+- [Squashing migrations](../site/squashing-migrations.md) — the full operator guide
+- [Resource migrations](../site/resource-migrations.md) — the `.statements` script form
+- [Multi-provider hosts](../site/multi-provider-hosts.md)
 - [CHANGELOG entry for 3.0](../../CHANGELOG.md)

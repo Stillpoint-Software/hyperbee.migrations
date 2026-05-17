@@ -134,13 +134,13 @@ public class CreateInitialIndex( OpenSearchResourceRunner<CreateInitialIndex> ru
 
 ## Statement grammar
 
-The grammar is a small SQL-flavored DSL. Statement keywords are case-insensitive. Identifiers may be plain (`users`, `users-v1`, `users.archive`) or backtick-quoted (`` `users.v2` ``) for names containing characters the plain-form parser does not accept. The grammar is offline-pure (ADR-0015) -- no network I/O at parse time. Anything that needs the live cluster (template resolution, version checks) happens at dispatch time.
+The grammar is a small SQL-flavored DSL. Statement keywords are case-insensitive. Identifiers may be plain (`users`, `users-v1`, `users.archive`) or backtick-quoted (`` `users.v2` ``) for names containing characters the plain-form parser does not accept. The grammar is offline-pure -- no network I/O at parse time. Anything that needs the live cluster (template resolution, version checks) happens at dispatch time.
 
 Durations use `<integer><s|m|h>` (e.g., `30s`, `5m`, `2h`). Pure integers are rejected -- the suffix is required.
 
 ### Statement file format
 
-The runner accepts two file shapes. The script form (`.statements`) is the recommended default for new migrations per [ADR-0022](https://github.com/Stillpoint-Software/hyperbee.migrations/blob/main/docs/decisions/0022-script-format-resource-migrations.md); the JSON-array form (`.statements.json`) is the original ADR-0002 wrapper and is supported indefinitely. OpenSearch's script form adds two affordances over the universal shape: a `BODIES { ... }` header block that declares named bodies referenced by `$name`, and inline `WITH BODY { ... }` brace-balanced bodies that the splitter consumes as opaque blocks (semicolons inside the body are NOT statement terminators).
+The runner accepts two file shapes. The script form (`.statements`) is the recommended default for new migrations (see [Resource migrations](resource-migrations.md)); the JSON-array form (`.statements.json`) is the original wrapper and is supported indefinitely. OpenSearch's script form adds two affordances over the universal shape: a `BODIES { ... }` header block that declares named bodies referenced by `$name`, and inline `WITH BODY { ... }` brace-balanced bodies that the splitter consumes as opaque blocks (semicolons inside the body are NOT statement terminators).
 
 Script form (`Resources/1000-CreateInitialIndex/statements`):
 
@@ -222,7 +222,7 @@ See [Resource Migrations](resource-migrations.md) for the cross-provider details
 
 ### Body references
 
-JSON bodies attach to a statement via `WITH BODY <ref>`. The provider supports three resolution forms (ADR-0017), all coexistent -- pick the one that fits the body's size and reuse profile.
+JSON bodies attach to a statement via `WITH BODY <ref>`. The provider supports three resolution forms, all coexistent -- pick the one that fits the body's size and reuse profile.
 
 #### Form 1: Direct file reference (least ceremony)
 
@@ -276,13 +276,13 @@ When a `bodies.<name>` value is a string starting with `@`, the resolver loads i
 }
 ```
 
-When `bodies.<name>` is missing, the resolver falls back to a top-level sibling property of the same name. Preserves the original ADR-0009 shape so existing migrations do not need rewriting.
+When `bodies.<name>` is missing, the resolver falls back to a top-level sibling property of the same name. Preserves the original body-resolution shape so existing migrations do not need rewriting.
 
 #### Resolution order
 
 1. `BodyFileRef` (the `@path` form): load the embedded resource.
 2. `BodyRef` with a `bodies.<name>` entry: structured form wins.
-3. `BodyRef` with a sibling `<name>` property: ADR-0009 fallback.
+3. `BodyRef` with a sibling `<name>` property: legacy fallback.
 4. Otherwise: throw `OpenSearchProviderException` with a remediation message naming both the preferred form and the fallback.
 
 ## Statement reference
@@ -773,11 +773,11 @@ The migration ledger captures forensic fields per R-06 so post-mortems have what
 
 ## Squash support
 
-The OpenSearch provider ships full squash codegen via `RestStateDiffStrategy` (per ADR-0019). The canonical output is JSON-section form (`[index_template]`, `[component_template]`, `[index_metadata]`, `[alias]`, `[ism_policy]`, `[ingest_pipeline]`, etc.) because OpenSearch structural state is irreducibly JSON-bodied. The capture path probes the live cluster via REST endpoints; the canonicalizer strips ephemeral catalog fields (`creation_date`, `uuid`, `version`, `provided_name`, `policy_version`, `last_updated_time`, `seq_no`, `primary_term`) at every nesting level.
+The OpenSearch provider ships full squash codegen via `RestStateDiffStrategy`. The canonical output is JSON-section form (`[index_template]`, `[component_template]`, `[index_metadata]`, `[alias]`, `[ism_policy]`, `[ingest_pipeline]`, etc.) because OpenSearch structural state is irreducibly JSON-bodied. The capture path probes the live cluster via REST endpoints; the canonicalizer strips ephemeral catalog fields (`creation_date`, `uuid`, `version`, `provided_name`, `policy_version`, `last_updated_time`, `seq_no`, `primary_term`) at every nesting level.
 
-**Painless preservation:** painless script source rides through as opaque JSON string content -- the canonicalizer never parses or modifies painless. This is the Task 2.0 spike conclusion (opaque-string preservation + structural JSON canonicalization); no painless parser, no operator annotation, no fallback needed.
+**Painless preservation:** painless script source rides through as opaque JSON string content -- the canonicalizer never parses or modifies painless. Opaque-string preservation plus structural JSON canonicalization means no painless parser, no operator annotation, and no fallback are needed.
 
-The Roslyn-based `OpenSearchMigrationSourceScanner` enforces the `[DataMigration]` / `[StructuralOnly]` annotation requirement (ADR-0019 amendment A5) for migrations using receiver-anchored `_client.*` write call-sites (`Index*`, `Update*`, `UpdateByQuery*`, `Delete*`, `DeleteByQuery*`, `Bulk*`, `Reindex*`).
+The Roslyn-based `OpenSearchMigrationSourceScanner` enforces the `[DataMigration]` / `[StructuralOnly]` annotation requirement for migrations using receiver-anchored `_client.*` write call-sites (`Index*`, `Update*`, `UpdateByQuery*`, `Delete*`, `DeleteByQuery*`, `Bulk*`, `Reindex*`).
 
 See [Squashing migrations](squashing-migrations.md) for the cross-provider squash CLI + workflow.
 
