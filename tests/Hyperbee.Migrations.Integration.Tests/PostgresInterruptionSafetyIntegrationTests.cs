@@ -1,4 +1,4 @@
-//#define INTEGRATIONS
+﻿//#define INTEGRATIONS
 using Hyperbee.Migrations;
 using Hyperbee.Migrations.Providers.Postgres;
 using Hyperbee.Migrations.Squash;
