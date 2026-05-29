@@ -23,6 +23,9 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>$(AssemblyName).Squash.Tests</_Parameter1>
     </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>$(AssemblyName).Integration.Tests</_Parameter1>
+    </AssemblyAttribute>
     <!-- Provider packages call the internal RegisterBaseAliases helper (ADR-0023). -->
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>$(AssemblyName).Providers.Postgres</_Parameter1>

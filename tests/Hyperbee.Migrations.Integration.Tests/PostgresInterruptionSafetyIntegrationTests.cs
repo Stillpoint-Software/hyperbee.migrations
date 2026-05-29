@@ -86,23 +86,24 @@ public class PostgresInterruptionSafetyIntegrationTests
     }
 
     [TestMethod]
-    public async Task EndToEnd_interrupt_then_restart_fails_closed()
+    public async Task EndToEnd_Tier2_interrupt_rolls_back_clean_no_sentinel()
     {
-        const string schema = "isl_e2e_failclosed";
+        // Postgres is transactional (ITransactionalRecordStore), so an interrupted
+        // migration is Tier-2 fail-CLEAN, not Tier-1 fail-closed: the runner rolls
+        // back, leaving NO journal row and -- critically -- NO sentinel. The restart
+        // simply re-runs; it does not throw MigrationInterruptedException.
+        const string schema = "isl_e2e_tier2";
 
-        // Run 1: the data migration throws OperationCanceledException mid-body
-        // (simulated SIGTERM). RunAsync catches OCE and returns; the sentinel must
-        // survive with no journal row.
         var (runner1, store1, options) = BuildRunner( schema, forceResume: false, toVersion: 900 );
-        await runner1.RunAsync();
+        await runner1.RunAsync(); // OCE thrown in body -> rollback; RunAsync swallows OCE
 
         var recordId = options.Conventions.GetRecordId( new E2E_Interrupting_Migration() );
-        Assert.IsTrue( await store1.ExistsAsync( InProgressRecord.IdFor( recordId ) ),
-            "sentinel should survive the interrupted run" );
         Assert.IsFalse( await store1.ExistsAsync( recordId ),
             "interrupted migration must not be journaled" );
+        Assert.IsFalse( await store1.ExistsAsync( InProgressRecord.IdFor( recordId ) ),
+            "Tier-2 leaves NO sentinel (transaction rolled back) -- distinct from Tier-1" );
 
-        // Run 2: a fresh runner against the same database must fail closed.
+        // Run 2: fresh runner restarts cleanly (no fail-closed lockout).
         var (runner2, _, _) = BuildRunner( schema, forceResume: false, toVersion: 900 );
         MigrationInterruptedException caught = null;
         try
@@ -114,8 +115,63 @@ public class PostgresInterruptionSafetyIntegrationTests
             caught = ex;
         }
 
-        Assert.IsNotNull( caught, "restart must fail closed on the leftover data sentinel" );
-        Assert.AreEqual( recordId, caught.RecordId );
+        Assert.IsNull( caught, "Tier-2 restart must be clean -- no interruption lockout" );
+    }
+
+    [TestMethod]
+    public async Task Tier2_body_and_journal_roll_back_and_commit_atomically()
+    {
+        // Direct proof that the migration BODY (a DML write enrolled in the ambient
+        // transaction) and the JOURNAL write share one transaction: rollback undoes
+        // BOTH; commit persists BOTH. Drives the scope directly (internal types
+        // visible via InternalsVisibleTo per ADR-0028).
+        const string schema = "isl_atomic";
+        await using var dataSource = NpgsqlDataSource.Create( _connectionString );
+
+        await using ( var ddl = dataSource.CreateCommand(
+            $"CREATE SCHEMA IF NOT EXISTS {schema}; " +
+            $"CREATE TABLE IF NOT EXISTS {schema}.sideeffect (id int PRIMARY KEY);" ) )
+            await ddl.ExecuteNonQueryAsync();
+
+        var store = BuildStore( schema );
+        await store.InitializeAsync();
+        var txStore = (ITransactionalRecordStore) store;
+
+        async Task<long> SideEffectCount( int id )
+        {
+            await using var c = dataSource.CreateCommand( $"SELECT COUNT(*) FROM {schema}.sideeffect WHERE id = {id}" );
+            return (long) await c.ExecuteScalarAsync();
+        }
+
+        // --- rollback case: body DML + journal both vanish ---
+        var rollbackScope = await txStore.BeginTransactionAsync();
+        var pgRollback = (PostgresMigrationTransaction) rollbackScope;
+        using ( MigrationContext.Push( new MigrationContext { AmbientTransaction = rollbackScope } ) )
+        {
+            await using ( var ins = new NpgsqlCommand( $"INSERT INTO {schema}.sideeffect (id) VALUES (1)", pgRollback.Connection, pgRollback.Transaction ) )
+                await ins.ExecuteNonQueryAsync();
+            await store.WriteAsync( new MigrationRecord { Id = "9000.atomic_rollback" }, WritePrecondition.None );
+        }
+        await rollbackScope.RollbackAsync();
+        await rollbackScope.DisposeAsync();
+
+        Assert.IsFalse( await store.ExistsAsync( "9000.atomic_rollback" ), "journal row must roll back" );
+        Assert.AreEqual( 0L, await SideEffectCount( 1 ), "body DML must roll back" );
+
+        // --- commit case: body DML + journal both persist ---
+        var commitScope = await txStore.BeginTransactionAsync();
+        var pgCommit = (PostgresMigrationTransaction) commitScope;
+        using ( MigrationContext.Push( new MigrationContext { AmbientTransaction = commitScope } ) )
+        {
+            await using ( var ins = new NpgsqlCommand( $"INSERT INTO {schema}.sideeffect (id) VALUES (2)", pgCommit.Connection, pgCommit.Transaction ) )
+                await ins.ExecuteNonQueryAsync();
+            await store.WriteAsync( new MigrationRecord { Id = "9001.atomic_commit" }, WritePrecondition.None );
+        }
+        await commitScope.CommitAsync();
+        await commitScope.DisposeAsync();
+
+        Assert.IsTrue( await store.ExistsAsync( "9001.atomic_commit" ), "journal row must commit" );
+        Assert.AreEqual( 1L, await SideEffectCount( 2 ), "body DML must commit" );
     }
 
     [TestMethod]

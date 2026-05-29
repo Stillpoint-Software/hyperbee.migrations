@@ -260,40 +260,68 @@ public class MigrationRunner
             }
             else
             {
-                // lifecycle migrations: loop until stop
+                // lifecycle migrations: loop until stop.
+                //
+                // Two safety tiers gate the body + journal write for Up-direction
+                // journaled migrations:
+                //   Tier 2 (ADR-0028): if the store is transactional and yields a
+                //     scope, run body + journal inside one transaction -- commit on
+                //     success, rollback on failure (fail-clean). No sentinel.
+                //   Tier 1 (ADR-0027): otherwise write an in-flight sentinel before
+                //     the body and delete it after the journal write (fail-closed).
+                // Down / cron / non-journaled migrations use neither (re-run by
+                // design or out of v1 scope).
+                var guarded = direction == Direction.Up && attribute.Journal;
 
-                var stopProcess = false;
+                IMigrationTransactionScope txScope = null;
+                if ( guarded && _recordStore is ITransactionalRecordStore txStore )
+                    txScope = await txStore.BeginTransactionAsync( cancellationToken ).ConfigureAwait( false );
 
-                // ADR-0027: bracket the body with an in-flight sentinel for
-                // Up-direction journaled migrations (those subject to the
-                // fail-closed pre-scan). Down is not covered (v1 scope); cron and
-                // non-journaled migrations re-run by design and are exempt.
-                var useSentinel = direction == Direction.Up && attribute.Journal;
+                var useSentinel = guarded && txScope == null;
                 if ( useSentinel )
                     await WriteSentinelAsync( recordId, cancellationToken ).ConfigureAwait( false );
 
-                using ( MigrationContext.Push( new MigrationContext { ApplyMode = defaultApplyMode } ) )
+                try
                 {
-                    while ( stopProcess == false )
-                    {
-                        if ( await StartMigration( migrationItem, cancellationToken ) )
-                        {
-                            _logger.LogInformation( "[{version}] {name}: {direction} migration started", version, name, direction );
-                            stopProcess = await ProcessJobAsync( migrationItem, _recordStore, cancellationToken ).ConfigureAwait( false );
-                        }
+                    var stopProcess = false;
 
-                        if ( stopProcess == false )
+                    using ( MigrationContext.Push( new MigrationContext { ApplyMode = defaultApplyMode, AmbientTransaction = txScope } ) )
+                    {
+                        while ( stopProcess == false )
                         {
-                            _logger.LogInformation( "[{version}] {name}: {direction} migration continuing", version, name, direction );
+                            if ( await StartMigration( migrationItem, cancellationToken ) )
+                            {
+                                _logger.LogInformation( "[{version}] {name}: {direction} migration started", version, name, direction );
+                                stopProcess = await ProcessJobAsync( migrationItem, _recordStore, cancellationToken ).ConfigureAwait( false );
+                            }
+
+                            if ( stopProcess == false )
+                            {
+                                _logger.LogInformation( "[{version}] {name}: {direction} migration continuing", version, name, direction );
+                            }
                         }
                     }
-                }
 
-                // Reached only on successful completion (the journal row is now
-                // written); an interruption inside the loop throws past this and
-                // leaves the sentinel behind for the next run's pre-scan.
-                if ( useSentinel )
-                    await DeleteSentinelAsync( recordId ).ConfigureAwait( false );
+                    // Success. Tier 2: commit body + journal atomically. Tier 1:
+                    // delete the sentinel now that the journal row is written. An
+                    // interruption inside the loop throws past this -- Tier 2 rolls
+                    // back (catch), Tier 1 leaves the sentinel for the next pre-scan.
+                    if ( txScope != null )
+                        await txScope.CommitAsync().ConfigureAwait( false );
+                    else if ( useSentinel )
+                        await DeleteSentinelAsync( recordId ).ConfigureAwait( false );
+                }
+                catch
+                {
+                    if ( txScope != null )
+                        await txScope.RollbackAsync().ConfigureAwait( false );
+                    throw;
+                }
+                finally
+                {
+                    if ( txScope != null )
+                        await txScope.DisposeAsync().ConfigureAwait( false );
+                }
             }
 
             runCount++;

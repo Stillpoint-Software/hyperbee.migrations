@@ -1,8 +1,27 @@
 # ADR-0028: Transaction-Scoped Migration Apply (where supported)
 
-**Status:** Proposed
+**Status:** Accepted (Postgres shipped 2026-05-28; other providers Tier-1 by engine capability)
 **Date:** 2026-05-28
 **Related ADRs:** ADR-0003 (Provider Record Store Contract), ADR-0023 (Multi-Runner, Not Meta-Runner), ADR-0027 (Interruption-Safe Ledger)
+
+## Outcome (per-provider matrix, as implemented)
+
+The seam was built and Postgres shipped as the reference. "Addressing all providers"
+means each provider has a defined, tested tier — **not** that every engine gets a
+transaction (three of them physically cannot wrap a DDL-heavy migration):
+
+| Provider   | Tier | Mechanism |
+|------------|------|-----------|
+| Postgres   | **Tier 2 (fail-clean)** | `PostgresRecordStore : ITransactionalRecordStore`; shared `NpgsqlConnection`+`NpgsqlTransaction` enrolled by the resource runner (body) and the record store (journal). Verified: 7 integration tests incl. atomic body+journal rollback/commit. |
+| MongoDB    | Tier 1 (for now) | Multi-doc transactions need a replica set and DDL-in-transaction is version-limited; Testcontainers (4.10) has no replica-set helper to verify against. The `ITransactionalRecordStore` seam is ready for a future replica-set-gated opt-in. Until then, the Tier-1 sentinel applies. |
+| Couchbase  | Tier 1 | KV/N1QL transactions exist but **DDL (bucket/scope/collection/index) is not transactional** — migrations are DDL-heavy, so no transaction can wrap them. |
+| Aerospike  | Tier 1 | No multi-record transactions in this client usage. |
+| OpenSearch | Tier 1 | No transactions in the engine. |
+
+Tier-1 (ADR-0027) is the universal, tested safety net for every provider; Tier-2 is
+a fail-clean *upgrade* layered on top only where the engine can honor it. The runner
+selects the tier via `_recordStore is ITransactionalRecordStore` returning a non-null
+scope — so a provider opts into Tier-2 purely by implementing the capability.
 
 ## Context
 

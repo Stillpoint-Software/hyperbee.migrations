@@ -35,13 +35,24 @@ public class PostgresResourceRunner<TMigration>
         return SqlFromAsync( resourceNames, default, cancellationToken );
     }
 
+    // Creates a command on the ambient Tier-2 transaction's connection when one is
+    // active for this migration (ADR-0028) so the body enrolls in the same
+    // transaction as the journal write; otherwise a pooled command from the data
+    // source (Tier-1 / non-transactional behavior, unchanged).
+    private NpgsqlCommand CreateCommand( string statement )
+    {
+        if ( MigrationContext.Current?.AmbientTransaction is PostgresMigrationTransaction ambient )
+            return new NpgsqlCommand( statement, ambient.Connection, ambient.Transaction );
+        return _dataSource.CreateCommand( statement );
+    }
+
     public async Task SqlFromAsync( string[] resourceNames, TimeSpan? timeout, CancellationToken cancellationToken = default )
     {
         var migrationName = Migration.VersionedName<TMigration>();
 
         foreach ( var statement in ReadResources() )
         {
-            await using var command = _dataSource.CreateCommand( statement );
+            await using var command = CreateCommand( statement );
 
             if ( timeout.HasValue )
             {
@@ -85,7 +96,7 @@ public class PostgresResourceRunner<TMigration>
 
         foreach ( var statement in ReadResources() )
         {
-            await using var command = _dataSource.CreateCommand( statement );
+            await using var command = CreateCommand( statement );
 
             if ( timeout.HasValue )
             {

@@ -4,7 +4,7 @@ using NpgsqlTypes;
 
 namespace Hyperbee.Migrations.Providers.Postgres;
 
-internal class PostgresRecordStore : IMigrationRecordStore
+internal class PostgresRecordStore : IMigrationRecordStore, ITransactionalRecordStore
 {
     private readonly NpgsqlDataSource _dataSource;
     private readonly PostgresMigrationOptions _options;
@@ -195,6 +195,28 @@ internal class PostgresRecordStore : IMigrationRecordStore
         return covered;
     }
 
+    // ADR-0028: begin a Tier-2 transaction spanning the migration body + journal
+    // write. Postgres always supports transactional DDL+DML, so this is always
+    // available (the runner publishes the scope and the body/journal enroll via
+    // the ambient connection below). The migration lock + InitializeAsync run on
+    // their own pooled connections outside this scope, which is intended.
+    public async Task<IMigrationTransactionScope> BeginTransactionAsync( CancellationToken cancellationToken = default )
+    {
+        _logger.LogDebug( "Running {action}", nameof( BeginTransactionAsync ) );
+        return await PostgresMigrationTransaction.CreateAsync( _dataSource, cancellationToken ).ConfigureAwait( false );
+    }
+
+    // Creates a command on the ambient Tier-2 transaction's connection when one is
+    // active for this migration (ADR-0028), otherwise a pooled command from the
+    // data source. Enrolling the journal write in the ambient transaction is what
+    // makes body + ledger commit atomically.
+    private NpgsqlCommand CreateLedgerCommand( string sql )
+    {
+        if ( MigrationContext.Current?.AmbientTransaction is PostgresMigrationTransaction ambient )
+            return new NpgsqlCommand( sql, ambient.Connection, ambient.Transaction );
+        return _dataSource.CreateCommand( sql );
+    }
+
     public async Task<WriteOutcome> WriteAsync(
         MigrationRecord record,
         WritePrecondition precondition = WritePrecondition.None,
@@ -217,7 +239,7 @@ internal class PostgresRecordStore : IMigrationRecordStore
               "VALUES (@id, @runOn, @checksum, @kind, @replaces) " +
               "ON CONFLICT (record_id) DO UPDATE SET run_on = EXCLUDED.run_on, checksum = EXCLUDED.checksum, kind = EXCLUDED.kind, replaces = EXCLUDED.replaces";
 
-        await using var cmd = _dataSource.CreateCommand( sql );
+        await using var cmd = CreateLedgerCommand( sql );
         cmd.Parameters.AddWithValue( "id", record.Id );
         cmd.Parameters.AddWithValue( "runOn", record.RunOn.UtcDateTime );
         cmd.Parameters.AddWithValue( "checksum", (object) record.Checksum ?? DBNull.Value );

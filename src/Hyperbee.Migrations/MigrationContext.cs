@@ -31,6 +31,18 @@ public sealed class MigrationContext
     public MigrationApplyMode ApplyMode { get; init; }
 
     /// <summary>
+    /// The provider-specific ambient transaction handle for a Tier-2
+    /// transaction-scoped run (ADR-0028), or null on a Tier-1 / non-transactional
+    /// run. Set by the runner from <see cref="ITransactionalRecordStore.BeginTransactionAsync"/>
+    /// before <c>UpAsync</c>. A provider's resource runner and record store read
+    /// this and, when it is their own scope type, enroll their operations in it
+    /// (the same connection / session) so the body and the journal write commit
+    /// atomically. Typed as <see cref="object"/> to keep the core
+    /// provider-agnostic; each provider casts to its own scope type.
+    /// </summary>
+    public object AmbientTransaction { get; init; }
+
+    /// <summary>
     /// Convenience: returns true when <see cref="ApplyMode"/> is
     /// <see cref="MigrationApplyMode.Fresh"/>. Mirrors the historic
     /// <c>IsFreshInstall</c> idiom from other migration frameworks.

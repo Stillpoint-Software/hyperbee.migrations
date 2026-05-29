@@ -31,6 +31,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- ADR-0028: lets the integration tests drive PostgresMigrationTransaction
+         directly to prove body + journal atomic rollback. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Hyperbee.Migrations.Integration.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="..\..\assets\icon.png" Pack="true" Visible="false" PackagePath="/" />
     <None Include="..\..\LICENSE">
       <Pack>True</Pack>
