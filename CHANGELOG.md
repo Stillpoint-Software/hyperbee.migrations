@@ -5,6 +5,58 @@ All notable changes to **Hyperbee.Migrations** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] — 2026-05-29 — Interruption-Safe Ledger (crash / SIGTERM safety)
+
+A migration interrupted mid-run — a SIGTERM from an orchestrator (Argo Rollouts
+pre-init, a Kubernetes Job timeout), a SIGKILL after the grace period, or node
+death — is now safe to restart. Previously the ledger row was written only after
+the migration body completed, so an interruption left no record and the next run
+re-ran the whole migration, double-applying non-idempotent data operations. v3.1
+adds a two-tier safety model. Backward compatible: existing migrations and custom
+`IMigrationRecordStore` implementations keep working unchanged.
+
+### Highlights
+
+- **Tier 1 — in-flight sentinel (all providers, fail-closed).** The runner writes a
+  durable `Kind=InProgress` sentinel row before a migration body and deletes it after
+  the journal write. On restart, a leftover sentinel means the migration was
+  interrupted: `[DataMigration]` and unannotated migrations **fail closed**
+  (`MigrationInterruptedException`) until an operator sets `ForceResume`;
+  `[StructuralOnly]` migrations reap the sentinel and re-run (idempotent replay); cron
+  and non-journaled migrations are exempt. Mirrors Flyway's failed-state /
+  golang-migrate's dirty-flag discipline.
+- **Tier 2 — transaction-scoped apply (Postgres, fail-clean).** Where the engine can
+  wrap a migration's body and its journal write in one transaction, an interruption
+  rolls back both atomically — no partial data, no ledger row, no sentinel, no operator
+  step. Shipped for **Postgres** (a shared `NpgsqlConnection`/transaction enrolled by
+  both the resource runner and the record store). The capability seam lets any provider
+  opt in.
+- **Per-provider tiers.** Postgres = Tier 2 (fail-clean). MongoDB, Couchbase, Aerospike,
+  OpenSearch = Tier 1 (fail-closed) — for three of them that is the only engine-correct
+  option (no transaction can wrap DDL-heavy migrations); the MongoDB seam is ready for a
+  future replica-set opt-in. Tier 1 is the universal net for every provider.
+- **Postgres ledger constraint widened.** The `kind` CHECK constraint now accepts
+  `Recovery (3)` and `InProgress (4)`, with an idempotent in-place upgrade for existing
+  deployments.
+- **MongoDB `CreateCollection` is now idempotent** (guard-on-exists), matching the
+  Couchbase/Aerospike create style, so a structural replay is a no-op.
+
+### New public surface
+
+- `MigrationRecordKind.InProgress`, `InProgressRecord`, `MigrationInterruptedException`
+- `MigrationOptions.ForceResume` (promoted from the OpenSearch provider options)
+- `ITransactionalRecordStore`, `IMigrationTransactionScope`, `MigrationContext.AmbientTransaction`
+
+### Decisions
+
+- [ADR-0027](docs/decisions/0027-interruption-safe-ledger.md) — Tier-1 marker-before-work
+- [ADR-0028](docs/decisions/0028-transaction-scoped-apply.md) — Tier-2 transaction-scoped apply
+
+### Tests
+
+428 core + 889 squash unit tests (per target framework); 7 Postgres integration tests
+including atomic body+journal rollback/commit and interrupt → fail-clean restart.
+
 ## [3.0.0] — 2026-05-12 — Migration Squashing (all 5 providers)
 
 This release ships the destructive-model migration squash feature plus
@@ -544,4 +596,5 @@ doc-accuracy, and dead-code items.
 - [Multi-provider hosts](docs/site/multi-provider-hosts.md)
 - [Upgrade guide v2 → v3](docs/guides/upgrading-from-v2.md)
 
+[3.1.0]: https://github.com/Stillpoint-Software/hyperbee.migrations/releases/tag/v3.1.0
 [3.0.0]: https://github.com/Stillpoint-Software/hyperbee.migrations/releases/tag/v3.0.0
