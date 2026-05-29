@@ -259,14 +259,25 @@ internal class PostgresRecordStore : IMigrationRecordStore
          ALTER TABLE {MigrationTableName} ADD COLUMN IF NOT EXISTS replaces bigint[] NOT NULL DEFAULT ARRAY[]::bigint[];
 
          DO $$
+         DECLARE def text;
          BEGIN
-             IF NOT EXISTS (
-                 SELECT 1 FROM pg_constraint
+             SELECT pg_get_constraintdef( oid ) INTO def FROM pg_constraint
                  WHERE conname = '{_options.TableName}_kind_check'
-                   AND conrelid = '{MigrationTableName}'::regclass
-             ) THEN
+                   AND conrelid = '{MigrationTableName}'::regclass;
+
+             -- ADR-0027 / ADR-0021: the kind domain is now 0=Migration, 1=Squash,
+             -- 2=Baseline, 3=Recovery, 4=InProgress. Older deployments carry the
+             -- original CHECK (kind IN (0,1,2)) which rejects Recovery and the new
+             -- InProgress sentinel. Add it widened when missing; drop+re-add when it
+             -- predates value 4. Idempotent: once widened, def contains '4' and this
+             -- is a no-op, so it is concurrency-tolerant across racing initializers.
+             IF def IS NULL THEN
                  ALTER TABLE {MigrationTableName}
-                     ADD CONSTRAINT {_options.TableName}_kind_check CHECK (kind IN (0, 1, 2));
+                     ADD CONSTRAINT {_options.TableName}_kind_check CHECK (kind IN (0, 1, 2, 3, 4));
+             ELSIF def NOT LIKE '%4%' THEN
+                 ALTER TABLE {MigrationTableName} DROP CONSTRAINT {_options.TableName}_kind_check;
+                 ALTER TABLE {MigrationTableName}
+                     ADD CONSTRAINT {_options.TableName}_kind_check CHECK (kind IN (0, 1, 2, 3, 4));
              END IF;
          END $$;
 

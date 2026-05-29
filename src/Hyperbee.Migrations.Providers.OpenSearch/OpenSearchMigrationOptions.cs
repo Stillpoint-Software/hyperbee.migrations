@@ -99,14 +99,10 @@ public class OpenSearchMigrationOptions : MigrationOptions
     /// </summary>
     public bool AssumeIndicesExist { get; set; } = false;
 
-    /// <summary>
-    /// Bypass the partial-rollback lockout (R-19). When a previous Down attempt halted
-    /// partway through, subsequent runs are refused until the operator reconciles state
-    /// and opts in by setting this flag. Use only after manual reconciliation —
-    /// silently retrying a partially-failed rollback can leave the cluster in an
-    /// indeterminate state.
-    /// </summary>
-    public bool ForceResume { get; set; } = false;
+    // ForceResume is inherited from MigrationOptions (promoted to the base per
+    // ADR-0027 so the core up-path interruption lockout and the OpenSearch
+    // down-path partial-rollback lockout share one operator opt-in flag). The
+    // down-path R-19 lockout reads the same inherited property.
 
     /// <summary>Timeout for implicit cluster waits emitted by migration statements (e.g., wait-for-status, wait-for-task).</summary>
     public TimeSpan ImplicitWaitTimeout { get; set; } = TimeSpan.FromSeconds( 30 );

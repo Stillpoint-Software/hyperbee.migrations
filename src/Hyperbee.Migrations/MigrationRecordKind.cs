@@ -40,5 +40,17 @@ public enum MigrationRecordKind : byte
     /// once the squash is auto-marked, so a stale acknowledgement cannot
     /// force-mark a second time.
     /// </summary>
-    Recovery = 3
+    Recovery = 3,
+
+    /// <summary>
+    /// A transient in-flight sentinel (per ADR-0027). Written at a derived
+    /// sentinel id immediately before a migration's body runs and deleted once
+    /// the migration's real journal row is committed. A sentinel surviving into
+    /// the next run means that migration was interrupted mid-body (SIGTERM /
+    /// SIGKILL / node death) and the journal row was never written. The row's
+    /// <c>Replaces</c> set MUST be empty (symmetry with <see cref="Migration"/>).
+    /// Sentinels live at their own ids and never collide with real migration
+    /// rows, so the applied-set never observes them as "applied".
+    /// </summary>
+    InProgress = 4
 }

@@ -349,6 +349,182 @@ public class RunnerTests
     }
 
 
+    // ---- ADR-0027 interruption-safety (sentinel) tests --------------------
+    //
+    // These use the isolated "sentinel-test" profile so the throwing/structural
+    // fixtures (versions 100-102) never run in the default-profile suites. Each
+    // test pre-populates the standard migrations as applied so only the profiled
+    // fixture(s) execute, keeping the runs fast and the assertions focused.
+
+    private static List<(string Id, MigrationRecord Record)> StandardAppliedStore() => new()
+    {
+        ("record.1.first-migration", new MigrationRecord { Id = "record.1.first-migration" }),
+        ("record.2.second-migration", new MigrationRecord { Id = "record.2.second-migration" }),
+        ("record.7.cron-delay-no-stop-migration", new MigrationRecord { Id = "record.7.cron-delay-no-stop-migration" }),
+        ("record.8.cron-delay-with-stop-migration", new MigrationRecord { Id = "record.8.cron-delay-with-stop-migration" }),
+        ("record.9.stop-migration", new MigrationRecord { Id = "record.9.stop-migration" }),
+        ("record.10.cron-migration", new MigrationRecord { Id = "record.10.cron-migration", RunOn = DateTimeOffset.UtcNow }),
+        ("record.11.interface-continuous-migration", new MigrationRecord { Id = "record.11.interface-continuous-migration" })
+    };
+
+    private static void MarkApplied(
+        ICollection<(string Id, MigrationRecord Record)> store,
+        MigrationOptions options,
+        params Migration[] migrations )
+    {
+        foreach ( var migration in migrations )
+        {
+            var id = options.Conventions.GetRecordId( migration );
+            store.Add( (id, new MigrationRecord { Id = id }) );
+        }
+    }
+
+    [TestMethod]
+    public async Task Interrupted_data_migration_leaves_sentinel_and_no_journal_row()
+    {
+        // arrange: only the throwing data fixture (v100) runs; it writes a
+        // sentinel then throws OperationCanceledException (simulated SIGTERM).
+        var store = StandardAppliedStore();
+        var recordStore = InitializeStore( store );
+        var options = GetMigrationOptions();
+        options.Profiles.Add( "sentinel-test" );
+        options.ToVersion = 100; // stop after v100
+
+        var recordId = options.Conventions.GetRecordId( new Interrupting_Data_Migration() );
+        var sentinelId = InProgressRecord.IdFor( recordId );
+
+        var logger = Substitute.For<ILogger<MigrationRunner>>();
+        var migrationRunner = new MigrationRunner( recordStore, options, logger );
+
+        // act — RunAsync catches OperationCanceledException and returns.
+        await migrationRunner.RunAsync();
+
+        // assert: sentinel survives; no journal row for the interrupted migration.
+        Assert.IsTrue( store.Any( x => x.Id == sentinelId ), "sentinel should survive interruption" );
+        Assert.IsFalse( store.Any( x => x.Id == recordId ), "interrupted migration must not be journaled" );
+    }
+
+    [TestMethod]
+    public async Task Restart_with_leftover_data_sentinel_fails_closed()
+    {
+        // arrange: a leftover sentinel for the (succeeding) data fixture v102,
+        // no journal row -> interrupted. No ForceResume -> fail closed.
+        var store = StandardAppliedStore();
+        var options = GetMigrationOptions();
+        options.Profiles.Add( "sentinel-test" );
+        options.ToVersion = 102;
+
+        var recordId = options.Conventions.GetRecordId( new Succeeding_Data_Migration() );
+        store.Add( (InProgressRecord.IdFor( recordId ), InProgressRecord.Build( recordId )) );
+
+        var recordStore = InitializeStore( store );
+        var logger = Substitute.For<ILogger<MigrationRunner>>();
+        var migrationRunner = new MigrationRunner( recordStore, options, logger );
+
+        // act + assert: pre-scan throws (not caught by RunAsync).
+        MigrationInterruptedException caught = null;
+        try
+        {
+            await migrationRunner.RunAsync();
+        }
+        catch ( MigrationInterruptedException ex )
+        {
+            caught = ex;
+        }
+
+        Assert.IsNotNull( caught, "expected fail-closed MigrationInterruptedException" );
+        Assert.AreEqual( recordId, caught.RecordId );
+    }
+
+    [TestMethod]
+    public async Task Restart_with_leftover_data_sentinel_and_ForceResume_reaps_and_reruns()
+    {
+        // arrange: leftover sentinel for v102 + ForceResume -> reap and re-run.
+        var store = StandardAppliedStore();
+        var options = GetMigrationOptions();
+        options.Profiles.Add( "sentinel-test" );
+        options.ToVersion = 102;
+        options.ForceResume = true;
+
+        // mark the sibling fixtures applied so only v102 runs (v100 throws by design)
+        MarkApplied( store, options, new Interrupting_Data_Migration(), new Structural_Only_Migration() );
+
+        var recordId = options.Conventions.GetRecordId( new Succeeding_Data_Migration() );
+        var sentinelId = InProgressRecord.IdFor( recordId );
+        store.Add( (sentinelId, InProgressRecord.Build( recordId )) );
+
+        var recordStore = InitializeStore( store );
+        var logger = Substitute.For<ILogger<MigrationRunner>>();
+        var migrationRunner = new MigrationRunner( recordStore, options, logger );
+
+        // act
+        await migrationRunner.RunAsync();
+
+        // assert: re-ran to completion (journal row present), sentinel cleared.
+        Assert.IsTrue( store.Any( x => x.Id == recordId ), "migration should have re-run and journaled" );
+        Assert.IsFalse( store.Any( x => x.Id == sentinelId ), "sentinel should be reaped" );
+    }
+
+    [TestMethod]
+    public async Task Restart_with_leftover_structural_sentinel_reaps_and_reruns_without_ForceResume()
+    {
+        // arrange: leftover sentinel for the [StructuralOnly] fixture v101.
+        // Structural replay is idempotent -> reap + re-run, no ForceResume needed.
+        var store = StandardAppliedStore();
+        var options = GetMigrationOptions();
+        options.Profiles.Add( "sentinel-test" );
+        options.ToVersion = 101;
+
+        // mark the throwing fixture applied so only v101 runs
+        MarkApplied( store, options, new Interrupting_Data_Migration() );
+
+        var recordId = options.Conventions.GetRecordId( new Structural_Only_Migration() );
+        var sentinelId = InProgressRecord.IdFor( recordId );
+        store.Add( (sentinelId, InProgressRecord.Build( recordId )) );
+
+        var recordStore = InitializeStore( store );
+        var logger = Substitute.For<ILogger<MigrationRunner>>();
+        var migrationRunner = new MigrationRunner( recordStore, options, logger );
+
+        // act — must not throw.
+        await migrationRunner.RunAsync();
+
+        // assert: re-ran (journal row present), sentinel cleared.
+        Assert.IsTrue( store.Any( x => x.Id == recordId ), "structural migration should re-run and journal" );
+        Assert.IsFalse( store.Any( x => x.Id == sentinelId ), "structural sentinel should be reaped" );
+    }
+
+    [TestMethod]
+    public async Task Restart_with_stale_sentinel_on_applied_migration_is_reaped()
+    {
+        // arrange: BOTH a journal row AND a leftover sentinel for v102 (a failed
+        // delete-after-journal). The migration is already applied -> reap the
+        // stale sentinel, do not fail closed even though it is a data migration.
+        var store = StandardAppliedStore();
+        var options = GetMigrationOptions();
+        options.Profiles.Add( "sentinel-test" );
+        options.ToVersion = 102;
+
+        // mark the sibling fixtures applied so the loop has nothing else to run
+        MarkApplied( store, options, new Interrupting_Data_Migration(), new Structural_Only_Migration() );
+
+        var recordId = options.Conventions.GetRecordId( new Succeeding_Data_Migration() );
+        var sentinelId = InProgressRecord.IdFor( recordId );
+        store.Add( (recordId, new MigrationRecord { Id = recordId }) );         // applied
+        store.Add( (sentinelId, InProgressRecord.Build( recordId )) );          // stale sentinel
+
+        var recordStore = InitializeStore( store );
+        var logger = Substitute.For<ILogger<MigrationRunner>>();
+        var migrationRunner = new MigrationRunner( recordStore, options, logger );
+
+        // act — must not throw.
+        await migrationRunner.RunAsync();
+
+        // assert: stale sentinel reaped; journal row untouched.
+        Assert.IsTrue( store.Any( x => x.Id == recordId ), "applied journal row must remain" );
+        Assert.IsFalse( store.Any( x => x.Id == sentinelId ), "stale sentinel should be reaped" );
+    }
+
     private static MigrationOptions GetMigrationOptions()
     {
         var activator = Substitute.For<IMigrationActivator>();
@@ -549,6 +725,36 @@ public class Cron_Migration : Migration
         ExecutionCount++;
         return Task.CompletedTask;
     }
+}
+
+// ---- ADR-0027 sentinel fixtures (isolated under the "sentinel-test" profile)
+//
+// Profiled so they never run in the default-profile suites. Versions 100-102.
+
+// Throws OperationCanceledException to simulate a SIGTERM interruption mid-body.
+[Migration( 100, null, null, true, "sentinel-test" )]
+[DataMigration]
+public class Interrupting_Data_Migration : Migration
+{
+    public override Task UpAsync( CancellationToken cancellationToken = default )
+        => throw new OperationCanceledException( "simulated SIGTERM mid-migration" );
+}
+
+// Purely structural; succeeds. Used to verify the reap-and-rerun path.
+[Migration( 101, null, null, true, "sentinel-test" )]
+[StructuralOnly]
+public class Structural_Only_Migration : Migration
+{
+    public override Task UpAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
+}
+
+// A data migration that succeeds on (re-)run. Used for ForceResume and
+// stale-sentinel paths where the body must complete.
+[Migration( 102, null, null, true, "sentinel-test" )]
+[DataMigration]
+public class Succeeding_Data_Migration : Migration
+{
+    public override Task UpAsync( CancellationToken cancellationToken = default ) => Task.CompletedTask;
 }
 
 // interface-based continuous migration

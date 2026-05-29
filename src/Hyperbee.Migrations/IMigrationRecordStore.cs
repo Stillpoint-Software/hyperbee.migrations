@@ -49,6 +49,15 @@ public interface IMigrationRecordStore
     /// The default falls back to a per-id <see cref="ExistsAsync(string)"/> loop.
     /// Reconciliation requires realtime semantics: see ADR-0019 Phase 3.
     /// </summary>
+    /// <remarks>
+    /// CONTRACT (ADR-0027): this is a <b>kind-agnostic existence-by-id</b> query.
+    /// It MUST return a candidate id whenever a row with that id exists,
+    /// regardless of the row's <see cref="MigrationRecordKind"/>. The
+    /// interruption-safety pre-scan reuses this method to detect in-flight
+    /// sentinel rows (<see cref="MigrationRecordKind.InProgress"/>) by their
+    /// derived ids. Do NOT "optimize" an implementation to filter by
+    /// <c>Kind = Migration</c> — that would silently break sentinel detection.
+    /// </remarks>
     async Task<IReadOnlySet<string>> IntersectWithAppliedAsync(
         IEnumerable<string> candidateIds,
         CancellationToken cancellationToken = default )

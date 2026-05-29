@@ -102,6 +102,27 @@ public class RecordStoreContractTests
     }
 
     [TestMethod]
+    public async Task IntersectWithAppliedAsync_DetectsSentinelById_KindAgnostic()
+    {
+        // ADR-0027 contract pin: IntersectWithAppliedAsync is existence-by-id
+        // and MUST report an in-flight sentinel id (Kind=InProgress) just like
+        // any other row. The interruption pre-scan depends on this; an
+        // implementation that filtered by Kind=Migration would silently break
+        // sentinel detection. Exercise the DIM default (existence loop) to pin
+        // the kind-agnostic semantics at the interface level.
+        var sentinelId = InProgressRecord.IdFor( "1000.test_migration" );
+
+        var store = Substitute.For<IMigrationRecordStore>();
+        store.ExistsAsync( sentinelId ).Returns( true );
+        store.IntersectWithAppliedAsync( Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>() )
+            .Returns( call => CallIntersectAppliedDIM( store, (IEnumerable<string>) call[0], (CancellationToken) call[1] ) );
+
+        var found = await store.IntersectWithAppliedAsync( new[] { sentinelId } );
+
+        found.Should().Contain( sentinelId );
+    }
+
+    [TestMethod]
     public async Task IntersectWithAppliedAsync_EmptyCandidates_ReturnsEmpty()
     {
         var store = Substitute.For<IMigrationRecordStore>();

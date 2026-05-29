@@ -68,6 +68,39 @@ public class LedgerIntegrityTests
     }
 
     [TestMethod]
+    public void KindInProgress_WithEmptyReplaces_AcceptsClean()
+    {
+        // An in-flight sentinel (ADR-0027) never subsumes versions; empty
+        // Replaces is the valid shape.
+        var row = new MigrationRecord
+        {
+            Id = "inflight.1000.test_migration",
+            Kind = MigrationRecordKind.InProgress
+        };
+
+        row.Replaces.Should().BeEmpty();
+
+        var act = () => row.EnsureLedgerIntegrity();
+        act.Should().NotThrow();
+    }
+
+    [TestMethod]
+    public void KindInProgress_WithNonEmptyReplaces_Throws()
+    {
+        var row = new MigrationRecord
+        {
+            Id = "inflight.1000.test_migration",
+            Kind = MigrationRecordKind.InProgress,
+            Replaces = [1000]
+        };
+
+        var act = () => row.EnsureLedgerIntegrity();
+        act.Should().Throw<MigrationLedgerIntegrityException>()
+            .Where( ex => ex.RecordId == "inflight.1000.test_migration" )
+            .WithMessage( "*Kind=InProgress*non-empty*" );
+    }
+
+    [TestMethod]
     public void KindSquash_WithReplaces_AcceptsClean()
     {
         var row = new MigrationRecord

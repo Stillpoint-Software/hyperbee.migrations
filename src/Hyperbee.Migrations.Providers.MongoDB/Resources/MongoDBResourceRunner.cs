@@ -187,6 +187,25 @@ public class MongoDBResourceRunner<TMigration>
         _logger?.LogInformation( "CREATE COLLECTION {database}.{collection}", item.DatabaseName, item.CollectionName );
 
         var db = _client.GetDatabase( item.DatabaseName );
+
+        // Idempotent create (ADR-0027): MongoDB throws (NamespaceExists / code 48)
+        // if the collection already exists. A migration interrupted after the
+        // collection was created but before its journal row commits would, on
+        // restart-and-replay, hit that error. Guard on existence so replay is a
+        // no-op -- matching the existence-guarded create style of the Couchbase
+        // and Aerospike runners.
+        var filter = new BsonDocument( "name", item.CollectionName );
+        using var existing = await db.ListCollectionNamesAsync(
+            new ListCollectionNamesOptions { Filter = filter } ).ConfigureAwait( false );
+
+        if ( await existing.AnyAsync().ConfigureAwait( false ) )
+        {
+            _logger?.LogInformation(
+                "CREATE COLLECTION {database}.{collection} skipped (already exists)",
+                item.DatabaseName, item.CollectionName );
+            return;
+        }
+
         await db.CreateCollectionAsync( item.CollectionName ).ConfigureAwait( false );
     }
 

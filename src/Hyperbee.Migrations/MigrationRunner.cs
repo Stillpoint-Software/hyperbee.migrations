@@ -101,6 +101,16 @@ public class MigrationRunner
             .ConfigureAwait( false );
         var defaultApplyMode = appliedAtStart.Count == 0 ? MigrationApplyMode.Fresh : MigrationApplyMode.PartialCatchUp;
 
+        // ADR-0027 Tier 1 — interruption pre-scan. A leftover in-flight sentinel
+        // means a migration body started on a prior invocation but never wrote its
+        // journal row (SIGTERM / SIGKILL / node death). Detect those before the run
+        // loop and apply the fail-closed policy. Up-direction only (sentinels are
+        // an up-path mechanism). Runs inside the migration lock, so it is atomic
+        // against another runner (the guarantee depends on LockingEnabled).
+        if ( direction == Direction.Up )
+            await ScanForInterruptedMigrationsAsync( migrations, recordIdByVersion, appliedAtStart, cancellationToken )
+                .ConfigureAwait( false );
+
         var stopwatch = Stopwatch.StartNew();
 
         var runCount = 0;
@@ -206,11 +216,16 @@ public class MigrationRunner
                     "[{version}] {name}: squash applying as {mode} (no prior ledger coverage of replaced versions)",
                     version, name, squashApplyMode );
 
+                // ADR-0027: the squash body mutates state; bracket it with a sentinel.
+                await WriteSentinelAsync( recordId, cancellationToken ).ConfigureAwait( false );
+
                 using ( MigrationContext.Push( new MigrationContext { ApplyMode = squashApplyMode } ) )
                     await migration.UpAsync( cancellationToken ).ConfigureAwait( false );
 
                 await WriteSquashJournalAsync( migration, attribute, recordId, resolvedReplaces, cancellationToken )
                     .ConfigureAwait( false );
+
+                await DeleteSentinelAsync( recordId ).ConfigureAwait( false );
 
                 runCount++;
                 if ( version == _options.ToVersion ) break;
@@ -249,6 +264,14 @@ public class MigrationRunner
 
                 var stopProcess = false;
 
+                // ADR-0027: bracket the body with an in-flight sentinel for
+                // Up-direction journaled migrations (those subject to the
+                // fail-closed pre-scan). Down is not covered (v1 scope); cron and
+                // non-journaled migrations re-run by design and are exempt.
+                var useSentinel = direction == Direction.Up && attribute.Journal;
+                if ( useSentinel )
+                    await WriteSentinelAsync( recordId, cancellationToken ).ConfigureAwait( false );
+
                 using ( MigrationContext.Push( new MigrationContext { ApplyMode = defaultApplyMode } ) )
                 {
                     while ( stopProcess == false )
@@ -265,6 +288,12 @@ public class MigrationRunner
                         }
                     }
                 }
+
+                // Reached only on successful completion (the journal row is now
+                // written); an interruption inside the loop throws past this and
+                // leaves the sentinel behind for the next run's pre-scan.
+                if ( useSentinel )
+                    await DeleteSentinelAsync( recordId ).ConfigureAwait( false );
             }
 
             runCount++;
@@ -517,6 +546,105 @@ public class MigrationRunner
     // checksum from the configured strategy. The legacy WriteAsync(string) DIM
     // default delegates back to the v2 store API for custom implementations,
     // preserving v2 semantics — see IMigrationRecordStore default impl notes.
+    // ADR-0027 Tier 1 — in-flight sentinel lifecycle. The sentinel is written
+    // immediately before a migration body runs and deleted only after the real
+    // journal row commits (write-real-row-then-delete-sentinel ordering, symmetric
+    // with the recovery-row delete-after-journal). If the body throws (e.g.
+    // interruption), the delete is skipped on purpose so the sentinel survives as
+    // the durable interruption signal for the next run's pre-scan.
+    private Task WriteSentinelAsync( string recordId, CancellationToken cancellationToken )
+        => _recordStore.WriteAsync( InProgressRecord.Build( recordId ), WritePrecondition.None, cancellationToken );
+
+    private Task DeleteSentinelAsync( string recordId )
+        => _recordStore.DeleteAsync( InProgressRecord.IdFor( recordId ) );
+
+    // ADR-0027 — restart interruption pre-scan. Reuses the kind-agnostic
+    // existence-by-id contract of IntersectWithAppliedAsync (see that method's
+    // remarks) to find leftover sentinels by their derived ids in a single
+    // round-trip, then applies policy:
+    //   * journal row present  -> stale sentinel from a failed delete-after-journal;
+    //                             reap unconditionally (red-blue finding 2).
+    //   * journal row absent    -> interrupted:
+    //       [StructuralOnly]              -> reap + INFO (idempotent replay, re-runs)
+    //       [DataMigration] / unannotated -> ForceResume ? reap + WARN : throw.
+    // Cron and non-journaled migrations never write sentinels, so they are not
+    // scanned.
+    private async Task ScanForInterruptedMigrationsAsync(
+        IEnumerable<MigrationDescriptor> migrations,
+        IReadOnlyDictionary<long, string> recordIdByVersion,
+        IReadOnlySet<string> appliedAtStart,
+        CancellationToken cancellationToken )
+    {
+        // Map sentinel id -> descriptor for every migration that could have
+        // written a sentinel (journaled, non-cron). Squashes qualify: their body
+        // path writes a sentinel; the auto-mark path writes none, so a leftover
+        // can only come from an interrupted body.
+        var sentinelToDescriptor = new Dictionary<string, MigrationDescriptor>( StringComparer.Ordinal );
+        foreach ( var descriptor in migrations )
+        {
+            var attribute = descriptor.Attribute!;
+            if ( !attribute.Journal || !string.IsNullOrEmpty( attribute.Cron ) )
+                continue;
+
+            var recordId = recordIdByVersion[attribute.Version];
+            sentinelToDescriptor[InProgressRecord.IdFor( recordId )] = descriptor;
+        }
+
+        if ( sentinelToDescriptor.Count == 0 )
+            return;
+
+        var leftover = await _recordStore
+            .IntersectWithAppliedAsync( sentinelToDescriptor.Keys, cancellationToken )
+            .ConfigureAwait( false );
+
+        foreach ( var sentinelId in leftover )
+        {
+            var descriptor = sentinelToDescriptor[sentinelId];
+            var version = descriptor.Attribute!.Version;
+            var recordId = recordIdByVersion[version];
+            var name = descriptor.Type.Name;
+
+            // Stale sentinel: the journal row exists, so the migration completed
+            // and only the delete-after-journal was lost. Reap and move on.
+            if ( appliedAtStart.Contains( recordId ) )
+            {
+                _logger.LogDebug(
+                    "[{version}] {name}: reaping stale in-flight sentinel (migration already applied).",
+                    version, name );
+                await DeleteSentinelAsync( recordId ).ConfigureAwait( false );
+                continue;
+            }
+
+            // Interrupted: no journal row. Structural-only migrations replay
+            // idempotently, so reap and let the run loop re-run.
+            var isStructural =
+                Attribute.IsDefined( descriptor.Type, typeof( StructuralOnlyAttribute ), inherit: true )
+                && !Attribute.IsDefined( descriptor.Type, typeof( DataMigrationAttribute ), inherit: true );
+
+            if ( isStructural )
+            {
+                _logger.LogInformation(
+                    "[{version}] {name}: previously interrupted, but [StructuralOnly] — reaping sentinel and re-running.",
+                    version, name );
+                await DeleteSentinelAsync( recordId ).ConfigureAwait( false );
+                continue;
+            }
+
+            // Data / unannotated: fail closed unless the operator opted in.
+            if ( _options.ForceResume )
+            {
+                _logger.LogWarning(
+                    "[{version}] {name}: previously interrupted; ForceResume is set — reaping sentinel and re-running. " +
+                    "This re-applies the migration body; ensure the live data state is consistent with replay.",
+                    version, name );
+                await DeleteSentinelAsync( recordId ).ConfigureAwait( false );
+                continue;
+            }
+
+            throw new MigrationInterruptedException( recordId, version, name );
+        }
+    }
+
     private async Task WriteJournalAsync(
         Migration migration,
         MigrationAttribute attribute,

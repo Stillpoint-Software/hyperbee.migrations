@@ -52,6 +52,10 @@ public class MigrationRecord : IMigrationRecord
             case MigrationRecordKind.Migration when replacesCount > 0:
                 throw new MigrationLedgerIntegrityException(
                     $"Ledger row '{Id}' has Kind=Migration but a non-empty Replaces set ({replacesCount} entries).", Id );
+            case MigrationRecordKind.InProgress when replacesCount > 0:
+                throw new MigrationLedgerIntegrityException(
+                    $"Ledger row '{Id}' has Kind=InProgress but a non-empty Replaces set ({replacesCount} entries). " +
+                    "An in-flight sentinel never subsumes versions.", Id );
             case MigrationRecordKind.Recovery when replacesCount == 0:
                 throw new MigrationLedgerIntegrityException(
                     $"Ledger row '{Id}' has Kind=Recovery but an empty Replaces set " +

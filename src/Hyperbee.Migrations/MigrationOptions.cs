@@ -34,6 +34,19 @@ public class MigrationOptions
     public IMigrationConventions Conventions { get; set; }
 
     /// <summary>
+    /// When true, the runner bypasses the interruption lockout (per ADR-0027):
+    /// a leftover in-flight sentinel from a previously interrupted
+    /// <c>[DataMigration]</c> (or unannotated) migration is reaped and the
+    /// migration re-runs, instead of throwing <see cref="MigrationInterruptedException"/>.
+    /// The operator should set this only after verifying the live data state is
+    /// consistent with re-running the interrupted migration. Default false.
+    /// Provider option subclasses that previously exposed their own
+    /// <c>ForceResume</c> (e.g. the OpenSearch down-path lockout) delegate to
+    /// this base flag.
+    /// </summary>
+    public bool ForceResume { get; set; }
+
+    /// <summary>
     /// Strategy used to compute the <see cref="MigrationRecord.Checksum"/>
     /// stamped on each ledger row at write time (per ADR-0021).
     /// Defaults to <see cref="DefaultChecksumStrategy"/>; provider integrations
