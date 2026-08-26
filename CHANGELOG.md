@@ -28,10 +28,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Affects `Hyperbee.Migrations.Providers.OpenSearch` and
   `Hyperbee.Migrations.Providers.OpenSearch.Aws` 3.0.0 and 3.1.0. Not AWS-specific.
 
+- **MongoDB: squash reconciliation silently covered nothing (regression, v3.0.0–v3.1.0).**
+  `IntersectWithSquashedAsync` built its filter half typed and half literal — a typed
+  expression for `Kind` (which renders through the BSON class map, producing `Kind`) and
+  a raw string for `"replaces"` (which renders verbatim). The driver's default element
+  name is the member name, so the writer stores `Replaces`; the rendered filter
+  `{ "Kind": 1, "replaces": { "$in": [...] } }` could never match. The method returned an
+  empty set for every input, so a squash was never recognized as covering its replaced
+  versions and **those migrations re-ran**. The failure was silent because an empty set
+  is also the correct answer whenever nothing is squashed. Both terms are now typed.
+
+  No wire change: the fix corrects the query to match what the writer already produces.
+  Deliberately *not* fixed by pinning element names with `[BsonElement]` or a registered
+  class map — pinning would orphan any deployment whose consumer registered a global
+  naming convention.
+
+- **Couchbase: ledger documents now serialize through a pinned serializer.**
+  `IntersectWithSquashedAsync` must name ledger fields as text (`m.kind`, `m.replaces`)
+  because N1QL has no typed field reference, but ledger documents serialized through
+  `ClusterOptions.Serializer` — consumer-owned configuration. A consumer registering a
+  System.Text.Json serializer, or a Newtonsoft one without the camelCase resolver, wrote
+  `Kind`/`Replaces` and the squash query silently matched nothing, with the same
+  re-run consequence as the MongoDB defect above. Ledger KV reads and writes now use a
+  library-owned `DefaultSerializer` in its default configuration.
+
+  **Behavior note:** this is byte-for-byte identical for consumers on the stock Couchbase
+  serializer, which is the default. Consumers who set a *custom* `ClusterOptions.Serializer`
+  will see new ledger rows written in the canonical camelCase shape. Existing rows stay
+  readable by key (`ExistsAsync`, `IntersectWithAppliedAsync` are key-based and unaffected);
+  `ReadAsync` on a row written under a custom shape may return null `RunOn`/`Checksum`,
+  which can cause one extra cron evaluation. Squash reconciliation, which was broken for
+  this configuration, starts working.
+
 ### Decisions
 
 - [ADR-0029](docs/decisions/0029-ledger-wire-contract-is-library-owned.md) — the ledger's
-  wire contract is library-owned, never inherited from consumer-configured client inference
+  wire contract is library-owned, never inherited from consumer-configured client
+  inference. Rule 1: ledger requests carry their target explicitly. Rule 2: every
+  reference to a ledger field routes through the same serialization path as the writer.
+  Rule 3: a wire-test tier between mock-tier and container-tier.
 
 ### Tests
 
@@ -46,6 +81,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Two OpenSearch record-store integration tests for `IntersectWithAppliedAsync`, one of
   which drives the client produced by `services.AddOpenSearchClient(...)` — previously
   nothing exercised the shipped registration path end-to-end.
+- `MongoDBLedgerWireTests` and `CouchbaseLedgerWireTests` — render the real queries the
+  record stores issue and compare them against the real serializer output, with no mock
+  and no container. The MongoDB assertions are convention-*independent* on purpose: they
+  assert that the field a query asks for is the field the writer wrote, not that a field
+  has a particular casing, so they still pass for a consumer who registered a camelCase
+  convention. Pinning a literal casing would have made the tests agree with the bug.
+- `MongoDBRecordStoreIntegrationTests` — squash and applied reconciliation against a real
+  MongoDB. `IntersectWithSquashedAsync` previously had no coverage at any tier.
 
 ## [3.1.0] — 2026-05-29 — Interruption-Safe Ledger (crash / SIGTERM safety)
 

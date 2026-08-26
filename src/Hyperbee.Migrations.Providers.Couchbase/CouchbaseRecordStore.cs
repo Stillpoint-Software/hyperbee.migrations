@@ -2,6 +2,8 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Couchbase.Core.Exceptions.KeyValue;
+using Couchbase.Core.IO.Serializers;
+using Couchbase.Core.IO.Transcoders;
 using Couchbase.Extensions.DependencyInjection;
 using Couchbase.Extensions.Locks;
 using Couchbase.KeyValue;
@@ -29,6 +31,36 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         _restApiService = restApiService;
         _logger = logger;
     }
+
+    // ADR-0029 Rule 1 — the ledger's wire contract is library-owned.
+    //
+    // IntersectWithSquashedAsync must name the ledger document's fields as text
+    // (`m.kind`, `m.replaces`) because N1QL has no typed field reference. Those
+    // names have to match what the writer actually produced. If ledger documents
+    // serialize through ClusterOptions.Serializer, that match depends on
+    // CONSUMER-owned configuration: a consumer registering a System.Text.Json
+    // serializer, or a Newtonsoft one without the camelCase resolver, writes
+    // `Kind` / `Replaces` and the squash query silently returns nothing forever.
+    // Squash reconciliation would then never recognize a squash as covering its
+    // replaced versions, and those migrations would re-run.
+    //
+    // Pinning the serializer for ledger KV operations makes the document shape a
+    // library guarantee instead of an inherited default. This is DefaultSerializer
+    // in its default configuration -- byte-for-byte what the SDK produces out of
+    // the box (camelCase: id, runOn, checksum, kind, replaces) -- so consumers on
+    // the stock serializer see no change at all.
+    //
+    // The keyspace is already explicit and the query's result values are scalars,
+    // so only the KV read/write path needs the transcoder.
+    internal static readonly ITypeSerializer LedgerSerializer = new DefaultSerializer();
+    private static readonly ITypeTranscoder LedgerTranscoder = new JsonTranscoder( LedgerSerializer );
+
+    // Extracted so the wire tests can read the real query text and assert that
+    // every `m.<field>` reference in it is a field LedgerSerializer actually
+    // emits (ADR-0029 Rule 3). Built inline, that invariant was untestable.
+    internal static string BuildSquashQuery( string keyspace )
+        => $"SELECT DISTINCT v FROM {keyspace} AS m UNNEST m.replaces AS v " +
+           "WHERE m.kind = 1 AND v IN $versions";
 
     private async Task<ICouchbaseCollection> GetCollectionAsync()
     {
@@ -236,7 +268,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         if ( !check.Exists )
             return null;
 
-        var result = await collection.GetAsync( recordId )
+        var result = await collection.GetAsync( recordId, options => options.Transcoder( LedgerTranscoder ) )
             .ConfigureAwait( false );
 
         var record = result.ContentAs<MigrationRecord>();
@@ -263,7 +295,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             Id = recordId
         };
 
-        await collection.InsertAsync( recordId, record )
+        await collection.InsertAsync( recordId, record, options => options.Transcoder( LedgerTranscoder ) )
             .ConfigureAwait( false );
     }
 
@@ -332,9 +364,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         var (bucket, scope, collection) = _options;
         var keyspace = $"`{bucket}`.`{scope}`.`{collection}`";
 
-        var query =
-            $"SELECT DISTINCT v FROM {keyspace} AS m UNNEST m.replaces AS v " +
-            "WHERE m.kind = 1 AND v IN $versions";
+        var query = BuildSquashQuery( keyspace );
 
         var options = new QueryOptions()
             .Parameter( "versions", inputs )
@@ -368,7 +398,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
             try
             {
                 await collection.InsertAsync( record.Id, record,
-                    options => options.CancellationToken( cancellationToken ) ).ConfigureAwait( false );
+                    options => options.Transcoder( LedgerTranscoder ).CancellationToken( cancellationToken ) ).ConfigureAwait( false );
                 return WriteOutcome.Created;
             }
             catch ( DocumentExistsException )
@@ -381,7 +411,7 @@ internal class CouchbaseRecordStore : IMigrationRecordStore
         }
 
         await collection.UpsertAsync( record.Id, record,
-            options => options.CancellationToken( cancellationToken ) ).ConfigureAwait( false );
+            options => options.Transcoder( LedgerTranscoder ).CancellationToken( cancellationToken ) ).ConfigureAwait( false );
         return WriteOutcome.Created;
     }
 

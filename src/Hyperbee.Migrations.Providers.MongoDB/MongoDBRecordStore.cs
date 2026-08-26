@@ -128,6 +128,43 @@ internal class MongoDBRecordStore : IMigrationRecordStore
         } );
     }
 
+    // Ledger query construction lives in internal statics so the wire tests can
+    // assert the field names these render against the field names the writer
+    // actually produces (ADR-0029 Rule 3). Building them inline made that
+    // invariant untestable, which is how the `replaces` defect below shipped.
+
+    // ADR-0029 Rule 2 — every reference to a ledger field routes through the
+    // same serialization path as the writer. Both terms here are typed
+    // expressions, so both render through the BSON class map.
+    //
+    // This previously read `Filter.In( "replaces", inputs.Cast<object>() )`. A
+    // raw string field name does NOT go through the class map: it renders
+    // verbatim. The driver's default element name is the member name, so the
+    // writer stores `Replaces` while the filter asked for `replaces` — the
+    // rendered filter `{ "Kind": 1, "replaces": { "$in": [...] } }` could never
+    // match. IntersectWithSquashedAsync silently returned empty for every
+    // input, so a squash was never recognized as covering its replaced
+    // versions and those migrations re-ran.
+    //
+    // AnyIn is the array-valued form of In: `Replaces` is a long[], and the
+    // predicate is "the array contains any of these values".
+    //
+    // Note this is deliberately NOT fixed by pinning element names with
+    // [BsonElement] or a registered class map. Pinning would repair the
+    // library's self-consistency at the cost of orphaning any deployment whose
+    // consumer registered a global naming convention (a camelCase convention
+    // pack applied to all types is a common MongoDB setup line) — their ledger
+    // is self-consistent under that convention today, and a pinned map would
+    // stop reading it. Routing everything through one path is correct under
+    // any configuration, including none, and changes no bytes for anyone.
+    internal static FilterDefinition<MigrationRecord> BuildSquashFilter( long[] versions )
+        => Builders<MigrationRecord>.Filter.And(
+            Builders<MigrationRecord>.Filter.Eq( x => x.Kind, MigrationRecordKind.Squash ),
+            Builders<MigrationRecord>.Filter.AnyIn( x => x.Replaces, versions ) );
+
+    internal static FilterDefinition<MigrationRecord> BuildAppliedFilter( string[] recordIds )
+        => Builders<MigrationRecord>.Filter.In( x => x.Id, recordIds );
+
     public async Task<IReadOnlySet<string>> IntersectWithAppliedAsync(
         IEnumerable<string> candidateIds,
         CancellationToken cancellationToken = default )
@@ -147,7 +184,7 @@ internal class MongoDBRecordStore : IMigrationRecordStore
         // is the safe default for replica sets; MongoDB falls back to local semantics on
         // standalone deployments automatically. The find projection narrows to _id only
         // to minimize round-trip bytes.
-        var filter = Builders<MigrationRecord>.Filter.In( x => x.Id, ids );
+        var filter = BuildAppliedFilter( ids );
         var projection = Builders<MigrationRecord>.Projection.Include( x => x.Id );
 
         var settings = collection
@@ -189,9 +226,7 @@ internal class MongoDBRecordStore : IMigrationRecordStore
         // intersection operator; we project replaces arrays from squash rows whose
         // replaces is `$in` the input set, then intersect client-side. The candidate
         // pool is already narrow because Kind=Squash rows are sparse.
-        var filter = Builders<MigrationRecord>.Filter.And(
-            Builders<MigrationRecord>.Filter.Eq( x => x.Kind, MigrationRecordKind.Squash ),
-            Builders<MigrationRecord>.Filter.In( "replaces", inputs.Cast<object>() ) );
+        var filter = BuildSquashFilter( inputs );
         var projection = Builders<MigrationRecord>.Projection.Include( x => x.Replaces );
 
         using var cursor = await collection
