@@ -478,10 +478,26 @@ internal sealed class OpenSearchRecordStore : IMigrationRecordStore
         // refresh-bound (eventually-consistent across the index refresh interval),
         // whereas _mget reads through the realtime translog. Reads ledger index
         // only per ADR-0018 split.
+        //
+        // The per-operation `.Index( _options.LedgerIndex )` is REQUIRED, not
+        // redundant with the descriptor-level `.Index(...)` above. The outer call
+        // sets the index in the URL; each _mget body entry carries its own index,
+        // and the bare `GetMany<T>( ids )` overload resolves that one by CLR-type
+        // inference (IndexName.From<OpenSearchMigrationRecord>()). That inference
+        // reads ConnectionSettings.DefaultMappingFor<T>() / DefaultIndex(), which
+        // is CONSUMER-owned client configuration — while the ledger index name is
+        // LIBRARY-owned migration configuration. The library must not require a
+        // consumer to declare a mapping for a type it keeps internal, so we never
+        // let inference near a ledger request. With no mapping configured (what
+        // AddOpenSearchClient / AddOpenSearchAwsClient produce), the bare overload
+        // throws "Index name is null for the given type and no default index is
+        // set" during request serialization — before any byte reaches the wire.
+        // Setting it explicitly also lets the serializer collapse the body to the
+        // compact `{"ids":[...]}` form. Pinned by OpenSearchLedgerWireTests.
         var response = await _client.MultiGetAsync( m => m
             .Index( _options.LedgerIndex )
             .Realtime( true )
-            .GetMany<OpenSearchMigrationRecord>( ids ),
+            .GetMany<OpenSearchMigrationRecord>( ids, ( op, _ ) => op.Index( _options.LedgerIndex ) ),
             cancellationToken
         ).ConfigureAwait( false );
 

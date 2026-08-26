@@ -5,6 +5,48 @@ All notable changes to **Hyperbee.Migrations** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **OpenSearch: every migration run failed on a stock client (regression, v3.0.0–v3.1.0).**
+  `IntersectWithAppliedAsync` issues one `_mget`, which carries an index in the URL *and*
+  in each body entry. The URL index was set explicitly from
+  `OpenSearchMigrationOptions.LedgerIndex`, but the body entries were left to resolve via
+  `IndexName.From<OpenSearchMigrationRecord>()` — CLR-type inference that reads
+  `ConnectionSettings.DefaultMappingFor<T>()` / `DefaultIndex()`. Neither
+  `AddOpenSearchClient` nor `AddOpenSearchAwsClient` configures either, so request
+  serialization threw `Index name is null for the given type and no default index is set`
+  **before any byte reached the wire**. `MigrationRunner.RunAsync` calls
+  `IntersectWithAppliedAsync` unconditionally whenever at least one migration is
+  discovered, so this broke every OpenSearch run — including through the library's own
+  `Hyperbee.MigrationRunner.OpenSearch` and the CLI. The `_mget` now sets the ledger index
+  per operation. No API change; no consumer action required. Consumers who worked around
+  this by declaring their own `DefaultMappingFor<OpenSearchMigrationRecord>` or by forking
+  a client factory can remove both.
+
+  Affects `Hyperbee.Migrations.Providers.OpenSearch` and
+  `Hyperbee.Migrations.Providers.OpenSearch.Aws` 3.0.0 and 3.1.0. Not AWS-specific.
+
+### Decisions
+
+- [ADR-0029](docs/decisions/0029-ledger-wire-contract-is-library-owned.md) — the ledger's
+  wire contract is library-owned, never inherited from consumer-configured client inference
+
+### Tests
+
+- New wire-shape test tier for the OpenSearch record store
+  (`OpenSearchLedgerWireTests`): the real client and real serializer over an
+  `InMemoryConnection`, so request construction and serialization actually execute with
+  only the socket faked. This is the tier that was missing — the existing provider unit
+  tests substitute `IOpenSearchClient` (a substitute never serializes) and the
+  container-backed tests are compile-gated and excluded from CI. Includes a generalized
+  probe asserting that *no* ledger operation depends on type→index inference, which
+  guards the next regression rather than only this one.
+- Two OpenSearch record-store integration tests for `IntersectWithAppliedAsync`, one of
+  which drives the client produced by `services.AddOpenSearchClient(...)` — previously
+  nothing exercised the shipped registration path end-to-end.
+
 ## [3.1.0] — 2026-05-29 — Interruption-Safe Ledger (crash / SIGTERM safety)
 
 A migration interrupted mid-run — a SIGTERM from an orchestrator (Argo Rollouts

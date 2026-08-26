@@ -5,7 +5,9 @@ using Hyperbee.Migrations.Integration.Tests.Container.OpenSearch;
 using Hyperbee.Migrations.Providers.OpenSearch;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Bootstrap;
 using Hyperbee.Migrations.Providers.OpenSearch.Internal.Bootstrap.Steps;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using OpenSearch.Client;
 
 namespace Hyperbee.Migrations.Integration.Tests;
 
@@ -205,6 +207,98 @@ public class OpenSearchRecordStoreIntegrationTests
         finally
         {
             await CleanupAsync( options );
+        }
+    }
+
+    // ---- reconciliation (ADR-0019 Phase 3) --------------------------------
+    //
+    // MigrationRunner.RunAsync calls IntersectWithAppliedAsync unconditionally
+    // whenever at least one migration is discovered, so this is the single
+    // hottest ledger path in the library -- and it had no integration coverage
+    // at all before these two tests. The v3.0.0-v3.1.0 defect (the _mget body
+    // resolving its index by CLR-type inference) lived and shipped in that gap.
+
+    [TestMethod]
+    [TestCategory( "OpenSearch" )]
+    [TestCategory( "Phase3" )]
+    public async Task IntersectWithApplied_AgainstRealCluster_ReturnsOnlyWrittenIds()
+    {
+        var options = UniqueOptions( nameof( IntersectWithApplied_AgainstRealCluster_ReturnsOnlyWrittenIds ) );
+        var store = BuildStore( options );
+
+        var written = new[] { "1000.applied-one", "1002.applied-two" };
+        var absent = new[] { "1001.never-run", "1003.never-run" };
+
+        try
+        {
+            await store.InitializeAsync();
+
+            foreach ( var id in written )
+                await store.WriteAsync( id );
+
+            // Realtime semantics: no refresh between the writes and the read.
+            // _mget reads through the translog, so the just-written rows must be
+            // visible immediately (this is precisely why the implementation uses
+            // _mget rather than _search).
+            var applied = await store.IntersectWithAppliedAsync( written.Concat( absent ) );
+
+            CollectionAssert.AreEquivalent( written, applied.ToArray() );
+        }
+        finally
+        {
+            await CleanupAsync( options );
+        }
+    }
+
+    [TestMethod]
+    [TestCategory( "OpenSearch" )]
+    [TestCategory( "Phase3" )]
+    public async Task IntersectWithApplied_OnShippedClientRegistration_Works()
+    {
+        // Every other test in this file uses OpenSearchTestContainer.Client, a
+        // hand-rolled ConnectionSettings that no consumer ever gets. This one
+        // drives the client the LIBRARY builds -- services.AddOpenSearchClient --
+        // so the shipped registration path is itself under test.
+        //
+        // That distinction is the whole point: the v3.0.0-v3.1.0 defect was a
+        // mismatch between what the record store required of the client
+        // (a DefaultMappingFor<OpenSearchMigrationRecord> or a DefaultIndex) and
+        // what the library's own client factories configure (neither). A test
+        // that builds its own client cannot see that class of bug.
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddOpenSearchClient( OpenSearchTestContainer.Endpoint );
+
+        using var provider = services.BuildServiceProvider();
+        var client = provider.GetRequiredService<IOpenSearchClient>();
+
+        var options = UniqueOptions( nameof( IntersectWithApplied_OnShippedClientRegistration_Works ) );
+        var steps = new IBootstrapStep[]
+        {
+            new RestPingStep(),
+            new ClusterHealthStep(),
+            new LedgerIndexInitStep(),
+            new LockIndexInitStep()
+        };
+        var bootstrapper = new OpenSearchBootstrapper(
+            steps, client, options, TimeProvider.System, NullLoggerFactory.Instance );
+        var store = new OpenSearchRecordStore(
+            client, bootstrapper, options, TimeProvider.System,
+            NullLogger<OpenSearchRecordStore>.Instance );
+
+        try
+        {
+            await store.InitializeAsync();
+            await store.WriteAsync( "1000.applied" );
+
+            var applied = await store.IntersectWithAppliedAsync( ["1000.applied", "1001.absent"] );
+
+            CollectionAssert.AreEquivalent( new[] { "1000.applied" }, applied.ToArray() );
+        }
+        finally
+        {
+            await client.Indices.DeleteAsync( options.LedgerIndex );
+            await client.Indices.DeleteAsync( options.LockIndex );
         }
     }
 
