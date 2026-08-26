@@ -174,15 +174,77 @@ public static class ServiceCollectionExtensions
     // it ships in a separate opt-in extension (plan task 3.2 / R-21 #2-#4)
     // so this package stays free of the AWS-SDK transitive dependency tree.
 
+    // ADR-0030 note on overload shape.
+    //
+    // configureSettings is added as a SEPARATE overload rather than as another
+    // optional parameter on the existing methods. Appending an optional parameter
+    // is source-compatible but NOT binary-compatible: it changes the method's
+    // signature, so the 3.1.x signature stops existing and any assembly compiled
+    // against it throws MissingMethodException until recompiled. This library
+    // states that it follows Semantic Versioning, and a minor release is not
+    // allowed to do that.
+    //
+    // The pre-existing overloads below keep their exact 3.1.x parameter lists and
+    // simply forward. Their `= null` defaults are dropped, which is NOT a signature
+    // change -- a default is parameter metadata, and a 3.1.x caller that omitted the
+    // argument already baked the null into its own call site. Dropping it is what
+    // keeps the pair unambiguous when the new overload supplies defaults instead:
+    //
+    //   AddOpenSearchClient( services, uri )            -> new overload (both default)
+    //   AddOpenSearchClient( services, uri, auth )      -> 3.1.x overload (fewer params wins)
+    //   AddOpenSearchClient( services, uri, auth, cfg ) -> new overload (only candidate)
+    //   AddOpenSearchClient( services, uri, configureSettings: cfg ) -> new overload
+
     /// <summary>
     /// Registers an <see cref="IOpenSearchClient"/> in the service collection
     /// using the supplied endpoint and authentication options. Basic, API key,
     /// and mTLS are supported (R-21).
     /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="endpoint">The OpenSearch endpoint.</param>
+    /// <param name="configure">Authentication configuration.</param>
     public static IServiceCollection AddOpenSearchClient(
         this IServiceCollection services,
         Uri endpoint,
-        Action<OpenSearchAuthenticationOptions>? configure = null )
+        Action<OpenSearchAuthenticationOptions>? configure )
+        => AddOpenSearchClient( services, endpoint, configure, configureSettings: null );
+
+    /// <summary>
+    /// Registers an <see cref="IOpenSearchClient"/> in the service collection
+    /// using the supplied endpoint and authentication options, with direct access
+    /// to the underlying <see cref="ConnectionSettings"/>.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="endpoint">The OpenSearch endpoint.</param>
+    /// <param name="configure">Authentication configuration.</param>
+    /// <param name="configureSettings">
+    /// Optional escape hatch over the underlying <see cref="ConnectionSettings"/>, per
+    /// ADR-0030. Runs <em>last</em> — after the endpoint and authentication wiring — so
+    /// anything this library sets can be overridden. Use it for transport concerns the
+    /// typed options do not cover: <c>RequestTimeout</c>, <c>MaximumRetries</c>,
+    /// <c>EnableHttpCompression</c>, a proxy, <c>ServerCertificateValidationCallback</c>
+    /// for a self-signed development cluster, <c>DisableDirectStreaming</c> while
+    /// debugging, or a <c>DefaultMappingFor</c> covering <em>your own</em> document types
+    /// when the client is shared with application code.
+    /// <para>
+    /// You do <b>not</b> need this to make migrations work. The ledger never relies on
+    /// consumer-configured type inference (ADR-0029), so no mapping for
+    /// <c>OpenSearchMigrationRecord</c> is required or expected.
+    /// </para>
+    /// <para>
+    /// One caveat: the ledger index ships a <c>strict</c> mapping whose fields are
+    /// camelCase, matching this client's default field-name inference. Replacing the
+    /// serializer or setting a non-camelCase <c>DefaultFieldNameInferrer</c> will make
+    /// ledger writes fail against that mapping. Registration validates this and fails
+    /// with a pointed message rather than letting it surface as a
+    /// <c>strict_dynamic_mapping_exception</c> at run time.
+    /// </para>
+    /// </param>
+    public static IServiceCollection AddOpenSearchClient(
+        this IServiceCollection services,
+        Uri endpoint,
+        Action<OpenSearchAuthenticationOptions>? configure = null,
+        Action<ConnectionSettings>? configureSettings = null )
     {
         ArgumentNullException.ThrowIfNull( services );
         ArgumentNullException.ThrowIfNull( endpoint );
@@ -243,10 +305,59 @@ public static class ServiceCollectionExtensions
                     break;
             }
 
-            return new OpenSearchClient( settings );
+            // ADR-0030 — consumer escape hatch, applied LAST so it can override
+            // anything set above. Without it the only way to reach ConnectionSettings
+            // was to stop calling this method and hand-roll the registration, which
+            // meant forking the auth wiring and the AWS-endpoint guard along with it.
+            return BuildClient( settings, configureSettings );
         } );
 
         return services;
+    }
+
+    // The ledger index carries a `strict` mapping with camelCase fields, which
+    // matches this client's default field-name inference. A consumer hook that
+    // replaces the serializer or sets a non-camelCase DefaultFieldNameInferrer
+    // makes every ledger write fail against that mapping. That failure IS loud
+    // (strict_dynamic_mapping_exception) but it surfaces at first write, names
+    // fields rather than the cause, and reads like a schema problem.
+    //
+    // Catch it where it was introduced instead. Probing one known ledger property
+    // is enough: field-name inference is a single setting, so one sample proves
+    // the convention.
+    internal static OpenSearchClient BuildClient(
+        ConnectionSettings settings,
+        Action<ConnectionSettings>? configureSettings )
+    {
+        configureSettings?.Invoke( settings );
+
+        var client = new OpenSearchClient( settings );
+
+        if ( configureSettings is not null )
+            ValidateLedgerFieldNaming( client.ConnectionSettings );
+
+        return client;
+    }
+
+    private static void ValidateLedgerFieldNaming( IConnectionSettingsValues settings )
+    {
+        var probe = typeof( OpenSearchMigrationRecord ).GetProperty( nameof( OpenSearchMigrationRecord.AppliedBy ) )!;
+        var inferred = settings.Inferrer.PropertyName( probe );
+
+        if ( string.Equals( inferred, "appliedBy", StringComparison.Ordinal ) )
+            return;
+
+        throw new OpenSearchProviderException(
+            $"The configureSettings callback changed field-name inference: the ledger property " +
+            $"`{probe.Name}` now serializes as `{inferred}` instead of `appliedBy`. The migration " +
+            "ledger index is created with a strict mapping using camelCase field names, so every " +
+            "ledger write would be rejected with strict_dynamic_mapping_exception." + Environment.NewLine +
+            Environment.NewLine +
+            "This is usually caused by replacing the serializer or by calling " +
+            "DefaultFieldNameInferrer(...) with a non-camelCase convention. Both are supported for " +
+            "your own document types -- scope them with DefaultMappingFor<TDocument>() instead of " +
+            "changing the client-wide default, or register a separate IOpenSearchClient for " +
+            "application use and leave the migration client stock." );
     }
 
     /// <summary>
@@ -259,6 +370,17 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddOpenSearchClient(
         this IServiceCollection services,
         IConfiguration configuration )
+        => AddOpenSearchClient( services, configuration, configureSettings: null );
+
+    /// <summary>
+    /// Convenience overload that reads endpoint + auth from <see cref="IConfiguration"/>,
+    /// with direct access to the underlying <see cref="ConnectionSettings"/>. See the
+    /// endpoint overload for what <paramref name="configureSettings"/> is and is not for.
+    /// </summary>
+    public static IServiceCollection AddOpenSearchClient(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        Action<ConnectionSettings>? configureSettings = null )
     {
         ArgumentNullException.ThrowIfNull( services );
         ArgumentNullException.ThrowIfNull( configuration );
@@ -304,7 +426,7 @@ public static class ServiceCollectionExtensions
             opts.ApiKey = configuration["OpenSearch:Authentication:ApiKey"];
             opts.ClientCertificatePath = configuration["OpenSearch:Authentication:ClientCertificatePath"];
             opts.ClientCertificatePassword = configuration["OpenSearch:Authentication:ClientCertificatePassword"];
-        } );
+        }, configureSettings );
     }
 
     private static void ThrowIfAwsEndpoint( Uri endpoint )

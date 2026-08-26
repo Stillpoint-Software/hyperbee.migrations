@@ -42,6 +42,23 @@ services.AddOpenSearchAwsClient( configuration );
 }
 ```
 
+## Tuning the client
+
+Both overloads take an optional trailing `Action<ConnectionSettings>`, applied **last** — after the SigV4 transport is installed — so anything you set there wins.
+
+```csharp
+services.AddOpenSearchAwsClient(
+    new Uri( "https://my-domain.us-east-1.es.amazonaws.com" ),
+    opts => opts.Region = "us-east-1",
+    settings => settings
+        .RequestTimeout( TimeSpan.FromMinutes( 2 ) )
+        .MaximumRetries( 5 ) );
+```
+
+Use it for transport tuning and for `DefaultMappingFor` over your own document types. Do not replace the `IConnection` here — that removes request signing and every call is rejected with 403.
+
+You do not need this to make migrations work; the ledger never relies on client-level type inference. Registration does reject a client-wide non-camelCase `DefaultFieldNameInferrer`, because the ledger index carries a strict camelCase mapping that such a change would break. See [ADR-0030](../../docs/decisions/0030-connection-settings-escape-hatch.md).
+
 ## Mutual exclusion with the core client
 
 `AddOpenSearchAwsClient` (this package) and `AddOpenSearchClient` (core package) are **mutually exclusive** — call exactly one. Both check whether an `IOpenSearchClient` is already registered and throw a clear error if so. There is no implicit override and no marker dance; calling both is a misconfiguration that surfaces loudly at startup.

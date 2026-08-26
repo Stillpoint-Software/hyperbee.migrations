@@ -32,15 +32,50 @@ namespace Hyperbee.Migrations.Providers.OpenSearch.Aws;
 
 public static class ServiceCollectionExtensions
 {
+    // ADR-0030 — configureSettings ships as a separate overload, not as an appended
+    // optional parameter, so the 3.1.x signatures survive byte-for-byte and 3.2.0
+    // stays binary-compatible. See the note in the core package for why.
+
     /// <summary>
     /// Registers an <see cref="IOpenSearchClient"/> configured to authenticate
     /// against AWS Managed OpenSearch Service (or OpenSearch Serverless) via
     /// SigV4 request signing (R-21).
     /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="endpoint">The AWS OpenSearch endpoint.</param>
+    /// <param name="configure">SigV4 region / service / credential configuration.</param>
     public static IServiceCollection AddOpenSearchAwsClient(
         this IServiceCollection services,
         Uri endpoint,
         Action<OpenSearchAwsAuthenticationOptions> configure )
+        => AddOpenSearchAwsClient( services, endpoint, configure, configureSettings: null );
+
+    /// <summary>
+    /// Registers a SigV4-signed <see cref="IOpenSearchClient"/> with direct access to
+    /// the underlying <see cref="ConnectionSettings"/>.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="endpoint">The AWS OpenSearch endpoint.</param>
+    /// <param name="configure">SigV4 region / service / credential configuration.</param>
+    /// <param name="configureSettings">
+    /// Optional escape hatch over the underlying <see cref="ConnectionSettings"/>, per
+    /// ADR-0030. Runs <em>last</em> — after the SigV4 transport is installed — so anything
+    /// this library sets can be overridden. Note that replacing the <c>IConnection</c>
+    /// here removes request signing and every call will be rejected with 403; use it for
+    /// transport tuning (<c>RequestTimeout</c>, <c>MaximumRetries</c>,
+    /// <c>EnableHttpCompression</c>) and for <c>DefaultMappingFor</c> over <em>your own</em>
+    /// document types.
+    /// <para>
+    /// You do <b>not</b> need this to make migrations work. The ledger never relies on
+    /// consumer-configured type inference (ADR-0029). The same camelCase field-name
+    /// caveat as the core package applies and is validated at registration.
+    /// </para>
+    /// </param>
+    public static IServiceCollection AddOpenSearchAwsClient(
+        this IServiceCollection services,
+        Uri endpoint,
+        Action<OpenSearchAwsAuthenticationOptions> configure,
+        Action<ConnectionSettings>? configureSettings = null )
     {
         ArgumentNullException.ThrowIfNull( services );
         ArgumentNullException.ThrowIfNull( endpoint );
@@ -102,7 +137,11 @@ public static class ServiceCollectionExtensions
                 "OpenSearch client: SigV4 auth (region {region}, service {service})",
                 options.Region, options.Service );
 
-            return new OpenSearchClient( settings );
+            // ADR-0030 — consumer escape hatch, applied LAST so it can override
+            // anything set above. Shares the core package's builder so the
+            // ledger's camelCase field-name requirement is enforced identically
+            // on both registration paths.
+            return OpenSearch.ServiceCollectionExtensions.BuildClient( settings, configureSettings );
         } );
 
         return services;
@@ -116,6 +155,16 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddOpenSearchAwsClient(
         this IServiceCollection services,
         IConfiguration configuration )
+        => AddOpenSearchAwsClient( services, configuration, configureSettings: null );
+
+    /// <summary>
+    /// Configuration-driven SigV4 registration with direct access to the underlying
+    /// <see cref="ConnectionSettings"/>.
+    /// </summary>
+    public static IServiceCollection AddOpenSearchAwsClient(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        Action<ConnectionSettings>? configureSettings = null )
     {
         ArgumentNullException.ThrowIfNull( services );
         ArgumentNullException.ThrowIfNull( configuration );
@@ -134,7 +183,7 @@ public static class ServiceCollectionExtensions
             // Operators wire the AWS credential chain via environment
             // variables, instance profiles, IRSA, etc. (the resolution
             // path AWSCredentials.GetCredentials() walks per request).
-        } );
+        }, configureSettings );
     }
 
     private static void ThrowIfClientAlreadyRegistered( IServiceCollection services )

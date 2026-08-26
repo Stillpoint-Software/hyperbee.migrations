@@ -53,6 +53,26 @@ services.AddOpenSearchAwsClient( new Uri( "https://my-domain.us-east-1.es.amazon
 services.AddOpenSearchMigrations( /* migration options */ );
 ```
 
+### Tuning the client
+
+Both registration methods take an optional third argument giving you the underlying `ConnectionSettings`. It runs **last**, after the endpoint and authentication wiring, so anything you set there wins.
+
+```csharp
+services.AddOpenSearchClient(
+    new Uri( "https://opensearch.internal:9200" ),
+    auth => auth.Mode = OpenSearchAuthenticationMode.Basic,
+    settings => settings
+        .RequestTimeout( TimeSpan.FromMinutes( 2 ) )
+        .MaximumRetries( 5 )
+        .EnableHttpCompression() );
+```
+
+Use it for transport concerns the typed options do not model — timeouts, retries, compression, a proxy, `ServerCertificateValidationCallback` for a self-signed development cluster, `DisableDirectStreaming` while debugging — and for `DefaultMappingFor` over **your own** document types when the client is shared with application code.
+
+You do not need this to make migrations work. The migration ledger never relies on client-level type inference, so no mapping for `OpenSearchMigrationRecord` is required.
+
+One constraint is enforced: the ledger index is created with a `strict` mapping using camelCase field names, matching the client's default field-name inference. Replacing the serializer or setting a client-wide non-camelCase `DefaultFieldNameInferrer` would make every ledger write fail, so registration rejects it with a message naming the remediation. Scope naming changes to your own types with `DefaultMappingFor<TDocument>()`, or register a separate `IOpenSearchClient` for application use.
+
 ### Provider options
 
 | Option | Type | Default |
