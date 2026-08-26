@@ -41,6 +41,13 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>Hyperbee.Migrations.Squash.Tests</_Parameter1>
     </AssemblyAttribute>
+    <!-- The .Aws extension shares this package's client-construction path
+         (ServiceCollectionExtensions.BuildClient) so the ADR-0030 escape hatch
+         and its ledger field-name validation behave identically on both
+         registration paths. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Hyperbee.Migrations.Providers.OpenSearch.Aws</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>

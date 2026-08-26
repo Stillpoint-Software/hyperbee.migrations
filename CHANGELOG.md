@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **OpenSearch: `configureSettings` escape hatch on both client factories.**
+  `AddOpenSearchClient` and `AddOpenSearchAwsClient` (and both `IConfiguration` overloads)
+  gain an `Action<ConnectionSettings>` parameter, applied **last** — after the endpoint
+  and authentication wiring — so a consumer can override anything the library set.
+
+  **Purely additive: source- and binary-compatible with 3.1.x.** This ships as four new
+  overloads rather than as an appended optional parameter. Appending one would have been
+  source-compatible but not binary-compatible: it changes the existing method's signature,
+  so the 3.1.x entry point stops existing and any assembly compiled against it throws
+  `MissingMethodException` until recompiled. A minor release must not do that. The four
+  3.1.x signatures are preserved exactly and forward to the new ones, and a reflection
+  test pins all eight so the guarantee cannot regress silently.
+
+  OpenSearch is the only provider whose client the library constructs; the other four
+  resolve a consumer-registered client and already have full control. Until now the only
+  way to reach `ConnectionSettings` — for `RequestTimeout`, `MaximumRetries`,
+  `EnableHttpCompression`, a proxy, `ServerCertificateValidationCallback` on a
+  self-signed development cluster, `DisableDirectStreaming` while debugging, or a
+  `DefaultMappingFor` over your *own* document types — was to stop calling the factory
+  and hand-roll the registration, forking the auth-mode switch, the AWS-endpoint
+  loud-fail, and the mutual-exclusion guard along with it.
+
+  Because the hook makes it reachable, registration now validates one ledger property
+  through the configured inferrer and fails with a pointed message if field-name
+  inference is no longer camelCase — the ledger index carries a `strict` camelCase
+  mapping that such a change would otherwise break at first write with an opaque
+  `strict_dynamic_mapping_exception`. Validation runs only when a hook is supplied.
+
+  This is *not* the remedy for the OpenSearch `_mget` defect below; see ADR-0029.
+
 ### Fixed
 
 - **OpenSearch: every migration run failed on a stock client (regression, v3.0.0–v3.1.0).**
@@ -67,6 +99,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inference. Rule 1: ledger requests carry their target explicitly. Rule 2: every
   reference to a ledger field routes through the same serialization path as the writer.
   Rule 3: a wire-test tier between mock-tier and container-tier.
+- [ADR-0030](docs/decisions/0030-connection-settings-escape-hatch.md) — `ConnectionSettings`
+  escape hatch on the OpenSearch client factories
 
 ### Tests
 
@@ -89,6 +123,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   convention. Pinning a literal casing would have made the tests agree with the bug.
 - `MongoDBRecordStoreIntegrationTests` — squash and applied reconciliation against a real
   MongoDB. `IntersectWithSquashedAsync` previously had no coverage at any tier.
+- `OpenSearchConnectionSettingsHookTests` — the hook reaches the resolved client on both
+  registration paths, runs after auth wiring (a consumer override wins), stays optional,
+  and loud-fails on a ledger-breaking field-name inferrer. Includes an ADR-0029
+  cross-check that a consumer `DefaultIndex` does not become the ledger's index.
 
 ## [3.1.0] — 2026-05-29 — Interruption-Safe Ledger (crash / SIGTERM safety)
 
