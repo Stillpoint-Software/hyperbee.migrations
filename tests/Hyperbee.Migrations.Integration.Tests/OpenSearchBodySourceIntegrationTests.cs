@@ -32,8 +32,9 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // exercisable in-process.
 
 [TestClass]
-// LocalOnly: heavy container-based integration test; excluded from the gating CI matrix (does not gate the NuGet publish). Runs locally / on demand.
-[TestCategory( "LocalOnly" )]
+// Gating (ADR-0031): shared assembly-fixture container, no Docker image build,
+// not multi-node. Runs on every PR.
+[TestCategory( "Gating" )]
 public class OpenSearchBodySourceIntegrationTests
 {
     // Version chosen far outside any other test fixture's range so an

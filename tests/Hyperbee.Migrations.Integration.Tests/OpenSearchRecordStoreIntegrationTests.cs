@@ -26,8 +26,10 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // cleanup is local. Standard #if INTEGRATIONS gate per ADR-0010.
 
 [TestClass]
-// LocalOnly: heavy container-based integration test; excluded from the gating CI matrix (does not gate the NuGet publish). Runs locally / on demand.
-[TestCategory( "LocalOnly" )]
+// Gating (ADR-0031): one shared OpenSearch container via the assembly fixture, no
+// Docker image build, no multi-node, seconds to run. This class is the reason the
+// tier exists -- it is where a ledger wire-contract defect (ADR-0029) shows up.
+[TestCategory( "Gating" )]
 public class OpenSearchRecordStoreIntegrationTests
 {
     private static OpenSearchRecordStore BuildStore( OpenSearchMigrationOptions options )

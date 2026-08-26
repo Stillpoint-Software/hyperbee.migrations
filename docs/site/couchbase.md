@@ -37,6 +37,16 @@ services.AddCouchbaseMigrations( options =>
 } );
 ```
 
+### Ledger serialization
+
+Migration ledger documents are written and read with a serializer the provider owns, not with the one configured on `ClusterOptions.Serializer`. This is deliberate: squash reconciliation queries the ledger with N1QL, which names fields as text, so those names have to be a library guarantee rather than a consequence of your cluster configuration.
+
+If you use the stock Couchbase serializer, which is the default, this changes nothing. If you set a custom `ClusterOptions.Serializer`, note that:
+
+- Your setting still applies to all of your own documents. Only the ledger is pinned.
+- Ledger documents are written in the canonical camelCase shape regardless.
+- Squash reconciliation works. Before this was pinned, a custom serializer silently broke it, because the N1QL field names no longer matched what the writer produced.
+
 ### Provider options
 
 | Option | Type | Default | Description |

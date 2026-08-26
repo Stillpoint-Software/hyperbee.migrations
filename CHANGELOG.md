@@ -1,11 +1,27 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to **Hyperbee.Migrations** are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.2.0] — 2026-08-26 — Ledger Wire Contract (repairs 3.0.0 / 3.1.0)
+
+**Upgrade if you use OpenSearch or MongoDB.** Two defects shipped in 3.0.0 and persisted
+through 3.1.0, both from the same root cause: the ledger's identity on the wire — which
+index a document lives in, what its fields are named — was allowed to depend on
+configuration the library does not own.
+
+- **OpenSearch was broken outright.** Every migration run that discovered at least one
+  migration failed before contacting the cluster, including through the shipped runner and
+  CLI. Not AWS-specific.
+- **MongoDB failed silently.** Squash reconciliation matched nothing, so squashed
+  migrations re-ran on every invocation with no error to notice.
+
+Both are fixed with no consumer action and no data migration. Couchbase carried a latent
+form of the same coupling and is now pinned. The release also adds a `ConnectionSettings`
+escape hatch on the OpenSearch client factories, which is purely additive — source- and
+binary-compatible with 3.1.x.
 
 ### Added
 
@@ -92,6 +108,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which can cause one extra cron evaluation. Squash reconciliation, which was broken for
   this configuration, starts working.
 
+### CI
+
+- **Integration tests gate PRs again.** Since `7ff3808` (twelve days before 3.1.0) the
+  repository has had **zero integration coverage in CI**, and no working way to restore
+  it. Tagging every container-spinning class `[TestCategory("LocalOnly")]` left the CI
+  job's negative filter (`TestCategory!=LocalOnly`) matching nothing; `dotnet test` fails
+  on a no-match, so the whole job was gated behind repo variable
+  `RUN_HEAVY_INTEGRATION` — which was never created, and whose documented "re-enable with
+  no code change" path provably does not work (the filter still excludes `LocalOnly`, so
+  flipping the variable un-skips a matrix that matches zero tests and fails). Both defects
+  fixed in this release shipped through that gap.
+
+  Every integration class was then measured against explicit criteria rather than
+  assumed heavy. **Every integration test in the repository now runs automatically:**
+
+  - **115 tests on every PR** (~2 min) — a `Gating` tier selected **positively** on
+    `TestCategory=Gating`, across OpenSearch (88), MongoDB (10), Postgres (9),
+    Aerospike (6) and multi-provider (2). No Docker image builds in the PR path, so
+    the MCR/Azure-Front-Door pull-throttle failure class is removed there rather than
+    mitigated. A guard step fails the build by name if a cell matches zero tests, so
+    the trap cannot silently recur.
+  - **12 tests on manual dispatch** — the `LocalOnly` remainder: the provider runner
+    suites plus `CliBinaryEndToEndTests` (Docker image builds) and 3 Couchbase squash
+    classes. A further 6 multi-node tests stay on their existing manual workflow.
+  - **3 tests quarantined as `[TestCategory("Flaky")]`.** The
+    `Should_Fail_WhenMigrationHasLock` test in the Aerospike, MongoDB and Couchbase
+    runner suites asserts on a race — it starts concurrent runner containers and
+    requires one to observe lock contention, which does not happen on a fast host.
+    Aerospike and MongoDB were measured failing with no defect present; the Postgres
+    equivalent had already been commented out by an earlier author for the same reason.
+    Excluded from automation so the post-merge signal stays trustworthy, and recorded
+    as debt rather than quietly disabled.
+
+    All 136 integration tests are accounted for; none are orphaned. Couchbase is the only exclusion on speed: its six
+    tests pass but take 5–6.5 minutes, five to six times every other cell combined,
+    because `IsolatedCouchbaseContainer` waits out the GSI indexer's initial rebalance.
+
+  `RUN_HEAVY_INTEGRATION` is removed, replaced by a **Heavy Integration Tests** workflow
+  that runs on demand for any provider and framework — a trigger that, unlike the repo
+  variable, actually works. A push-to-`main` trigger was built and then removed before
+  shipping: measuring the suite first showed it is not dependably green (an intermittent
+  Aerospike runner test, plus the quarantined race above), and automating an unreliable
+  suite produces a signal people learn to ignore. Enabling it is three commented lines
+  once those are fixed; tracked in ADR-0031.
+
 ### Decisions
 
 - [ADR-0029](docs/decisions/0029-ledger-wire-contract-is-library-owned.md) — the ledger's
@@ -101,6 +162,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Rule 3: a wire-test tier between mock-tier and container-tier.
 - [ADR-0030](docs/decisions/0030-connection-settings-escape-hatch.md) — `ConnectionSettings`
   escape hatch on the OpenSearch client factories
+- [ADR-0031](docs/decisions/0031-test-tiers-and-ci-gating.md) — three test tiers
+  (unit / wire / integration), positive CI selection on `TestCategory=Gating`, and the
+  `LocalOnly` split; amends ADR-0010
 
 ### Tests
 

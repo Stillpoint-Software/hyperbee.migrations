@@ -119,58 +119,51 @@ jobs:
           if-no-files-found: warn
 
   # ------------------------------------------------------------------ integration
-  # Per-provider matrix. Each matrix entry runs ONLY one provider's
-  # containers + ONLY that provider's test classes. Resource competition
-  # between provider containers is eliminated -- a CI runner sees one
-  # Couchbase OR one MongoDB OR one OpenSearch, not all five at once.
+  # The GATING integration tier (ADR-0031). Selects positively on
+  # [TestCategory("Gating")]: tests that talk to one shared provider container
+  # through the provider client, finish in seconds, and have no recorded flake
+  # history. Everything heavier stays [TestCategory("LocalOnly")] and runs via
+  # the manual heavy_integration_tests.yml workflow.
   #
-  # The matrix-include shape (rather than a 5x3 cross product) lets each
-  # provider's `filter` and `providers-only` env strings be tailored;
-  # MultiProvider tests need both Postgres + MongoDB, CliBinary spawns its
-  # own throwaway Postgres independent of the suite-level Postgres
-  # container, etc.
+  # Positive selection is deliberate. This job previously filtered NEGATIVELY
+  # (`TestCategory!=LocalOnly`), so when every class was tagged LocalOnly in
+  # 7ff3808 the filter silently matched zero tests. `dotnet test` fails on a
+  # no-match, so the whole job was gated behind a repo variable that was never
+  # created -- leaving the repo with no integration coverage in CI and no
+  # working way back. A negative filter cannot tell "nothing to run" from
+  # "nothing tagged"; a positive one can, and the guard step below asserts it.
+  #
+  # Per-provider matrix so a runner sees one provider's containers, not five.
+  # One TFM only: these assert behavior against a real server, which does not
+  # vary by target framework, and the unit + wire tiers already run on all
+  # three. Cost is ~3 short jobs per PR instead of 18 long ones.
   integration-tests:
     needs: discover
-    # Heavy container-based integration tests are LocalOnly for now: they
-    # are excluded from the gating matrix (every class is
-    # [TestCategory("LocalOnly")]) and do NOT gate the NuGet publish (the
-    # release pipeline runs unit tests only). With nothing left to run, this
-    # job is gated off so it does not fail on a zero-match `dotnet test`.
-    # Re-enable by setting repo variable RUN_HEAVY_INTEGRATION=true (no code
-    # change needed); run the suite locally / on demand in the meantime.
-    if: ${{ vars.RUN_HEAVY_INTEGRATION == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      # Cap concurrent jobs so the 18-cell matrix does not fire ~36
-      # simultaneous mcr.microsoft.com base-image pulls from GitHub's
-      # egress at once. That synchronized burst trips Azure Front Door's
-      # WAF in front of MCR ("The request is blocked" / Ref A/B/C), which
-      # surfaced as an instant Testcontainers image-pull failure. Combined
-      # with the bounded pre-pull step below it removes the failure class.
-      max-parallel: 4
       matrix:
-        framework: [net8.0, net9.0, net10.0]
-        provider: [postgres, aerospike, mongodb, opensearch, couchbase, multi-provider]
+        provider: [postgres, mongodb, opensearch, aerospike, multi-provider]
         include:
           - provider: postgres
             providers-only: Postgres
-            filter: "FullyQualifiedName~Postgres|FullyQualifiedName~CliBinary"
-          - provider: aerospike
-            providers-only: Aerospike
-            filter: "FullyQualifiedName~Aerospike"
+            filter: "FullyQualifiedName~Postgres"
           - provider: mongodb
             providers-only: MongoDb
             filter: "FullyQualifiedName~MongoDB"
           - provider: opensearch
             providers-only: OpenSearch
             filter: "FullyQualifiedName~OpenSearch"
-          - provider: couchbase
-            providers-only: Couchbase
-            filter: "FullyQualifiedName~Couchbase"
+          - provider: aerospike
+            providers-only: Aerospike
+            filter: "FullyQualifiedName~Aerospike"
           - provider: multi-provider
             providers-only: Postgres,MongoDb
             filter: "FullyQualifiedName~MultiProviderHost"
+
+    env:
+      FRAMEWORK: net10.0
+      TEST_PROJECT: tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj
 
     steps:
       - name: Checkout
@@ -187,63 +180,62 @@ jobs:
             9.0.x
             8.0.x
 
-      - name: Warm MCR base images (bounded retry, off the test hot path)
-        # The per-provider runner Dockerfiles begin with
-        # `FROM mcr.microsoft.com/dotnet/{sdk,runtime}:10.0`, which
-        # Testcontainers builds at test time. GitHub-hosted runners do not
-        # pre-cache these images, so the pull happens inside the test and a
-        # transient Azure-Front-Door block becomes an instant, unrecoverable
-        # test failure. Pull them here with bounded exponential backoff so
-        # (a) a throttle window is ridden out as a retryable workflow step,
-        # and (b) the subsequent Testcontainers build hits the local Docker
-        # cache instead of re-pulling. Pair with strategy.max-parallel above.
-        run: |
-          set -u
-          for img in mcr.microsoft.com/dotnet/sdk:10.0 mcr.microsoft.com/dotnet/runtime:10.0; do
-            n=0
-            until docker pull "$img"; do
-              n=$((n+1))
-              if [ "$n" -ge 5 ]; then
-                echo "::error::Failed to pull $img after $n attempts (MCR/AFD block?)."
-                exit 1
-              fi
-              sleep $((n * 15))
-            done
-          done
+      # No MCR base-image warm step here. That existed because the runner
+      # Dockerfiles begin with `FROM mcr.microsoft.com/dotnet/*` and an
+      # 18-cell matrix fired ~36 simultaneous pulls, tripping Azure Front
+      # Door's WAF. The Gating tier builds no Docker images -- it only pulls
+      # the provider images -- so that failure class is gone rather than
+      # mitigated. The warm step lives on in heavy_integration_tests.yml,
+      # which does build them.
 
-      - name: Restore + Build solution (EnableIntegrationTests)
-        # Whole-solution build is required: CliBinaryEndToEndTests spawns
-        # runners/Hyperbee.Migrations.Cli/bin/<cfg>/<tfm>/hyperbee-migrations
-        # as a child process and walks the sample assemblies in their own
-        # bin folders. Building only the test project misses those. With
-        # /p:EnableIntegrationTests=true the integration project includes
-        # its INTEGRATIONS-gated source.
+      - name: Restore + Build test project (EnableIntegrationTests)
+        # Project-scoped build is enough for the Gating tier: it contains no
+        # test that spawns the CLI binary or walks sample assemblies in their
+        # own bin folders (that is CliBinaryEndToEndTests, which is LocalOnly).
         run: |
-          dotnet restore ${{ vars.SOLUTION_NAME }}
-          dotnet build ${{ vars.SOLUTION_NAME }} \
+          dotnet restore "$TEST_PROJECT"
+          dotnet build "$TEST_PROJECT" \
             --no-restore \
             -c ${{ needs.discover.outputs.configuration }} \
+            -f "$FRAMEWORK" \
             /p:EnableIntegrationTests=true
 
-      - name: Integration tests -- ${{ matrix.provider }} (${{ matrix.framework }})
+      - name: Guard -- the gating filter must match at least one test
+        # The failure this repo already hit once: a filter that matches nothing
+        # is indistinguishable from a filter that is working, until `dotnet test`
+        # exits non-zero with an opaque message. Surface it by name, before the
+        # containers start.
+        run: |
+          set -uo pipefail
+          FILTER='(${{ matrix.filter }})&TestCategory=Gating'
+          LIST=$(dotnet test "$TEST_PROJECT" \
+            --no-build \
+            -c ${{ needs.discover.outputs.configuration }} \
+            -f "$FRAMEWORK" \
+            --list-tests \
+            --filter "$FILTER" \
+            /p:EnableIntegrationTests=true 2>&1 || true)
+          echo "$LIST"
+          if echo "$LIST" | grep -q "No test matches the given testcase filter"; then
+            echo "::error::Gating filter matched zero tests for ${{ matrix.provider }}: $FILTER"
+            echo "::error::Either a [TestCategory(\"Gating\")] tag was removed, or this provider no longer has gating coverage. Re-tag a light test class or drop this matrix entry -- do not silently skip the job (see ADR-0031)."
+            exit 1
+          fi
+
+      - name: Integration tests -- ${{ matrix.provider }} (Gating)
         # HYPERBEE_TESTS_PROVIDERS_ONLY restricts the [AssemblyInitialize]
-        # to only the named provider(s). The --filter then selects only
-        # the test classes for those providers. LocalOnly + MultiNode
-        # categories are excluded across the board (the Couchbase
-        # host-side cluster-map race is gated behind LocalOnly per F-1
-        # v3.0.1 follow-up; MultiNode OpenSearch tests need 3 JVMs and
-        # have their own manual-trigger workflow).
+        # container startup to the named provider(s), so a runner starts one
+        # provider's containers rather than all five.
         env:
           HYPERBEE_TESTS_PROVIDERS_ONLY: ${{ matrix.providers-only }}
         run: |
           mkdir -p ./TestResults
-          dotnet test \
-            tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj \
+          dotnet test "$TEST_PROJECT" \
             --no-build \
             -c ${{ needs.discover.outputs.configuration }} \
-            -f ${{ matrix.framework }} \
-            --filter "(${{ matrix.filter }})&TestCategory!=LocalOnly&TestCategory!=MultiNode" \
-            --logger "trx;LogFileName=integration-${{ matrix.provider }}-${{ matrix.framework }}.trx" \
+            -f "$FRAMEWORK" \
+            --filter "(${{ matrix.filter }})&TestCategory=Gating" \
+            --logger "trx;LogFileName=integration-${{ matrix.provider }}.trx" \
             --logger "console;verbosity=normal" \
             --results-directory ./TestResults \
             /p:EnableIntegrationTests=true
@@ -252,7 +244,7 @@ jobs:
         uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: test-results-integration-${{ matrix.provider }}-${{ matrix.framework }}
+          name: test-results-integration-${{ matrix.provider }}
           path: ./TestResults/
           if-no-files-found: warn
 

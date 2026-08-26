@@ -17,8 +17,10 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // answer whenever nothing is squashed. See ADR-0029.
 
 [TestClass]
-// LocalOnly: heavy container-based integration test; excluded from the gating CI matrix (does not gate the NuGet publish). Runs locally / on demand.
-[TestCategory( "LocalOnly" )]
+// Gating (ADR-0031): one shared MongoDB container via the assembly fixture, no
+// Docker image build, seconds to run. IntersectWithSquashedAsync is exactly the
+// kind of silently-wrong query this tier exists to catch.
+[TestCategory( "Gating" )]
 public class MongoDBRecordStoreIntegrationTests
 {
     private static MongoDBRecordStore BuildStore( MongoDBMigrationOptions options ) =>

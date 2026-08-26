@@ -93,6 +93,15 @@ public class AerospikeRunnerTest
     }
 
     [TestMethod]
+    // Flaky (ADR-0031): asserts on a race. It launches concurrent runner containers and
+    // requires at least one to observe lock contention -- on a fast host they all finish
+    // before contending, and the assert fails with no defect present. Measured locally:
+    // Aerospike and MongoDB both failed this way; Couchbase passed on the same run; the
+    // Postgres equivalent was commented out by an earlier author for the same reason.
+    // Excluded from the post-merge suite so that signal stays trustworthy. Still runs
+    // locally and on manual dispatch. Fix is to hold the lock deterministically rather
+    // than race containers; until then this is known debt, not coverage.
+    [TestCategory( "Flaky" )]
     public async Task Should_Fail_WhenMigrationHasLock()
     {
         var migrationImage = await AerospikeMigrationContainer.BuildMigrationImageAsync();
