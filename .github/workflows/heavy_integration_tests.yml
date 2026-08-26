@@ -1,0 +1,235 @@
+﻿name: Heavy Integration Tests (manual)
+
+# The [TestCategory("LocalOnly")] integration suite: everything the PR gate does
+# not run. On demand, for any provider / framework.
+#
+# This was built to run post-merge on every push to main, on the reasoning that
+# "run them locally" is a convention and conventions do not catch regressions.
+# That trigger was removed before it ever shipped, because measuring the suite
+# first showed it is not reliably green:
+#
+#   - AerospikeRunnerTest.Should_Succeed_WhenRunningUpTwice failed in one batch
+#     run (52s) and passed standalone (12s) minutes later. Intermittent, cause
+#     not yet isolated -- likely container/teardown timing from the preceding
+#     provider's run.
+#   - Should_Fail_WhenMigrationHasLock in three provider suites asserts on a
+#     race and is now quarantined as [TestCategory("Flaky")]; see below.
+#
+# Automating a suite that is not dependably green produces a signal people learn
+# to ignore, and an ignored signal is worse than an absent one -- that is the
+# argument ADR-0031 makes for keeping the PR gate small and trustworthy, and it
+# applies here too. Manual until the intermittency is fixed; then add:
+#
+#   on:
+#     push:
+#       branches: [main]
+#
+# Tracked as debt in ADR-0031. The PR gate (115 tests) is unaffected and is
+# verified green on GitHub-hosted runners.
+#
+# These do NOT gate the NuGet publish (ADR-0031). Three distinct cost drivers
+# keep them out of the PR path:
+#
+#   1. Docker image builds. AerospikeRunnerTest, CouchbaseRunnerTest,
+#      MongoDBRunnerTest, PostgresRunnerTest and CliBinaryEndToEndTests build
+#      the per-provider runner images, whose Dockerfiles start
+#      `FROM mcr.microsoft.com/dotnet/*`. A wide matrix fires many simultaneous
+#      MCR pulls and trips Azure Front Door's WAF ("The request is blocked"),
+#      which Testcontainers surfaces as an instant, unrecoverable failure. The
+#      warm step below mitigates it; it does not eliminate it.
+#   2. Couchbase GSI indexer variance. The isolated Couchbase container's
+#      initial indexer rebalance on a fresh single-node 7.6.2 is highly variable
+#      on constrained hosts -- worse than 5 minutes has been observed, hence the
+#      12-minute warmup bound in IsolatedCouchbaseContainer.
+#   3. Sheer weight. Several providers' containers plus image builds on a
+#      4-CPU / 16 GB GitHub-hosted runner. Measured locally, Couchbase's six
+#      squash tests alone take 5-6.5 minutes -- five to six times every other
+#      provider combined -- because IsolatedCouchbaseContainer waits out the GSI
+#      indexer's initial rebalance (the code allows up to 12 minutes for it).
+#
+# So: expect occasional red here on GitHub-hosted infrastructure even once the
+# known intermittency is fixed, and treat a failure as "investigate, possibly
+# re-run" rather than "the build is broken". It is also NOT on a nightly cron: a
+# scheduled run that fails for infrastructure reasons on a day nobody changed
+# anything produces no signal, which is the mistake multi_node_tests.yml already
+# corrected.
+#
+# Running locally is always supported:
+#
+#   dotnet test tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj \
+#     -p:EnableIntegrationTests=true
+#
+# Selects positively on TestCategory=LocalOnly, so this runs exactly what the PR
+# gate does NOT -- no duplication of the Gating tier.
+#
+# TestCategory=Flaky is excluded. Three provider runner suites carry a
+# Should_Fail_WhenMigrationHasLock test that asserts on a race: it starts concurrent
+# runner containers and requires one of them to observe lock contention. On a fast
+# host they all finish first and it fails with no defect present -- measured, on
+# Aerospike and MongoDB. The Postgres equivalent was already commented out by an
+# earlier author for the same reason. Automating a suite that is known-red defeats
+# the purpose, so the exclusion is explicit and named rather than the job being
+# quietly left off. They still run locally and on manual dispatch.
+#
+# Multi-node OpenSearch carries both LocalOnly and MultiNode and is excluded here;
+# it has its own workflow (multi_node_tests.yml) because it needs three JVMs.
+#
+# This replaces the RUN_HEAVY_INTEGRATION repo variable, which never worked:
+# the job it gated still carried a `TestCategory!=LocalOnly` filter, so setting
+# the variable to 'true' would have un-skipped a matrix that matched zero tests
+# and failed on the no-match -- exactly the failure the gate was added to avoid.
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: Which provider suite to run
+        required: true
+        default: all
+        type: choice
+        options: [all, postgres, aerospike, mongodb, opensearch, couchbase, multi-provider]
+      framework:
+        description: Target framework
+        required: true
+        default: net10.0
+        type: choice
+        options: [net10.0, net9.0, net8.0]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: heavy-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  select:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.build.outputs.matrix }}
+    steps:
+      - id: build
+        shell: bash
+        # `inputs.*` is empty on push, so both fall back to their dispatch defaults.
+        env:
+          WANT: ${{ inputs.provider || 'all' }}
+        run: |
+          set -euo pipefail
+          all='[
+            {"provider":"postgres","providers-only":"Postgres","filter":"FullyQualifiedName~Postgres|FullyQualifiedName~CliBinary"},
+            {"provider":"aerospike","providers-only":"Aerospike","filter":"FullyQualifiedName~Aerospike"},
+            {"provider":"mongodb","providers-only":"MongoDb","filter":"FullyQualifiedName~MongoDB"},
+            {"provider":"opensearch","providers-only":"OpenSearch","filter":"FullyQualifiedName~OpenSearch"},
+            {"provider":"couchbase","providers-only":"Couchbase","filter":"FullyQualifiedName~Couchbase"},
+            {"provider":"multi-provider","providers-only":"Postgres,MongoDb","filter":"FullyQualifiedName~MultiProviderHost"}
+          ]'
+          if [ "$WANT" = "all" ]; then
+            echo "matrix=$(echo "$all" | jq -c .)" >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix=$(echo "$all" | jq -c --arg p "$WANT" '[.[] | select(.provider == $p)]')" >> "$GITHUB_OUTPUT"
+          fi
+
+  heavy:
+    needs: select
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # Bound concurrent MCR pulls; see cost driver 1 above.
+      max-parallel: 3
+      matrix:
+        include: ${{ fromJson(needs.select.outputs.matrix) }}
+
+    env:
+      FRAMEWORK: ${{ inputs.framework || 'net10.0' }}
+      TEST_PROJECT: tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDKs
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: |
+            10.0.x
+            9.0.x
+            8.0.x
+
+      - name: Warm MCR base images (bounded retry, off the test hot path)
+        # Pull the runner-image bases here so a throttle window is ridden out as
+        # a retryable workflow step instead of becoming an instant test failure,
+        # and so the Testcontainers build hits the local Docker cache.
+        run: |
+          set -u
+          for img in mcr.microsoft.com/dotnet/sdk:10.0 mcr.microsoft.com/dotnet/runtime:10.0; do
+            n=0
+            until docker pull "$img"; do
+              n=$((n+1))
+              if [ "$n" -ge 5 ]; then
+                echo "::error::Failed to pull $img after $n attempts (MCR/AFD block?)."
+                exit 1
+              fi
+              sleep $((n * 15))
+            done
+          done
+
+      - name: Restore + Build solution (EnableIntegrationTests)
+        # Whole-solution build is required here: CliBinaryEndToEndTests spawns
+        # runners/Hyperbee.Migrations.Cli/bin/<cfg>/<tfm>/hyperbee-migrations as a
+        # child process and walks the sample assemblies in their own bin folders.
+        run: |
+          dotnet restore ${{ vars.SOLUTION_NAME }}
+          dotnet build ${{ vars.SOLUTION_NAME }} \
+            --no-restore \
+            -c Release \
+            /p:EnableIntegrationTests=true
+
+      - name: Probe -- does this provider have any LocalOnly tests left?
+        id: probe
+        # Unlike the PR gate, an empty match here is a SUCCESS condition: it means
+        # every one of this provider's tests already runs pre-merge, which is the
+        # direction we want tests to move. `dotnet test` exits non-zero on a
+        # no-match, so detect it and skip the run rather than fail the job.
+        #
+        # This is not the mistake the PR gate made. There, an empty match meant
+        # coverage had silently vanished and had to be loud. Here it means coverage
+        # was promoted, and the notice records which provider.
+        run: |
+          set -uo pipefail
+          FILTER='(${{ matrix.filter }})&TestCategory=LocalOnly&TestCategory!=MultiNode&TestCategory!=Flaky'
+          LIST=$(dotnet test "$TEST_PROJECT" \
+            --no-build -c Release -f "$FRAMEWORK" \
+            --list-tests --filter "$FILTER" \
+            /p:EnableIntegrationTests=true 2>&1 || true)
+          if echo "$LIST" | grep -q "No test matches the given testcase filter"; then
+            echo "::notice::${{ matrix.provider }} has no LocalOnly tests -- all of its coverage runs in the PR gate. Nothing to do."
+            echo "has_tests=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_tests=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Heavy integration tests -- ${{ matrix.provider }}
+        if: steps.probe.outputs.has_tests == 'true'
+        env:
+          HYPERBEE_TESTS_PROVIDERS_ONLY: ${{ matrix.providers-only }}
+        run: |
+          mkdir -p ./TestResults
+          dotnet test "$TEST_PROJECT" \
+            --no-build \
+            -c Release \
+            -f "$FRAMEWORK" \
+            --filter "(${{ matrix.filter }})&TestCategory=LocalOnly&TestCategory!=MultiNode&TestCategory!=Flaky" \
+            --logger "trx;LogFileName=heavy-${{ matrix.provider }}.trx" \
+            --logger "console;verbosity=normal" \
+            --results-directory ./TestResults \
+            /p:EnableIntegrationTests=true
+
+      - name: Upload results
+        if: always() && steps.probe.outputs.has_tests == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: heavy-integration-${{ matrix.provider }}
+          path: ./TestResults/
+          if-no-files-found: warn

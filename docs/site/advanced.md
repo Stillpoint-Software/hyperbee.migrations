@@ -97,6 +97,53 @@ public interface IMigrationRecordStore
   implementations must walk the squash graph to support fresh-install
   reconciliation against squashed history.
 
+### Two rules for the ledger's wire contract
+
+Both rules below come from real defects in the shipped providers. They cost a
+broken release and a silently wrong query, so they are worth following in a
+custom store.
+
+**Address the ledger explicitly. Never let the client infer it.** Modern clients
+resolve a great deal from configuration the consumer owns: which index or
+collection a CLR type maps to, what casing a property serializes as, which
+serializer runs. Your record store's document type is not part of the consumer's
+domain, so requiring them to declare a mapping for it inverts ownership -- and
+their configuration can change under you. Take the target from your own options
+object and set it on every request, at every level the protocol carries it.
+
+The OpenSearch `_mget` body carries a per-entry index in addition to the one in
+the URL. Setting only the URL one left the body to CLR-type inference, which no
+shipped client factory configured, so every run failed during serialization.
+
+**Route every field reference through the same path as the writer.** Where a
+query names your document's own fields, build all of it the same way. Mixing a
+typed expression with a raw string is the trap: the typed half goes through the
+serializer's member map, the raw half does not, and the two disagree the moment
+any naming convention is in play.
+
+```csharp
+// wrong -- "Kind" renders through the class map, "replaces" renders verbatim
+Filter.And( Filter.Eq( x => x.Kind, Squash ), Filter.In( "replaces", versions ) );
+
+// right -- both terms route through the class map
+Filter.And( Filter.Eq( x => x.Kind, Squash ), Filter.AnyIn( x => x.Replaces, versions ) );
+```
+
+Where the query language has no typed field reference at all -- N1QL, SQL --
+pin the serializer your store uses instead, so the names you hard-code are a
+guarantee rather than an inherited default.
+
+Note what the fix is *not*. Pinning element names with serialization attributes
+or a registered class map repairs self-consistency, but it also stops reading
+ledgers written under a different convention. Routing everything through one
+path is correct under any configuration, and changes no bytes.
+
+**Test the wire, not the mock.** A substituted client never serializes, so it
+cannot catch either defect. Drive the real client and real serializer over a
+faked transport instead -- an in-memory connection, or comparing a rendered
+query against the serializer's actual output. Both bugs above are visible that
+way in milliseconds, with no container.
+
 ## Custom Conventions
 
 `IMigrationConventions` controls how record IDs are generated for each migration.

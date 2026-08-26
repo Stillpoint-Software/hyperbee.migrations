@@ -30,8 +30,9 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // implicit ISM bootstrap happens once, deterministically.
 [TestClass]
 [DoNotParallelize]
-// LocalOnly: heavy container-based integration test; excluded from the gating CI matrix (does not gate the NuGet publish). Runs locally / on demand.
-[TestCategory( "LocalOnly" )]
+// Gating (ADR-0031): shared assembly-fixture container, no Docker image build,
+// not multi-node. Runs on every PR.
+[TestCategory( "Gating" )]
 public class OpenSearchTemplatePolicyIntegrationTests
 {
     private OpenSearchStatementParser _parser = null!;

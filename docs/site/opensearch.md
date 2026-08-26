@@ -67,7 +67,7 @@ services.AddOpenSearchClient(
         .EnableHttpCompression() );
 ```
 
-Use it for transport concerns the typed options do not model — timeouts, retries, compression, a proxy, `ServerCertificateValidationCallback` for a self-signed development cluster, `DisableDirectStreaming` while debugging — and for `DefaultMappingFor` over **your own** document types when the client is shared with application code.
+Use it for transport concerns the typed options do not model: timeouts, retries, compression, a proxy, `ServerCertificateValidationCallback` for a self-signed development cluster, or `DisableDirectStreaming` while debugging. Also use it for `DefaultMappingFor` over **your own** document types when the client is shared with application code.
 
 You do not need this to make migrations work. The migration ledger never relies on client-level type inference, so no mapping for `OpenSearchMigrationRecord` is required.
 

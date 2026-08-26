@@ -22,8 +22,9 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // staleness math — those are all on the time provider's clock.
 
 [TestClass]
-// LocalOnly: heavy container-based integration test; excluded from the gating CI matrix (does not gate the NuGet publish). Runs locally / on demand.
-[TestCategory( "LocalOnly" )]
+// Gating (ADR-0031): shared assembly-fixture container, no Docker image build,
+// not multi-node. Runs on every PR.
+[TestCategory( "Gating" )]
 public class OpenSearchLockContentionTests
 {
     private static OpenSearchRecordStore BuildStore(

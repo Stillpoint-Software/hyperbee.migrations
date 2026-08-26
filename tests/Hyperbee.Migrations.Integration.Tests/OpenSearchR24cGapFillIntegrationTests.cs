@@ -35,8 +35,10 @@ namespace Hyperbee.Migrations.Integration.Tests;
 // Multi-node-only scenarios (k, m) live in OpenSearchR24cMultiNodeTests.
 
 [TestClass]
-// LocalOnly: heavy container-based integration test; excluded from the gating CI matrix (does not gate the NuGet publish). Runs locally / on demand.
-[TestCategory( "LocalOnly" )]
+// Gating (ADR-0031): single-node scenarios on the shared assembly-fixture container,
+// no Docker image build, 14s. The 3-JVM scenarios live in the separate
+// OpenSearchR24cMultiNodeIntegrationTests class below and stay LocalOnly.
+[TestCategory( "Gating" )]
 public class OpenSearchR24cGapFillIntegrationTests
 {
     private OpenSearchStatementParser _parser = null!;

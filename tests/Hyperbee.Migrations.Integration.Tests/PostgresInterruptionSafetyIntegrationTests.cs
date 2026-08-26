@@ -24,7 +24,11 @@ namespace Hyperbee.Migrations.Integration.Tests;
 
 [TestClass]
 [DoNotParallelize]
-[TestCategory( "LocalOnly" )]
+// Gating (ADR-0031): one shared Postgres container via the assembly fixture, no
+// Docker image build, ~30s. Covers the Tier-2 transaction-scoped apply guarantee
+// (ADR-0028), which has no unit-tier equivalent -- atomic body+journal rollback
+// is only observable against a real engine.
+[TestCategory( "Gating" )]
 public class PostgresInterruptionSafetyIntegrationTests
 {
     private static Testcontainers.PostgreSql.PostgreSqlContainer _container;

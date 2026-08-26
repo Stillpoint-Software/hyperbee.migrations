@@ -344,6 +344,43 @@ See [Squashing Migrations](squashing-migrations.md) and [Code Migrations](code-m
 
 ---
 
+## Symptom: OpenSearch "Index name is null for the given type and no default index is set"
+
+**Cause:** A defect in the OpenSearch provider, versions 3.0.0 and 3.1.0 only. The reconciliation read that starts every run built its `_mget` request body without an explicit index, leaving the OpenSearch client to infer one from the CLR type. Neither `AddOpenSearchClient` nor `AddOpenSearchAwsClient` configures that inference, so the request failed during serialization, before any call reached the cluster.
+
+The full message names `ConnectionSettings.DefaultMappingFor<TDocument>()` and `ConnectionSettings.DefaultIndex()`, which makes it look like missing consumer configuration. It is not. It also has nothing to do with `LedgerIndex`, which is a separate setting and is applied correctly.
+
+It affects every run that discovers at least one migration, including through the standalone runner and the CLI, and it is not specific to AWS.
+
+**Recovery:** Upgrade the provider package to 3.2.0 or later. No configuration change is required.
+
+If you are pinned to 3.0.0 or 3.1.0 and cannot upgrade, the workaround is to declare the mapping yourself on the client you register, matching your configured `LedgerIndex`:
+
+```csharp
+var settings = new ConnectionSettings( endpoint )
+    .DefaultMappingFor<OpenSearchMigrationRecord>( m => m.IndexName( ".migrations" ) );
+```
+
+Remove that once you upgrade. The library no longer relies on type inference for any ledger operation.
+
+See [OpenSearch](opensearch.md).
+
+---
+
+## Symptom: MongoDB squashes never take effect, and replaced migrations keep re-running
+
+**Cause:** A defect in the MongoDB provider, versions 3.0.0 and 3.1.0 only. The query that decides whether a squash already covers a set of versions named one of its fields with a raw string rather than a typed expression, so the name it asked for did not match the name the ledger writer produced. The query matched nothing, every time.
+
+There is no error and no failed run. The only visible effect is that migrations a squash is supposed to subsume are treated as outstanding and run again on every invocation, which is silent unless those migrations are non-idempotent.
+
+**Recovery:** Upgrade the provider package to 3.2.0 or later. Existing ledger rows are unaffected and no data migration is needed. The fix corrects the query to match what was already being written.
+
+To confirm the fix is active, write a squash row and check that `IntersectWithSquashedAsync` returns its replaced versions.
+
+See [Squashing Migrations](squashing-migrations.md) and [MongoDB](mongodb.md).
+
+---
+
 ## Still stuck?
 
 - Re-read the relevant provider page: [Aerospike](aerospike.md), [Couchbase](couchbase.md), [PostgreSQL](postgresql.md), [OpenSearch](opensearch.md), [MongoDB](mongodb.md).

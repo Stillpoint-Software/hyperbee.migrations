@@ -1,4 +1,4 @@
-# Contributing to Hyperbee.Migrations
+﻿# Contributing to Hyperbee.Migrations
 
 Thanks for your interest in contributing! Hyperbee.Migrations is an OSS .NET migrations
 library with first-class support for Aerospike, Couchbase, MongoDB, OpenSearch, and
@@ -64,16 +64,55 @@ them with the `EnableIntegrationTests` MSBuild property:
 dotnet test tests/Hyperbee.Migrations.Integration.Tests/Hyperbee.Migrations.Integration.Tests.csproj -c Release -p:EnableIntegrationTests=true
 ```
 
-Multi-node OpenSearch tests are tagged `[TestCategory("LocalOnly")]` because the
-GitHub-hosted runners cannot reliably sustain a 3-node cluster. Run those locally
-only.
-
 If you only have Docker images for some providers, scope the run with an
 environment variable:
 
 ```
 HYPERBEE_TESTS_PROVIDERS_ONLY="Postgres,MongoDb"
 ```
+
+### Test tiers
+
+Three tiers, per [ADR-0031](docs/decisions/0031-test-tiers-and-ci-gating.md). Know
+which one you are adding to.
+
+| Tier | What it is | Where | CI |
+| --- | --- | --- | --- |
+| Unit | No I/O | `Hyperbee.Migrations.Tests`, `.Squash.Tests`, `.Cli.Tests` | Every PR, net8/9/10 |
+| Wire | Real client + real serializer, faked transport | Same projects (`*LedgerWireTests`) | Every PR, net8/9/10 |
+| Integration | Real containers | `Hyperbee.Migrations.Integration.Tests` | See below |
+
+**Reach for the wire tier first.** A substituted client never serializes, so it
+cannot catch a malformed request, a wrong field name, or a bad type inference —
+and a container is a slow, flaky way to learn the same thing. `InMemoryConnection`
+(OpenSearch) or a rendered filter compared against serializer output (MongoDB,
+Couchbase) runs in milliseconds with no Docker. Both defects behind
+[ADR-0029](docs/decisions/0029-ledger-wire-contract-is-library-owned.md) were
+caught this way after the fact; they should have been caught this way first.
+
+Every integration class carries **exactly one** category, and everything runs
+automatically somewhere:
+
+- **`[TestCategory("Gating")]`** — 115 tests, on every PR, ~2 minutes. Qualifies only
+  if it uses just the shared `InitializeTestContainers` container, builds no Docker
+  image, is not multi-node, finishes its provider's cell in about a minute, and has
+  been observed green.
+- **`[TestCategory("LocalOnly")]`** — 12 tests, on demand via the **Heavy Integration
+  Tests** workflow. These build Docker images, or need a
+  3-node cluster, or take 5+ minutes. Multi-node OpenSearch additionally carries
+  `[TestCategory("MultiNode")]` and has its own manual workflow.
+
+- **`[TestCategory("Flaky")]`** — 3 tests, never automated. Reserved for tests that assert
+  on a race and can fail with no defect present. Do not add to this list without recording
+  the measurement and the intended fix; it is debt, not a category for "tests that annoy me".
+
+So: PR = fast and must be green. Everything else is on-demand today, because the heavy
+suite is not yet dependably green enough to automate — see ADR-0031.
+
+CI selects *positively* on `TestCategory=Gating`, and a guard step fails the build if
+a matrix cell matches zero tests. Do not "fix" a red gating job by narrowing the
+filter — that is how the repo previously ended up with no integration coverage at all
+and nobody noticing for three months.
 
 ## Repo layout
 
@@ -96,8 +135,10 @@ We use trunk-based GitHub flow:
 - Branch from `main`.
 - Branch naming: `devs/<your-name>/<short-description>` for example
   `devs/jdoe/postgres-jsonb-support`.
-- Open the PR against `main`. CI runs unit tests on net8, net9, and net10.
-  Integration tests are local or manual.
+- Open the PR against `main`. CI runs unit + wire tests on net8, net9, and net10,
+  plus the `Gating` integration tier (Postgres, MongoDB, OpenSearch, Aerospike,
+  multi-provider) on net10. The `LocalOnly` suite runs after merge — see
+  "Test tiers" above.
 - Squash-merge is the default.
 
 ## Coding conventions
